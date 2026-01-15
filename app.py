@@ -1561,8 +1561,8 @@ elif page == "Predictions":
                 # Show individual game results against this opponent with averages row
                 st.markdown(f"**Games Played: {num_games}** | **Record: {WL_record}**")
                 
-                # Get individual games - include W/L
-                vs_cols = ['GAME_DATE', 'MATCHUP', 'W/L', 'MIN', 'Points', 'Rebounds', 'Assists', 
+                # Get individual games - include W/L and Score
+                vs_cols = ['GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN', 'Points', 'Rebounds', 'Assists', 
                           'Steals', 'Blocks', 'Turnovers', 'FG', '3P', 'FT', 'TS%']
                 vs_opponent_display = games_vs_opponent[[c for c in vs_cols if c in games_vs_opponent.columns]].iloc[::-1].copy()
                 
@@ -1575,6 +1575,7 @@ elif page == "Predictions":
                     'GAME_DATE': 'AVG vs ' + selected_opponent,
                     'MATCHUP': f'({num_games} games)',
                     'W/L': '',
+                    'Score': '',
                     'MIN': f"{avg_minutes_vs:.1f}" if avg_minutes_vs != "N/A" else "N/A",
                     'Points': f"{avg_points_vs:.1f}",
                     'Rebounds': f"{avg_rebounds_vs:.1f}",
