@@ -1,12 +1,12 @@
-# 🏀 NBA Player Stats Predictor
+# NBA Player Stats Predictor
 
 An advanced NBA player performance prediction app built with Streamlit, powered by Hidden Markov Models (HMM) for AI-driven stat forecasting.
 
 ![Home Page](screenshots/home.png)
 
-## ✨ Features
+## Features
 
-### 🔮 AI-Powered Player Predictions
+### AI-Powered Player Predictions
 Predict any NBA player's next game stats using a Hidden Markov Model that analyzes:
 - Recent performance trends
 - Opponent defensive ratings
@@ -15,7 +15,7 @@ Predict any NBA player's next game stats using a Hidden Markov Model that analyz
 
 ![Player Prediction](screenshots/prediction.png)
 
-### 📊 Live Game Scores
+### Live Game Scores
 Real-time scores for today's games with:
 - Final scores highlighted (winner in green)
 - Live game updates during games
@@ -23,7 +23,7 @@ Real-time scores for today's games with:
 
 ![Today's Games](screenshots/todays_games.png)
 
-### 📈 Comprehensive Standings
+### Comprehensive Standings
 Full NBA standings with advanced metrics:
 - Offensive and Defensive Ratings
 - Home/Away records
@@ -32,7 +32,7 @@ Full NBA standings with advanced metrics:
 
 ![Standings](screenshots/standings.png)
 
-### 🏆 Playoff Picture
+### Playoff Picture
 Visual playoff bracket showing:
 - Current seedings and matchups
 - Play-in tournament scenarios
@@ -40,7 +40,7 @@ Visual playoff bracket showing:
 
 ![Playoff Picture](screenshots/playoffs.png)
 
-### 👤 Enhanced Player Profiles
+### Enhanced Player Profiles
 Detailed player information including:
 - Player headshots and team logos
 - Biographical data (Age, Height, Weight, Draft info)
@@ -48,13 +48,13 @@ Detailed player information including:
 - Win vs Loss performance splits
 - Recent game history with scores
 
-### ⭐ Favorites System
+### Favorites System
 Google OAuth authentication for:
 - Saving favorite players and teams
 - Quick access to player predictions
 - Personalized dashboard experience
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **Frontend**: Streamlit
 - **ML Model**: Hidden Markov Model (hmmlearn)
@@ -62,7 +62,7 @@ Google OAuth authentication for:
 - **Authentication**: Google OAuth 2.0
 - **Database**: SQLite
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 - Python 3.11+
@@ -97,7 +97,7 @@ uv sync
 uv run streamlit run app.py
 ```
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 NBAPlayerStatsPredictor/
@@ -112,7 +112,7 @@ NBAPlayerStatsPredictor/
 └── pyproject.toml        # Project dependencies
 ```
 
-## 🔬 How the Prediction Model Works
+## How the Prediction Model Works
 
 The app uses a **Gaussian Hidden Markov Model** with 3 hidden states representing different performance levels:
 
@@ -122,11 +122,11 @@ The app uses a **Gaussian Hidden Markov Model** with 3 hidden states representin
 4. **H2H Weighting**: Incorporates historical performance against specific opponents
 5. **Injury Filtering**: Excludes games where player played < 60% of average minutes
 
-## 📝 License
+## License
 
 This project is for educational and personal use.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - [NBA API](https://github.com/swar/nba_api) for comprehensive NBA data
 - [Streamlit](https://streamlit.io/) for the amazing web framework
