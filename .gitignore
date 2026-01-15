@@ -1,0 +1,27 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# OAuth & Secrets (NEVER commit these!)
+google_credentials.json
+.streamlit/secrets.toml
+
+# Database files
+*.db
+user_data.db
+
+# User preferences (legacy)
+user_preferences.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.toml
