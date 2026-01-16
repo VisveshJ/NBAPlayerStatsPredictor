@@ -8,6 +8,7 @@ dependencies = [
     "hmmlearn>=0.3.0",
     "matplotlib>=3.7.0",
     "nba-api>=1.4.0",
+    "nbainjuries>=1.0.0",
     "numpy>=1.24.0",
     "pandas>=2.0.0",
     "requests>=2.31.0",

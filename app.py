@@ -755,9 +755,9 @@ if 'current_page' not in st.session_state:
 
 # Navigation options based on auth status
 if is_authenticated:
-    nav_options = ["Home", "Predictions", "Player Stats", "Standings", "Favorites", "About"]
+    nav_options = ["Home", "Predictions", "Player Stats", "Compare Players", "Standings", "Favorites", "About"]
 else:
-    nav_options = ["Home", "Predictions", "Player Stats", "Standings", "About"]
+    nav_options = ["Home", "Predictions", "Player Stats", "Compare Players", "Standings", "About"]
 
 # Check if we have pending navigation (from buttons like "View" or upcoming games)
 # This must be checked BEFORE the radio widget is rendered
@@ -2599,6 +2599,243 @@ elif page == "Favorites":
             else:
                 render_empty_state("No watched teams yet! Add teams from the Live Predictions page.", "")
 
+# ==================== COMPARE PLAYERS PAGE ====================
+elif page == "Compare Players":
+    st.title("Compare Players")
+    st.markdown("Compare two players head-to-head across all stats")
+    
+    season = "2025-26"
+    
+    st.markdown("---")
+    
+    # Player selection with autocomplete
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### Player 1")
+        player1_search = st.text_input("Search Player 1", key="compare_player1_search", placeholder="e.g., LeBron James")
+        selected_player1 = None
+        if player1_search:
+            matching1 = search_players(player1_search, season)
+            if matching1:
+                selected_player1 = st.selectbox("Select Player 1:", matching1, key="compare_select1")
+    
+    with col2:
+        st.markdown("### Player 2")
+        player2_search = st.text_input("Search Player 2", key="compare_player2_search", placeholder="e.g., Stephen Curry")
+        selected_player2 = None
+        if player2_search:
+            matching2 = search_players(player2_search, season)
+            if matching2:
+                selected_player2 = st.selectbox("Select Player 2:", matching2, key="compare_select2")
+    
+    # Compare button
+    if selected_player1 and selected_player2:
+        if st.button("🔍 Compare Players", type="primary", use_container_width=True):
+            with st.spinner("Loading player stats..."):
+                # Get player data for both
+                player1_df, player1_team = get_player_game_log(selected_player1, season)
+                player2_df, player2_team = get_player_game_log(selected_player2, season)
+                
+                if player1_df is None or len(player1_df) == 0:
+                    st.error(f"No data found for {selected_player1}")
+                elif player2_df is None or len(player2_df) == 0:
+                    st.error(f"No data found for {selected_player2}")
+                else:
+                    player1_name = selected_player1
+                    player2_name = selected_player2
+                    
+                    # Get bios
+                    bio1 = fetch_player_bio(player1_name)
+                    bio2 = fetch_player_bio(player2_name)
+                    
+                    if bio1 and bio1.get('team_abbrev'):
+                        player1_team = bio1['team_abbrev']
+                    if bio2 and bio2.get('team_abbrev'):
+                        player2_team = bio2['team_abbrev']
+                    
+                    st.markdown("---")
+                    
+                    # Player profile cards
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        # Player 1 card
+                        p1_photo = get_player_photo_url(player1_name)
+                        p1_logo = get_team_logo_url(player1_team)
+                        
+                        # Build bio line (no draft info)
+                        bio1_parts = []
+                        if bio1:
+                            if bio1.get('height') and bio1.get('weight'):
+                                bio1_parts.append(f"{bio1['height']}, {bio1['weight']} lbs")
+                            if bio1.get('age') and bio1['age'] != 'N/A':
+                                bio1_parts.append(f"Age: {bio1['age']}")
+                        bio1_parts.append(player1_team)
+                        bio1_parts.append(f"{len(player1_df)} games loaded")
+                        bio1_line = " • ".join(bio1_parts)
+                        
+                        st.markdown(f"""
+                        <div style="text-align: center; padding: 20px; background: #1F2937; border-radius: 10px;">
+                            <div style="display: flex; justify-content: center; align-items: center; gap: 15px; margin-bottom: 10px;">
+                                <img src="{p1_photo}" width="80" onerror="this.style.display='none'"/>
+                                <img src="{p1_logo}" width="60" onerror="this.style.display='none'"/>
+                            </div>
+                            <h2 style="color: #FAFAFA; margin: 10px 0;">{player1_name}</h2>
+                            <p style="color: #9CA3AF; margin: 5px 0; font-size: 0.9rem;">{bio1_line}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col2:
+                        # Player 2 card
+                        p2_photo = get_player_photo_url(player2_name)
+                        p2_logo = get_team_logo_url(player2_team)
+                        
+                        # Build bio line (no draft info)
+                        bio2_parts = []
+                        if bio2:
+                            if bio2.get('height') and bio2.get('weight'):
+                                bio2_parts.append(f"{bio2['height']}, {bio2['weight']} lbs")
+                            if bio2.get('age') and bio2['age'] != 'N/A':
+                                bio2_parts.append(f"Age: {bio2['age']}")
+                        bio2_parts.append(player2_team)
+                        bio2_parts.append(f"{len(player2_df)} games loaded")
+                        bio2_line = " • ".join(bio2_parts)
+                        
+                        st.markdown(f"""
+                        <div style="text-align: center; padding: 20px; background: #1F2937; border-radius: 10px;">
+                            <div style="display: flex; justify-content: center; align-items: center; gap: 15px; margin-bottom: 10px;">
+                                <img src="{p2_photo}" width="80" onerror="this.style.display='none'"/>
+                                <img src="{p2_logo}" width="60" onerror="this.style.display='none'"/>
+                            </div>
+                            <h2 style="color: #FAFAFA; margin: 10px 0;">{player2_name}</h2>
+                            <p style="color: #9CA3AF; margin: 5px 0; font-size: 0.9rem;">{bio2_line}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    st.markdown("---")
+                    st.markdown("<h3 style='text-align: center;'>Season Averages Comparison</h3>", unsafe_allow_html=True)
+                    
+                    # Calculate averages for both players
+                    def calc_player_averages(df):
+                        stats = {}
+                        stats['PPG'] = round(df['Points'].mean(), 1)
+                        stats['RPG'] = round(df['Rebounds'].mean(), 1)
+                        stats['APG'] = round(df['Assists'].mean(), 1)
+                        stats['SPG'] = round(df['Steals'].mean(), 1)
+                        stats['BPG'] = round(df['Blocks'].mean(), 1)
+                        stats['TPG'] = round(df['Turnovers'].mean(), 1)
+                        
+                        # Shooting
+                        if 'FGM' in df.columns and 'FGA' in df.columns:
+                            total_fgm = df['FGM'].sum()
+                            total_fga = df['FGA'].sum()
+                            stats['FG%'] = round((total_fgm / total_fga * 100), 1) if total_fga > 0 else 0
+                        else:
+                            stats['FG%'] = 0
+                        
+                        if '3PM' in df.columns and '3PA' in df.columns:
+                            total_3pm = df['3PM'].sum()
+                            total_3pa = df['3PA'].sum()
+                            stats['3P%'] = round((total_3pm / total_3pa * 100), 1) if total_3pa > 0 else 0
+                        else:
+                            stats['3P%'] = 0
+                        
+                        if 'FTM' in df.columns and 'FTA' in df.columns:
+                            total_ftm = df['FTM'].sum()
+                            total_fta = df['FTA'].sum()
+                            stats['FT%'] = round((total_ftm / total_fta * 100), 1) if total_fta > 0 else 0
+                        else:
+                            stats['FT%'] = 0
+                        
+                        # TS%
+                        if 'FGA' in df.columns and 'FTA' in df.columns:
+                            total_pts = df['Points'].sum()
+                            total_fga = df['FGA'].sum()
+                            total_fta = df['FTA'].sum()
+                            stats['TS%'] = round((total_pts / (2 * (total_fga + 0.44 * total_fta)) * 100), 1) if (total_fga + 0.44 * total_fta) > 0 else 0
+                        else:
+                            stats['TS%'] = 0
+                        
+                        # Games and minutes
+                        stats['Games'] = len(df)
+                        if 'MIN' in df.columns:
+                            def parse_min(m):
+                                if pd.isna(m): return 0
+                                if ':' in str(m): return int(str(m).split(':')[0])
+                                try: return float(m)
+                                except: return 0
+                            stats['MPG'] = round(df['MIN'].apply(parse_min).mean(), 1)
+                        else:
+                            stats['MPG'] = 0
+                        
+                        return stats
+                    
+                    p1_stats = calc_player_averages(player1_df)
+                    p2_stats = calc_player_averages(player2_df)
+                    
+                    # Stats where higher is better
+                    higher_is_better = ['PPG', 'RPG', 'APG', 'SPG', 'BPG', 'FG%', '3P%', 'FT%', 'TS%', 'Games', 'MPG']
+                    # Stats where lower is better
+                    lower_is_better = ['TPG']
+                    
+                    # Create comparison table
+                    comparison_data = []
+                    for stat in ['PPG', 'RPG', 'APG', 'SPG', 'BPG', 'TPG', 'FG%', '3P%', 'FT%', 'TS%', 'MPG', 'Games']:
+                        v1 = p1_stats.get(stat, 0)
+                        v2 = p2_stats.get(stat, 0)
+                        
+                        # Determine winner
+                        if stat in higher_is_better:
+                            p1_better = v1 > v2
+                            p2_better = v2 > v1
+                        else:  # lower is better (like turnovers)
+                            p1_better = v1 < v2
+                            p2_better = v2 < v1
+                        
+                        comparison_data.append({
+                            'Stat': stat,
+                            'p1_value': v1,
+                            'p2_value': v2,
+                            'p1_better': p1_better,
+                            'p2_better': p2_better
+                        })
+                    
+                    # Display comparison with highlighting
+                    for item in comparison_data:
+                        col1, col2, col3 = st.columns([2, 1, 2])
+                        
+                        # Determine colors
+                        p1_color = "#10B981" if item['p1_better'] else "#FAFAFA"  # Green if better
+                        p2_color = "#10B981" if item['p2_better'] else "#FAFAFA"
+                        
+                        with col1:
+                            value = f"{item['p1_value']}%" if '%' in item['Stat'] else item['p1_value']
+                            st.markdown(f"""
+                            <div style="text-align: right; padding: 8px; font-size: 1.2rem; color: {p1_color}; font-weight: {'bold' if item['p1_better'] else 'normal'};">
+                                {value}
+                            </div>
+                            """, unsafe_allow_html=True)
+                        
+                        with col2:
+                            st.markdown(f"""
+                            <div style="text-align: center; padding: 8px; font-size: 1rem; color: #9CA3AF;">
+                                {item['Stat']}
+                            </div>
+                            """, unsafe_allow_html=True)
+                        
+                        with col3:
+                            value = f"{item['p2_value']}%" if '%' in item['Stat'] else item['p2_value']
+                            st.markdown(f"""
+                            <div style="text-align: left; padding: 8px; font-size: 1.2rem; color: {p2_color}; font-weight: {'bold' if item['p2_better'] else 'normal'};">
+                                {value}
+                            </div>
+                            """, unsafe_allow_html=True)
+                    
+                    
+    else:
+        st.info("👆 Enter two player names above to compare their stats")
+
 
 # ==================== STANDINGS PAGE ====================
 elif page == "Standings":
@@ -2960,6 +3197,7 @@ elif page == "Standings":
             with all_divs[5]:
                 st.markdown("### Southeast Division")
                 display_division_standings("Southeast", divisions["Southeast"], standings_df, user_favorite_teams)
+
 
 
 # ==================== ABOUT PAGE ====================
