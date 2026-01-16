@@ -1912,6 +1912,53 @@ elif page == "Player Stats":
                         }
                     )
                     
+                    # Last 5 Games Stats
+                    st.markdown("---")
+                    st.markdown("### Last 5 Games Averages")
+                    
+                    # Get last 5 games (most recent)
+                    last_5 = player_df.tail(5)
+                    
+                    if len(last_5) > 0:
+                        # Calculate averages for last 5 games
+                        l5_ppg = f"{last_5['Points'].mean():.1f}"
+                        l5_rpg = f"{last_5['Rebounds'].mean():.1f}"
+                        l5_apg = f"{last_5['Assists'].mean():.1f}"
+                        l5_spg = f"{last_5['Steals'].mean():.1f}"
+                        l5_bpg = f"{last_5['Blocks'].mean():.1f}"
+                        l5_tpg = f"{last_5['Turnovers'].mean():.1f}"
+                        
+                        # Shooting percentages for last 5
+                        l5_fgp = "N/A"
+                        l5_3pp = "N/A"
+                        l5_ftp = "N/A"
+                        
+                        if 'FGM' in last_5.columns and 'FGA' in last_5.columns:
+                            total_fgm = last_5['FGM'].sum()
+                            total_fga = last_5['FGA'].sum()
+                            l5_fgp = f"{round((total_fgm / total_fga * 100), 1)}%" if total_fga > 0 else "N/A"
+                        
+                        if '3PM' in last_5.columns and '3PA' in last_5.columns:
+                            total_3pm = last_5['3PM'].sum()
+                            total_3pa = last_5['3PA'].sum()
+                            l5_3pp = f"{round((total_3pm / total_3pa * 100), 1)}%" if total_3pa > 0 else "N/A"
+                        
+                        if 'FTM' in last_5.columns and 'FTA' in last_5.columns:
+                            total_ftm = last_5['FTM'].sum()
+                            total_fta = last_5['FTA'].sum()
+                            l5_ftp = f"{round((total_ftm / total_fta * 100), 1)}%" if total_fta > 0 else "N/A"
+                        
+                        # Display as a compact row
+                        l5_cols = st.columns(9)
+                        stat_names = ['PPG', 'RPG', 'APG', 'SPG', 'BPG', 'TPG', 'FG%', '3P%', 'FT%']
+                        stat_values = [l5_ppg, l5_rpg, l5_apg, l5_spg, l5_bpg, l5_tpg, l5_fgp, l5_3pp, l5_ftp]
+                        
+                        for i, (name, val) in enumerate(zip(stat_names, stat_values)):
+                            with l5_cols[i]:
+                                st.metric(name, val)
+                    else:
+                        st.info("Not enough games to show last 5 averages.")
+                    
                     # Home vs Away Splits
                     st.markdown("---")
                     st.markdown("### Home vs Away Splits")
