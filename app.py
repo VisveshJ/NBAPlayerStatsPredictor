@@ -218,7 +218,9 @@ def get_league_standings(season="2025-26"):
                 'TeamName': row.get('TeamName', ''),
                 'TeamCity': row.get('TeamCity', ''),
                 'Conference': row.get('Conference', ''),
+                'Division': row.get('Division', ''),
                 'ConferenceRecord': row.get('ConferenceRecord', ''),
+                'DivisionRecord': row.get('DivisionRecord', ''),
                 'PlayoffRank': row.get('PlayoffRank', 0),
                 'Wins': row.get('WINS', 0),
                 'Losses': row.get('LOSSES', 0),
@@ -2055,6 +2057,55 @@ elif page == "Player Stats":
                             st.info("Not enough data to calculate win/loss splits.")
                     else:
                         st.info("Win/Loss data not available.")
+                    
+                    # Conference Splits (East vs West)
+                    st.markdown("---")
+                    st.markdown("### Conference Splits")
+                    
+                    # Define conference teams
+                    EAST_TEAMS = {'ATL', 'BOS', 'BKN', 'CHA', 'CHI', 'CLE', 'DET', 'IND', 'MIA', 'MIL', 'NYK', 'ORL', 'PHI', 'TOR', 'WAS'}
+                    WEST_TEAMS = {'DAL', 'DEN', 'GSW', 'HOU', 'LAC', 'LAL', 'MEM', 'MIN', 'NOP', 'OKC', 'PHX', 'POR', 'SAC', 'SAS', 'UTA'}
+                    
+                    if 'MATCHUP' in player_df.columns:
+                        # Extract opponent from matchup (e.g., "BOS vs. LAL" or "BOS @ LAL")
+                        def get_opponent(matchup):
+                            if '@' in matchup:
+                                return matchup.split('@')[-1].strip()
+                            elif 'vs.' in matchup:
+                                return matchup.split('vs.')[-1].strip()
+                            return None
+                        
+                        player_df['Opponent'] = player_df['MATCHUP'].apply(get_opponent)
+                        
+                        # Classify games by opponent conference
+                        east_games = player_df[player_df['Opponent'].isin(EAST_TEAMS)]
+                        west_games = player_df[player_df['Opponent'].isin(WEST_TEAMS)]
+                        
+                        east_stats = calc_split_stats(east_games, f"vs East ({len(east_games)} G)")
+                        west_stats = calc_split_stats(west_games, f"vs West ({len(west_games)} G)")
+                        
+                        conf_splits_data = []
+                        if east_stats:
+                            conf_splits_data.append(east_stats)
+                        if west_stats:
+                            conf_splits_data.append(west_stats)
+                        
+                        if conf_splits_data:
+                            conf_splits_df = pd.DataFrame(conf_splits_data)
+                            
+                            # Style the splits table with conference colors
+                            def highlight_conf_splits(row):
+                                if "East" in str(row['Split']):
+                                    return ['background-color: #1E3A5F; text-align: left'] * len(row)  # Blue tint
+                                else:
+                                    return ['background-color: #5F1E1E; text-align: left'] * len(row)  # Red tint
+                            
+                            styled_conf_splits = conf_splits_df.style.apply(highlight_conf_splits, axis=1).set_properties(**{'text-align': 'left'})
+                            st.dataframe(styled_conf_splits, use_container_width=True, hide_index=True)
+                        else:
+                            st.info("Not enough data to calculate conference splits.")
+                    else:
+                        st.info("Matchup data not available for conference splits.")
 
 # ==================== FAVORITES PAGE ====================
 elif page == "Favorites":
@@ -2883,6 +2934,8 @@ elif page == "Standings":
                 gb = row.get('GB', '-')
                 home = row.get('HOME', 'N/A')
                 road = row.get('ROAD', 'N/A')
+                conf_rec = row.get('ConferenceRecord', 'N/A')
+                div_rec = row.get('DivisionRecord', 'N/A')
                 logo_url = get_team_logo_url(team_abbrev)
                 
                 # Get team ratings
@@ -2900,8 +2953,8 @@ elif page == "Standings":
                     </div>
                     """, unsafe_allow_html=True)
                 
-                # Use Streamlit columns for layout with logo, GB, HOME, ROAD, OFF RTG, DEF RTG
-                col_logo, col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11 = st.columns([0.4, 0.25, 1.6, 0.55, 0.45, 0.45, 0.45, 0.45, 0.45, 0.55, 0.7, 0.7])
+                # Use Streamlit columns for layout with CONF and DIV records
+                col_logo, col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13 = st.columns([0.35, 0.2, 1.4, 0.5, 0.4, 0.4, 0.4, 0.4, 0.45, 0.45, 0.4, 0.4, 0.6, 0.6])
                 
                 with col_logo:
                     if logo_url:
@@ -2940,21 +2993,29 @@ elif page == "Standings":
                     st.write(road)
                 
                 with col8:
+                    st.caption("CONF")
+                    st.write(conf_rec)
+                
+                with col9:
+                    st.caption("DIV")
+                    st.write(div_rec)
+                
+                with col10:
                     st.caption("L10")
                     st.write(l10)
                 
-                with col9:
+                with col11:
                     st.caption("STREAK")
                     st.write(streak)
                 
-                with col10:
+                with col12:
                     st.caption("OFF RTG")
                     if off_rtg != 'N/A':
                         st.write(f"{off_rtg} (#{off_rank})")
                     else:
                         st.write("N/A")
                 
-                with col11:
+                with col13:
                     st.caption("DEF RTG")
                     if def_rtg != 'N/A':
                         st.write(f"{def_rtg} (#{def_rank})")
@@ -3121,8 +3182,8 @@ elif page == "Standings":
                 # Sort by PlayoffRank (same as conference standings for consistent tiebreakers)
                 division_df = division_df.sort_values('PlayoffRank', ascending=True)
                 
-                # Header row
-                header_logo, header1, header2, header3, header4, header5 = st.columns([0.5, 0.3, 2.2, 0.8, 0.8, 0.8])
+                # Header row - added DIV REC column
+                header_logo, header1, header2, header3, header4, header5, header6 = st.columns([0.5, 0.3, 2.0, 0.7, 0.7, 0.7, 0.7])
                 with header1:
                     st.caption("#")
                 with header2:
@@ -3130,8 +3191,10 @@ elif page == "Standings":
                 with header3:
                     st.caption("RECORD")
                 with header4:
-                    st.caption("SEED")
+                    st.caption("DIV REC")
                 with header5:
+                    st.caption("SEED")
+                with header6:
                     st.caption("PCT")
                 st.markdown("<div style='margin-bottom: -25px'></div>", unsafe_allow_html=True)
                 for idx, (_, row) in enumerate(division_df.iterrows(), 1):
@@ -3140,11 +3203,12 @@ elif page == "Standings":
                     
                     team_name = f"{row['TeamCity']} {row['TeamName']}"
                     record = row['Record']
+                    div_rec = row.get('DivisionRecord', 'N/A')
                     win_pct = f"{row['WinPct']:.3f}" if isinstance(row['WinPct'], float) else row['WinPct']
                     conf_seed = int(row['PlayoffRank']) if 'PlayoffRank' in row else 'N/A'
                     logo_url = get_team_logo_url(team_abbrev)
                     
-                    col_logo, col1, col2, col3, col4, col5 = st.columns([0.5, 0.3, 2.2, 0.8, 0.8, 0.8])
+                    col_logo, col1, col2, col3, col4, col5, col6 = st.columns([0.5, 0.3, 2.0, 0.7, 0.7, 0.7, 0.7])
                     
                     with col_logo:
                         if logo_url:
@@ -3166,9 +3230,12 @@ elif page == "Standings":
                         st.write(record)
                     
                     with col4:
-                        st.write(f"#{conf_seed}")
+                        st.write(div_rec)
                     
                     with col5:
+                        st.write(f"#{conf_seed}")
+                    
+                    with col6:
                         st.write(win_pct)
             
             # Create division tabs - all in one row
