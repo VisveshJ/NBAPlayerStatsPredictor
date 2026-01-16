@@ -2187,7 +2187,7 @@ elif page == "Favorites":
                         with col_actions:
                             if st.button("📊 Analyze", key=f"fav_analyze_{player}", use_container_width=True, type="primary"):
                                 st.session_state['auto_load_player'] = player
-                                st.session_state['pending_nav_target'] = "Live Predictions"
+                                st.session_state['pending_nav_target'] = "Predictions"
                                 st.rerun()
                             
                             if st.button("❌ Remove", key=f"fav_remove_{player}", use_container_width=True):
@@ -2278,7 +2278,7 @@ elif page == "Favorites":
                             if bio and bio.get('team_abbrev'):
                                 upcoming = get_team_upcoming_games(bio['team_abbrev'], nba_schedule, standings_df, num_games=5)
                                 if upcoming:
-                                    st.caption("Click a game to predict performance")
+                                    st.caption("Click an upcoming game to predict performance")
                                     cols = st.columns(min(len(upcoming), 5))
                                     for i, game in enumerate(upcoming):
                                         with cols[i]:
@@ -2293,7 +2293,7 @@ elif page == "Favorites":
                                                 st.session_state["auto_load_player"] = player
                                                 st.session_state["redirect_to_predictions"] = player
                                                 st.session_state["selected_upcoming_opponent"] = game['opponent']
-                                                st.session_state['pending_nav_target'] = "Live Predictions"
+                                                st.session_state['pending_nav_target'] = "Predictions"
                                                 st.rerun()
                                 else:
                                     st.info("No upcoming games found.")
