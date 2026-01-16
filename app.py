@@ -344,7 +344,8 @@ def get_team_upcoming_games(team_abbrev, schedule, standings_df, num_games=5):
             team_ranks[abbrev] = {
                 'rank': int(row.get('PlayoffRank', 0)),
                 'name': row.get('TeamName', ''),
-                'conference': row.get('Conference', '')
+                'conference': row.get('Conference', ''),
+                'record': row.get('Record', '')
             }
     
     upcoming = []
@@ -369,7 +370,7 @@ def get_team_upcoming_games(team_abbrev, schedule, standings_df, num_games=5):
         
         if is_home or is_away:
             opponent = game['away_team'] if is_home else game['home_team']
-            opponent_info = team_ranks.get(opponent, {'rank': 0, 'name': opponent, 'conference': ''})
+            opponent_info = team_ranks.get(opponent, {'rank': 0, 'name': opponent, 'conference': '', 'record': ''})
             
             upcoming.append({
                 'date': game_date.strftime('%b %d'),
@@ -377,6 +378,7 @@ def get_team_upcoming_games(team_abbrev, schedule, standings_df, num_games=5):
                 'opponent_name': opponent_info['name'],
                 'opponent_rank': opponent_info['rank'],
                 'opponent_conference': opponent_info['conference'],
+                'opponent_record': opponent_info['record'],
                 'is_home': is_home,
             })
             
@@ -2153,6 +2155,74 @@ elif page == "Player Stats":
                             st.info("Not enough data to calculate conference splits.")
                     else:
                         st.info("Matchup data not available for conference splits.")
+                    
+                    # Splits vs Winning Teams (≥ .500 win percentage)
+                    st.markdown("---")
+                    st.markdown("### Splits vs Winning Teams")
+                    
+                    # Fetch standings to get team win percentages
+                    standings_data = get_league_standings(season)
+                    
+                    if not standings_data.empty and 'MATCHUP' in player_df.columns:
+                        # Build win percentage lookup by team abbreviation
+                        team_win_pcts = {}
+                        for _, row in standings_data.iterrows():
+                            city = row.get('TeamCity', '')
+                            team_abbrev = get_team_abbrev(city)
+                            if team_abbrev:
+                                win_pct = row.get('WinPct', 0)
+                                # Handle string format if needed
+                                if isinstance(win_pct, str):
+                                    try:
+                                        win_pct = float(win_pct)
+                                    except:
+                                        win_pct = 0
+                                team_win_pcts[team_abbrev] = win_pct
+                        
+                        if team_win_pcts:
+                            # Extract opponent from matchup column
+                            def get_opponent_abbrev(matchup):
+                                if '@' in matchup:
+                                    return matchup.split('@')[-1].strip()
+                                elif 'vs.' in matchup:
+                                    return matchup.split('vs.')[-1].strip()
+                                return None
+                            
+                            player_df['OppAbbrev'] = player_df['MATCHUP'].apply(get_opponent_abbrev)
+                            player_df['OppWinPct'] = player_df['OppAbbrev'].map(team_win_pcts)
+                            
+                            # Split games by opponent win percentage
+                            # Winning teams: >= 0.500
+                            winning_opp_games = player_df[player_df['OppWinPct'] >= 0.500]
+                            losing_opp_games = player_df[player_df['OppWinPct'] < 0.500]
+                            
+                            winning_opp_stats = calc_split_stats(winning_opp_games, f"vs ≥.500 ({len(winning_opp_games)} G)")
+                            losing_opp_stats = calc_split_stats(losing_opp_games, f"vs <.500 ({len(losing_opp_games)} G)")
+                            
+                            record_splits_data = []
+                            if winning_opp_stats:
+                                record_splits_data.append(winning_opp_stats)
+                            if losing_opp_stats:
+                                record_splits_data.append(losing_opp_stats)
+                            
+                            if record_splits_data:
+                                record_splits_df = pd.DataFrame(record_splits_data)
+                                
+                                # Style the splits table - winning teams in orange/gold, losing in lighter shade
+                                def highlight_record_splits(row):
+                                    if "≥.500" in str(row['Split']):
+                                        return ['background-color: #5F4B1E; text-align: left'] * len(row)  # Gold/bronze tint
+                                    else:
+                                        return ['background-color: #2E3D4E; text-align: left'] * len(row)  # Slate/gray tint
+                                
+                                styled_record_splits = record_splits_df.style.apply(highlight_record_splits, axis=1).set_properties(**{'text-align': 'left'})
+                                st.dataframe(styled_record_splits, use_container_width=True, hide_index=True)
+                            else:
+                                st.info("Not enough data to calculate winning team splits.")
+                        else:
+                            st.info("Could not determine team win percentages.")
+                    else:
+                        st.info("Standings data not available for winning team splits.")
 
 # ==================== FAVORITES PAGE ====================
 elif page == "Favorites":
@@ -2382,10 +2452,14 @@ elif page == "Favorites":
                                         with cols[i]:
                                             home_away = "vs" if game['is_home'] else "@"
                                             opp_rank = game['opponent_rank']
+                                            opp_record = game.get('opponent_record', '')
                                             if opp_rank:
                                                 label = f"{game['date']}\n{home_away} #{opp_rank} {game['opponent']}"
                                             else:
                                                 label = f"{game['date']}\n{home_away} {game['opponent']}"
+                                            # Add opponent record if available
+                                            if opp_record:
+                                                label += f"\n({opp_record})"
                                             
                                             if st.button(label, key=f"fav_upcoming_{player}_{i}_{game['opponent']}", use_container_width=True):
                                                 st.session_state["auto_load_player"] = player
@@ -2516,6 +2590,56 @@ elif page == "Favorites":
                     streak = team_standing['strCurrentStreak'] if team_standing is not None else "N/A"
                     home = team_standing['HOME'] if team_standing is not None else "N/A"
                     road = team_standing['ROAD'] if team_standing is not None else "N/A"
+                    
+                    # Calculate record vs winning teams (≥ .500) and losing teams (< .500)
+                    vs_winning = "N/A"
+                    vs_losing = "N/A"
+                    try:
+                        # Build win percentage lookup from standings
+                        team_win_pcts = {}
+                        for _, s_row in standings_df.iterrows():
+                            opp_city = s_row.get('TeamCity', '')
+                            opp_abbrev = get_team_abbrev(opp_city)
+                            if opp_abbrev:
+                                win_pct = s_row.get('WinPct', 0)
+                                if isinstance(win_pct, str):
+                                    try:
+                                        win_pct = float(win_pct)
+                                    except:
+                                        win_pct = 0
+                                team_win_pcts[opp_abbrev] = win_pct
+                        
+                        # Fetch full season game log for this team
+                        full_games = get_team_game_log(team, season, num_games=100)
+                        if full_games is not None and len(full_games) > 0 and team_win_pcts:
+                            # Extract opponent from matchup (e.g., "LAL @ BOS" or "LAL vs. BOS")
+                            def get_opp_from_matchup(matchup):
+                                if '@' in matchup:
+                                    return matchup.split('@')[-1].strip()
+                                elif 'vs.' in matchup:
+                                    return matchup.split('vs.')[-1].strip()
+                                return None
+                            
+                            full_games['OppAbbrev'] = full_games['MATCHUP'].apply(get_opp_from_matchup)
+                            full_games['OppWinPct'] = full_games['OppAbbrev'].map(team_win_pcts)
+                            
+                            # Filter to games vs winning teams (≥ 0.500)
+                            vs_winning_games = full_games[full_games['OppWinPct'] >= 0.500]
+                            if len(vs_winning_games) > 0:
+                                wins_vs_winning = len(vs_winning_games[vs_winning_games['WL'] == 'W'])
+                                losses_vs_winning = len(vs_winning_games[vs_winning_games['WL'] == 'L'])
+                                vs_winning = f"{wins_vs_winning}-{losses_vs_winning}"
+                            
+                            # Filter to games vs losing teams (< 0.500)
+                            vs_losing_games = full_games[full_games['OppWinPct'] < 0.500]
+                            if len(vs_losing_games) > 0:
+                                wins_vs_losing = len(vs_losing_games[vs_losing_games['WL'] == 'W'])
+                                losses_vs_losing = len(vs_losing_games[vs_losing_games['WL'] == 'L'])
+                                vs_losing = f"{wins_vs_losing}-{losses_vs_losing}"
+                    except Exception:
+                        vs_winning = "N/A"
+                        vs_losing = "N/A"
+                    
                     logo_url = get_team_logo_url(team)
                     
                     # Show team logo and card side by side
@@ -2563,6 +2687,14 @@ elif page == "Favorites":
                                 <div style="text-align: center;">
                                     <div style="color: #9CA3AF; font-size: 0.75rem;">STREAK</div>
                                     <div style="color: #FAFAFA; font-weight: 600;">{streak}</div>
+                                </div>
+                                <div style="text-align: center;">
+                                    <div style="color: #9CA3AF; font-size: 0.75rem;">vs ≥.500</div>
+                                    <div style="color: #F59E0B; font-weight: 600;">{vs_winning}</div>
+                                </div>
+                                <div style="text-align: center;">
+                                    <div style="color: #9CA3AF; font-size: 0.75rem;">vs <.500</div>
+                                    <div style="color: #60A5FA; font-weight: 600;">{vs_losing}</div>
                                 </div>
                             </div>
                         </div>
@@ -2641,10 +2773,14 @@ elif page == "Favorites":
                             for game in upcoming:
                                 home_away = "vs" if game['is_home'] else "@"
                                 opp_rank = game['opponent_rank']
+                                opp_record = game.get('opponent_record', '')
                                 if opp_rank:
                                     opp_display = f"#{opp_rank} {game['opponent_name']}"
                                 else:
                                     opp_display = game['opponent_name']
+                                # Add opponent record if available
+                                if opp_record:
+                                    opp_display += f" ({opp_record})"
                                 games_display.append({
                                     'Date': game['date'],
                                     'Game': f"{home_away} {opp_display}"
@@ -2680,9 +2816,9 @@ elif page == "Favorites":
                                         st.rerun()
                                 with col_analyze:
                                     if st.button("Analyze", key=f"roster_analyze_{team}_{idx}_{player_name[:10]}", use_container_width=True):
-                                        # Navigate to Live Predictions page with this player
+                                        # Navigate to Predictions page with this player
                                         st.session_state['auto_load_player'] = player_name
-                                        st.session_state['pending_nav_target'] = "Live Predictions"
+                                        st.session_state['pending_nav_target'] = "Predictions"
                                         st.rerun()
                         else:
                             st.info("Could not load roster.")
