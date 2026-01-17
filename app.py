@@ -239,6 +239,7 @@ def get_league_standings(season="2025-26"):
                 'Division': row.get('Division', ''),
                 'ConferenceRecord': row.get('ConferenceRecord', ''),
                 'DivisionRecord': row.get('DivisionRecord', ''),
+                'DivisionRank': row.get('DivisionRank', 0),
                 'PlayoffRank': row.get('PlayoffRank', 0),
                 'Wins': row.get('WINS', 0),
                 'Losses': row.get('LOSSES', 0),
@@ -247,7 +248,7 @@ def get_league_standings(season="2025-26"):
                 'HOME': row.get('HOME', ''),
                 'ROAD': row.get('ROAD', ''),
                 'L10': row.get('L10', ''),
-                'strCurrentStreak': row.get('strCurrentStreak', ''),
+                'strCurrentStreak': str(row.get('strCurrentStreak', '')).replace(' ', ''),
                 'PointsPG': row.get('PointsPG', 0),
                 'OppPointsPG': row.get('OppPointsPG', 0),
                 'GB': row.get('ConferenceGamesBack', '-'),
@@ -424,7 +425,8 @@ def get_todays_games(schedule, standings_df):
                 'rank': int(row.get('PlayoffRank', 0)),
                 'name': row.get('TeamName', ''),
                 'conference': row.get('Conference', ''),
-                'record': row.get('Record', '')
+                'record': row.get('Record', ''),
+                'streak': row.get('strCurrentStreak', '')
             }
     
     todays_games = []
@@ -438,8 +440,8 @@ def get_todays_games(schedule, standings_df):
         if game_date == today:
             home_team = game['home_team']
             away_team = game['away_team']
-            home_info = team_ranks.get(home_team, {'rank': 0, 'name': home_team, 'conference': ''})
-            away_info = team_ranks.get(away_team, {'rank': 0, 'name': away_team, 'conference': ''})
+            home_info = team_ranks.get(home_team, {'rank': 0, 'name': home_team, 'conference': '', 'streak': ''})
+            away_info = team_ranks.get(away_team, {'rank': 0, 'name': away_team, 'conference': '', 'streak': ''})
             
             # Parse game time and convert to PST
             game_time_pst = ""
@@ -467,6 +469,8 @@ def get_todays_games(schedule, standings_df):
                 'away_conference': away_info['conference'],
                 'home_record': home_info.get('record', ''),
                 'away_record': away_info.get('record', ''),
+                'home_streak': home_info.get('streak', ''),
+                'away_streak': away_info.get('streak', ''),
                 'game_status': game.get('game_status', 1),
                 'game_time': game_time_pst,
                 'game_time_sort': game.get('game_time_utc', ''),  # For sorting
@@ -1236,11 +1240,13 @@ else:
 # Check if we have pending navigation (from buttons like "View" or upcoming games)
 # This must be checked BEFORE the radio widget is rendered
 pending_nav_target = st.session_state.get('pending_nav_target')
+
 if pending_nav_target and pending_nav_target in nav_options:
     # Set the radio button's state BEFORE it's rendered
     st.session_state['nav_radio'] = pending_nav_target
     st.session_state.current_page = pending_nav_target
     del st.session_state['pending_nav_target']
+
 
 # Get current page index  
 current_idx = nav_options.index(st.session_state.current_page) if st.session_state.current_page in nav_options else 0
@@ -1254,7 +1260,11 @@ page = st.sidebar.radio(
 )
 
 # Update session state with selected page
-st.session_state.current_page = page
+if st.session_state.current_page != page:
+    # If the user changed the page MANUALLY via sidebar, they probably want the default tab
+    if page == "Favorites":
+        st.session_state['favorites_requested_tab'] = "Favorite Players"
+    st.session_state.current_page = page
 
 # Show user profile and logout in sidebar
 if is_authenticated:
@@ -1408,13 +1418,17 @@ if page == "Home":
                     rating = team_def_ratings.get(team_abbrev, "N/A")
                     logo = get_team_logo_url(team_abbrev)
                     
-                    l_col, t_col = st.columns([0.2, 0.8])
+                    l_col, t_col, b_col = st.columns([0.2, 0.4, 0.4])
                     with l_col:
                         if logo:
                             st.image(logo, width=50)
                     with t_col:
-                        st.markdown(f"<div style='font-size: 1.1rem; font-weight: bold;'>{team_abbrev}</div>", unsafe_allow_html=True)
-                        st.markdown(f"<div style='font-size: 0.85rem; color: #9CA3AF;'>DEF RTG: {rating}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='font-size: 1.1rem; font-weight: bold; margin-top: 8px;'>{team_abbrev}</div>", unsafe_allow_html=True)
+                    with b_col:
+                        if st.button("Stats", key=f"home_team_stats_{team_abbrev}", type="secondary", use_container_width=True):
+                            st.session_state['pending_nav_target'] = "Favorites"
+                            st.session_state['favorites_requested_tab'] = "Watched Teams"
+                            st.rerun()
             else:
                 render_empty_state(
                     "No watched teams yet! Add teams from the Live Predictions page.",
@@ -1489,8 +1503,14 @@ elif page == "Predictions":
                         # Format seeds and conference
                         away_seed = f"#{game['away_rank']}" if game['away_rank'] else ""
                         home_seed = f"#{game['home_rank']}" if game['home_rank'] else ""
-                        away_conf = f"({game['away_conference'][0]})" if game['away_conference'] else ""
-                        home_conf = f"({game['home_conference'][0]})" if game['home_conference'] else ""
+                        def fmt_cs(conf, streak):
+                            if not conf: return ""
+                            c = conf.replace("ern", "")
+                            s = f"({streak.replace(' ', '')})" if streak else ""
+                            return f"{c} {s}"
+                            
+                        away_conf = fmt_cs(game.get('away_conference'), game.get('away_streak'))
+                        home_conf = fmt_cs(game.get('home_conference'), game.get('home_streak'))
                         
                         game_time = game.get('game_time', 'TBD')
                         if not game_time:
@@ -1533,7 +1553,7 @@ elif page == "Predictions":
                                     <img src="{away_logo}" width="35" height="35" style="vertical-align: middle;" onerror="this.style.display='none'"/>
                                     <div style="text-align: left;">
                                         <div style="font-weight: bold; color: #FAFAFA;">{game['away_team']}</div>
-                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{away_record} {away_seed}</div>
+                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{away_record} {away_seed} {away_conf}</div>
                                     </div>
                                 </div>
                                 <div>{away_score_display}</div>
@@ -1543,7 +1563,7 @@ elif page == "Predictions":
                                     <img src="{home_logo}" width="35" height="35" style="vertical-align: middle;" onerror="this.style.display='none'"/>
                                     <div style="text-align: left;">
                                         <div style="font-weight: bold; color: #FAFAFA;">{game['home_team']}</div>
-                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{home_record} {home_seed}</div>
+                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{home_record} {home_seed} {home_conf}</div>
                                     </div>
                                 </div>
                                 <div>{home_score_display}</div>
@@ -1640,13 +1660,28 @@ elif page == "Predictions":
             if team_logo:
                 st.image(team_logo, width=120)
         
-        # Player name and position centered
+        # Get team seed and full name
+        team_seed_suffix = ""
+        team_full_name = player_team
+        if standings_df is not None:
+            for _, row in standings_df.iterrows():
+                if get_team_abbrev(row['TeamCity']) == player_team:
+                    team_seed_suffix = f" (#{int(row['PlayoffRank'])})"
+                    team_full_name = f"{row['TeamCity']} {row['TeamName']}".strip()
+                    break
+        
+        # Player name, position and team centered
         pos_label = ""
         if bio and bio.get('position'):
             abbrev_pos = abbreviate_position(bio['position'], selected_player)
             pos_label = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 1.1rem;'>({abbrev_pos})</span>"
             
-        st.markdown(f"<h3 style='text-align: center; margin-bottom: 5px;'>{selected_player}{pos_label}</h3>", unsafe_allow_html=True)
+        st.markdown(f"""
+            <div style='text-align: center;'>
+                <h3 style='margin-bottom: 0px;'>{selected_player}{pos_label}</h3>
+                <div style='color: #9CA3AF; font-size: 1.1rem; margin-bottom: 10px;'>{team_full_name}</div>
+            </div>
+        """, unsafe_allow_html=True)
         
         # Format Bio Info with muted labels and bold values (Awards card style)
         if bio:
@@ -1665,13 +1700,6 @@ elif page == "Predictions":
         else:
             st.markdown(f"<div style='text-align: center; color: #9CA3AF; font-size: 0.85rem; margin-bottom: 12px;'>Team: {player_team}</div>", unsafe_allow_html=True)
         
-        # Get team seed for the button
-        team_seed_suffix = ""
-        if standings_df is not None:
-            for _, row in standings_df.iterrows():
-                if get_team_abbrev(row['TeamCity']) == player_team:
-                    team_seed_suffix = f" (#{int(row['PlayoffRank'])})"
-                    break
         
         # Favorite buttons closer together (only for authenticated users)
         if is_authenticated:
@@ -1840,9 +1868,9 @@ elif page == "Predictions":
             'Blocks': f"{avg_blocks:.1f}",
             'Turnovers': f"{avg_turnovers:.1f}",
             'PF': f"{round(last_5_df['PF'].mean(), 1):.1f}" if 'PF' in last_5_df.columns else "N/A",
-            'FG': avg_fg,
-            '3P': avg_3p,
-            'FT': avg_ft,
+            'FG': f"{fg_pct}%",
+            '3P': f"{three_pct}%",
+            'FT': f"{ft_pct}%",
             'TS%': f"{ts_pct:.1f}%" if isinstance(ts_pct, (int, float)) else ts_pct
         }
         
@@ -2265,17 +2293,19 @@ elif page == "Player Stats":
                         if team_logo:
                             st.image(team_logo, width=120)
                     
-                    # Get team record and rank
+                    # Get team record, rank, and full name
                     standings_df = get_league_standings(season)
                     team_record = "N/A"
                     team_rank = "N/A"
                     team_conf = "N/A"
+                    team_full_name = player_team
                     if not standings_df.empty:
                         for _, row in standings_df.iterrows():
                             if get_team_abbrev(row['TeamCity']) == player_team:
                                 team_record = row['Record']
                                 team_rank = row['PlayoffRank']
                                 team_conf = row['Conference']
+                                team_full_name = f"{row['TeamCity']} {row['TeamName']}".strip()
                                 break
                     # Calculate stats
                     ppg = player_df['Points'].mean() if 'Points' in player_df.columns else 0
@@ -2325,7 +2355,8 @@ elif page == "Player Stats":
                         bio_html = f"<div style='text-align: center; color: #9CA3AF; font-size: 0.85rem; margin-bottom: 12px;'>Team: {player_team}</div>"
 
                     st.markdown(f"""<div style="text-align: center; margin-top: 15px;">
-<div style="color: #FAFAFA; font-weight: bold; font-size: 1.5rem; margin-bottom: 5px;">{selected_player}{pos_label}</div>
+<div style="color: #FAFAFA; font-weight: bold; font-size: 1.5rem; margin-bottom: 0px;">{selected_player}{pos_label}</div>
+<div style="color: #9CA3AF; font-size: 1.1rem; margin-bottom: 10px;">{team_full_name}</div>
 {bio_html}
 <div style="display: flex; justify-content: center; gap: 12px; font-size: 0.9rem;">
 <div style="background: #374151; padding: 4px 12px; border-radius: 5px;">
@@ -2872,9 +2903,18 @@ elif page == "Favorites":
         nba_schedule = get_nba_schedule()
         standings_df = get_league_standings(season)
         
-        tab1, tab2 = st.tabs(["Favorite Players", "Watched Teams"])
+        # Tab selection logic
+        requested_tab = st.session_state.get('favorites_requested_tab', "Favorite Players")
+        if requested_tab == "Watched Teams":
+            tab_teams, tab_players = st.tabs(["Watched Teams", "Favorite Players"])
+            # Clear the override after the first render so it doesn't stick
+            # But wait, if we clear it here, it might reset on next interactive element?
+            # Actually, let's clear it ONLY when navigating AWAY or if we want it to persist during this visit.
+            # User said "redirect me", implying a one-time preference.
+        else:
+            tab_players, tab_teams = st.tabs(["Favorite Players", "Watched Teams"])
         
-        with tab1:
+        with tab_players:
             # Header with add button
             header_col, add_col = st.columns([4, 1])
             with header_col:
@@ -2984,6 +3024,19 @@ elif page == "Favorites":
                                 """, unsafe_allow_html=True)
                         
                         with col_actions:
+                            # Reordering buttons
+                            ord_c1, ord_c2 = st.columns(2)
+                            with ord_c1:
+                                if st.button("▲", key=f"fav_up_{player}", use_container_width=True, help="Move Up"):
+                                    auth.reorder_favorite_player(player, "up")
+                                    st.rerun()
+                            with ord_c2:
+                                if st.button("▼", key=f"fav_down_{player}", use_container_width=True, help="Move Down"):
+                                    auth.reorder_favorite_player(player, "down")
+                                    st.rerun()
+                            
+                            st.write("") # Spacer
+                            
                             if st.button("📊 Analyze", key=f"fav_analyze_{player}", use_container_width=True, type="primary"):
                                 st.session_state['auto_load_player'] = player
                                 st.session_state['pending_nav_target'] = "Predictions"
@@ -3112,12 +3165,9 @@ elif page == "Favorites":
                                         'BLK': f"{avg_blk:.1f}",
                                         'TO': f"{avg_to:.1f}",
                                         'PF': f"{avg_pf:.1f}",
-                                        'FG': f"{last_5_df['FGM'].mean():.1f}/{last_5_df['FGA'].mean():.1f}" if 'FGM' in last_5_df.columns else '',
-                                        'FG%': f"{avg_fg_pct:.1f}%",
-                                        '3P': f"{last_5_df['3PM'].mean():.1f}/{last_5_df['3PA'].mean():.1f}" if '3PM' in last_5_df.columns else '',
-                                        '3P%': f"{avg_3p_pct:.1f}%",
-                                        'FT': f"{last_5_df['FTM'].mean():.1f}/{last_5_df['FTA'].mean():.1f}" if 'FTM' in last_5_df.columns else '',
-                                        'FT%': f"{avg_ft_pct:.1f}%",
+                                        'FG': f"{avg_fg_pct:.1f}%",
+                                        '3P': f"{avg_3p_pct:.1f}%",
+                                        'FT': f"{avg_ft_pct:.1f}%",
                                         'TS%': f"{avg_ts_pct:.1f}%"
                                     }
                                     
@@ -3128,13 +3178,16 @@ elif page == "Favorites":
                                 # Style W/L
                                 def highlight_avg(row):
                                     if row.iloc[0] == 'AVERAGE':
-                                        return ['background-color: #374151; font-weight: bold'] * len(row)
+                                        return ['background-color: #2D3748; font-weight: bold; color: #FF6B35'] * len(row)
                                     return [''] * len(row)
 
                                 def color_wl(val):
                                     if val == 'W': return 'color: #10B981; font-weight: bold'
                                     elif val == 'L': return 'color: #EF4444; font-weight: bold'
                                     return ''
+                                
+                                # Drop % columns for display since we formatted the main columns
+                                recent_display = recent_display.drop(columns=['FG%', '3P%', 'FT%'], errors='ignore')
                                 
                                 if 'W/L' in recent_display.columns:
                                     # Combine styling
@@ -3153,11 +3206,8 @@ elif page == "Favorites":
                                         "W/L": st.column_config.TextColumn("W/L", width="small"),
                                         "Score": st.column_config.TextColumn("Score", width="small"),
                                         "FG": st.column_config.TextColumn("FG", width="small"),
-                                        "FG%": st.column_config.TextColumn("FG%", width="small"),
                                         "3P": st.column_config.TextColumn("3P", width="small"),
-                                        "3P%": st.column_config.TextColumn("3P%", width="small"),
                                         "FT": st.column_config.TextColumn("FT", width="small"),
-                                        "FT%": st.column_config.TextColumn("FT%", width="small"),
                                         "TS%": st.column_config.TextColumn("TS%", width="small"),
                                     }
                                 )
@@ -3199,7 +3249,7 @@ elif page == "Favorites":
             else:
                 render_empty_state("No favorite players yet! Click ➕ Add above to add some.", "")
         
-        with tab2:
+        with tab_teams:
             # Header with add button
             header_col, add_col = st.columns([4, 1])
             with header_col:
@@ -3324,6 +3374,8 @@ elif page == "Favorites":
                     streak = team_standing['strCurrentStreak'] if team_standing is not None else "N/A"
                     home = team_standing['HOME'] if team_standing is not None else "N/A"
                     road = team_standing['ROAD'] if team_standing is not None else "N/A"
+                    division = team_standing['Division'] if team_standing is not None else "N/A"
+                    div_rank = team_standing.get('DivisionRank', 'N/A') if team_standing is not None else "N/A"
                     
                     # Calculate record vs winning teams (≥ .500) and losing teams (< .500)
                     vs_winning = "N/A"
@@ -3405,6 +3457,14 @@ elif page == "Favorites":
                                 <div style="text-align: center;">
                                     <div style="color: #9CA3AF; font-size: 0.75rem;">DEF RTG</div>
                                     <div style="color: #3B82F6; font-weight: 600;">{def_rtg} <span style="color: #6B7280; font-size: 0.8rem;">(#{def_rank})</span></div>
+                                </div>
+                                <div style="text-align: center;">
+                                    <div style="color: #9CA3AF; font-size: 0.75rem;">DIVISION</div>
+                                    <div style="color: #FAFAFA; font-weight: 600;">{division}</div>
+                                </div>
+                                <div style="text-align: center;">
+                                    <div style="color: #9CA3AF; font-size: 0.75rem;">DIV SEED</div>
+                                    <div style="color: #FAFAFA; font-weight: 600;">#{div_rank}</div>
                                 </div>
                                 <div style="text-align: center;">
                                     <div style="color: #9CA3AF; font-size: 0.75rem;">HOME</div>
@@ -3561,11 +3621,21 @@ elif page == "Favorites":
                         else:
                             st.info("Could not load roster.")
                     
-                    # Remove button
-                    if st.button("Remove", key=f"team_remove_{team}", use_container_width=True):
-                        auth.remove_favorite_team(team)
-                        st.toast(f"Removed {team} from watched teams")
-                        st.rerun()
+                    # Reorder and Remove buttons
+                    re_col1, re_col2, rem_col = st.columns([1, 1, 3])
+                    with re_col1:
+                        if st.button("▲", key=f"fav_team_up_{team}", use_container_width=True, help=f"Move {team} Up"):
+                            auth.reorder_favorite_team(team, "up")
+                            st.rerun()
+                    with re_col2:
+                        if st.button("▼", key=f"fav_team_down_{team}", use_container_width=True, help=f"Move {team} Down"):
+                            auth.reorder_favorite_team(team, "down")
+                            st.rerun()
+                    with rem_col:
+                        if st.button("❌ Remove", key=f"team_remove_{team}", use_container_width=True):
+                            auth.remove_favorite_team(team)
+                            st.toast(f"Removed {team} from watched teams")
+                            st.rerun()
                     
                     st.markdown("---")
             else:
@@ -3660,16 +3730,18 @@ elif page == "Compare Players":
                         ft_pct1 = (total_ftm1 / total_fta1 * 100) if total_fta1 > 0 else 0
                         shooting1 = f"{fg_pct1:.1f}% FG • {three_pct1:.1f}% 3P • {ft_pct1:.1f}% FT"
                         
-                        # Team record and rank
+                        # Team record, rank, and full name
                         team_record1 = "N/A"
                         team_rank1 = "N/A"
                         team_conf1 = "N/A"
+                        team_full_name1 = player1_team
                         if not standings_df.empty:
                             for _, row in standings_df.iterrows():
                                 if get_team_abbrev(row['TeamCity']) == player1_team:
                                     team_record1 = row['Record']
                                     team_rank1 = row['PlayoffRank']
                                     team_conf1 = row['Conference']
+                                    team_full_name1 = f"{row['TeamCity']} {row['TeamName']}".strip()
                                     break
                         
                         # Photo and logo (Centered standardized layout)
@@ -3698,7 +3770,8 @@ elif page == "Compare Players":
                         p1_ind_record = f"{p1_wins}-{p1_losses}"
 
                         st.markdown(f"""<div style="text-align: center; margin-top: 10px;">
-<div style="color: #FAFAFA; font-weight: bold; font-size: 1.1rem; margin-bottom: 5px;">{player1_name}{p1_pos}</div>
+<div style="color: #FAFAFA; font-weight: bold; font-size: 1.1rem; margin-bottom: 0px;">{player1_name}{p1_pos}</div>
+<div style="color: #9CA3AF; font-size: 0.85rem; margin-bottom: 5px;">{team_full_name1}</div>
 <div style="color: #9CA3AF; font-size: 0.8rem; margin-bottom: 10px;">
 <span style="color: #9CA3AF;">HT:</span> <span style="color: #FAFAFA; font-weight: bold;">{p1_height}</span> • 
 <span style="color: #9CA3AF;">WT:</span> <span style="color: #FAFAFA; font-weight: bold;">{p1_weight} lbs</span> • 
@@ -3741,16 +3814,18 @@ elif page == "Compare Players":
                         ft_pct2 = (total_ftm2 / total_fta2 * 100) if total_fta2 > 0 else 0
                         shooting2 = f"{fg_pct2:.1f}% FG • {three_pct2:.1f}% 3P • {ft_pct2:.1f}% FT"
                         
-                        # Team record and rank
+                        # Team record, rank, and full name
                         team_record2 = "N/A"
                         team_rank2 = "N/A"
                         team_conf2 = "N/A"
+                        team_full_name2 = player2_team
                         if not standings_df.empty:
                             for _, row in standings_df.iterrows():
                                 if get_team_abbrev(row['TeamCity']) == player2_team:
                                     team_record2 = row['Record']
                                     team_rank2 = row['PlayoffRank']
                                     team_conf2 = row['Conference']
+                                    team_full_name2 = f"{row['TeamCity']} {row['TeamName']}".strip()
                                     break
                         
                         # Photo and logo (Centered standardized layout)
@@ -3779,7 +3854,8 @@ elif page == "Compare Players":
                         p2_ind_record = f"{p2_wins}-{p2_losses}"
 
                         st.markdown(f"""<div style="text-align: center; margin-top: 10px;">
-<div style="color: #FAFAFA; font-weight: bold; font-size: 1.1rem; margin-bottom: 5px;">{player2_name}{p2_pos}</div>
+<div style="color: #FAFAFA; font-weight: bold; font-size: 1.1rem; margin-bottom: 0px;">{player2_name}{p2_pos}</div>
+<div style="color: #9CA3AF; font-size: 0.85rem; margin-bottom: 5px;">{team_full_name2}</div>
 <div style="color: #9CA3AF; font-size: 0.8rem; margin-bottom: 10px;">
 <span style="color: #9CA3AF;">HT:</span> <span style="color: #FAFAFA; font-weight: bold;">{p2_height}</span> • 
 <span style="color: #9CA3AF;">WT:</span> <span style="color: #FAFAFA; font-weight: bold;">{p2_weight} lbs</span> • 
@@ -4175,6 +4251,15 @@ elif page == "Around the NBA":
                         away_seed = f"#{game['away_rank']}" if game['away_rank'] else ""
                         home_seed = f"#{game['home_rank']}" if game['home_rank'] else ""
                         
+                        def fmt_cs(conf, streak):
+                            if not conf: return ""
+                            c = conf.replace("ern", "")
+                            s = f"({streak.replace(' ', '')})" if streak else ""
+                            return f"{c} {s}"
+                            
+                        away_conf = fmt_cs(game.get('away_conference'), game.get('away_streak'))
+                        home_conf = fmt_cs(game.get('home_conference'), game.get('home_streak'))
+                        
                         game_time = game.get('game_time', 'TBD')
                         if not game_time:
                             game_time = 'TBD'
@@ -4216,7 +4301,7 @@ elif page == "Around the NBA":
                                     <img src="{away_logo}" width="35" height="35" style="vertical-align: middle;" onerror="this.style.display='none'"/>
                                     <div style="text-align: left;">
                                         <div style="font-weight: bold; color: #FAFAFA;">{game['away_team']}</div>
-                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{away_record} {away_seed}</div>
+                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{away_record} {away_seed} {away_conf}</div>
                                     </div>
                                 </div>
                                 <div>{away_score_display}</div>
@@ -4226,7 +4311,7 @@ elif page == "Around the NBA":
                                     <img src="{home_logo}" width="35" height="35" style="vertical-align: middle;" onerror="this.style.display='none'"/>
                                     <div style="text-align: left;">
                                         <div style="font-weight: bold; color: #FAFAFA;">{game['home_team']}</div>
-                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{home_record} {home_seed}</div>
+                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{home_record} {home_seed} {home_conf}</div>
                                     </div>
                                 </div>
                                 <div>{home_score_display}</div>
@@ -4538,7 +4623,8 @@ elif page == "Standings":
                     abbrev = get_team_abbrev(row['TeamCity'])
                     name = f"{row['TeamCity']} {row['TeamName']}".strip()
                     record = row['Record']
-                    return {'abbrev': abbrev, 'name': name, 'record': record, 'seed': seed}
+                    streak = row.get('strCurrentStreak', '')
+                    return {'abbrev': abbrev, 'name': name, 'record': record, 'seed': seed, 'streak': streak}
                 return None
             
             def display_matchup(team1, team2, matchup_type="vs"):
@@ -4554,12 +4640,18 @@ elif page == "Standings":
                             st.image(logo1, width=40)
                     with col2:
                         st.markdown(f"**({team1['seed']}) {team1['name']}**")
-                        st.caption(team1['record'])
+                        record_str1 = team1['record']
+                        if team1.get('streak'):
+                            record_str1 = f"{record_str1} ({team1['streak'].replace(' ', '')})"
+                        st.caption(record_str1)
                     with col3:
                         st.markdown(f"**{matchup_type}**")
                     with col4:
                         st.markdown(f"**({team2['seed']}) {team2['name']}**")
-                        st.caption(team2['record'])
+                        record_str2 = team2['record']
+                        if team2.get('streak'):
+                            record_str2 = f"{record_str2} ({team2['streak'].replace(' ', '')})"
+                        st.caption(record_str2)
                     with col5:
                         if logo2:
                             st.image(logo2, width=40)

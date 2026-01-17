@@ -229,6 +229,24 @@ class SQLiteBackend(DatabaseBackend):
         user = self.get_user(user_id)
         return user.favorite_teams if user else []
     
+    def set_favorite_players(self, user_id: str, players: List[str]) -> bool:
+        """Set the entire list of favorite players (used for reordering)."""
+        user = self.get_user(user_id)
+        if user is None:
+            return False
+        user.favorite_players = players
+        self.create_or_update_user(user)
+        return True
+    
+    def set_favorite_teams(self, user_id: str, teams: List[str]) -> bool:
+        """Set the entire list of favorite teams (used for reordering)."""
+        user = self.get_user(user_id)
+        if user is None:
+            return False
+        user.favorite_teams = teams
+        self.create_or_update_user(user)
+        return True
+    
     def close(self) -> None:
         """Close database connection."""
         if self._connection:

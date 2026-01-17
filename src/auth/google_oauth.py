@@ -230,6 +230,46 @@ class AuthManager:
         if not oauth_id:
             return []
         return self._db.get_favorite_teams(oauth_id)
+    
+    def reorder_favorite_player(self, player_name: str, direction: str) -> bool:
+        """Move a player up or down in the favorites list."""
+        oauth_id = st.session_state.get("oauth_id")
+        if not oauth_id:
+            return False
+        
+        players = self.get_favorite_players()
+        if player_name not in players:
+            return False
+        
+        idx = players.index(player_name)
+        if direction == "up" and idx > 0:
+            players[idx], players[idx-1] = players[idx-1], players[idx]
+        elif direction == "down" and idx < len(players) - 1:
+            players[idx], players[idx+1] = players[idx+1], players[idx]
+        else:
+            return False
+            
+        return self._db.set_favorite_players(oauth_id, players)
+        
+    def reorder_favorite_team(self, team_abbrev: str, direction: str) -> bool:
+        """Move a team up or down in the favorites list."""
+        oauth_id = st.session_state.get("oauth_id")
+        if not oauth_id:
+            return False
+            
+        teams = self.get_favorite_teams()
+        if team_abbrev not in teams:
+            return False
+            
+        idx = teams.index(team_abbrev)
+        if direction == "up" and idx > 0:
+            teams[idx], teams[idx-1] = teams[idx-1], teams[idx]
+        elif direction == "down" and idx < len(teams) - 1:
+            teams[idx], teams[idx+1] = teams[idx+1], teams[idx]
+        else:
+            return False
+            
+        return self._db.set_favorite_teams(oauth_id, teams)
 
 
 # Singleton instance
