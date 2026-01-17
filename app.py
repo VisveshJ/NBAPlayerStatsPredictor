@@ -570,7 +570,7 @@ def get_player_photo_url(player_name):
         pass
     return None
 
-@st.cache_data(ttl=1800)
+@st.cache_data(ttl=2000) # Increased TTL to force cache invalidation on deployment and distinct from previous
 def get_player_game_log(player_name, season="2025-26"):
     """Fetch game log for a player from the current season."""
     all_players = players.get_players()
@@ -721,6 +721,392 @@ def search_players(query, season="2025-26"):
         
         return matches[:20]
 
+# ==================== AROUND THE NBA DATA FUNCTIONS ====================
+
+@st.cache_data(ttl=1800)  # 30 minute cache
+def get_nba_injuries():
+    """Fetch injury data from ESPN NBA injuries page."""
+    import requests
+    from bs4 import BeautifulSoup
+    import re
+    
+    try:
+        url = "https://www.espn.com/nba/injuries"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        injuries = []
+        
+        # ESPN structures data with team sections
+        # Each team has a header with team name, followed by a table with player injuries
+        
+        # Find all content sections that contain team injury data
+        # Look for elements with the pattern: team header -> injury table
+        
+        # Get all Table__Title elements (team names)
+        team_headers = soup.find_all('div', class_='Table__Title')
+        
+        for team_header in team_headers:
+            team_name = team_header.get_text(strip=True)
+            if not team_name:
+                continue
+            
+            # Find the next sibling/parent table after this team header
+            # Navigate up to find the wrapper, then find the table within
+            parent = team_header.parent
+            table = None
+            
+            # Try to find table within parent container
+            while parent and not table:
+                table = parent.find('table')
+                if not table:
+                    # Try next sibling of parent
+                    next_elem = parent.find_next_sibling()
+                    if next_elem:
+                        table = next_elem.find('table') if hasattr(next_elem, 'find') else None
+                    parent = parent.parent if hasattr(parent, 'parent') else None
+            
+            if not table:
+                continue
+            
+            # Parse rows from this table
+            rows = table.find_all('tr')
+            
+            for row in rows:
+                cells = row.find_all('td')
+                if len(cells) >= 3:
+                    # Get player name
+                    player_cell = cells[0]
+                    player_link = player_cell.find('a')
+                    player_name = player_link.get_text(strip=True) if player_link else player_cell.get_text(strip=True)
+                    
+                    # Skip header rows
+                    if not player_name or player_name.upper() == "NAME":
+                        continue
+                    
+                    # Get injury date
+                    injury_date = cells[1].get_text(strip=True) if len(cells) > 1 else ""
+                    
+                    # Get status
+                    status = cells[2].get_text(strip=True) if len(cells) > 2 else ""
+                    
+                    # Get injury description
+                    description = cells[3].get_text(strip=True) if len(cells) > 3 else ""
+                    
+                    injuries.append({
+                        'team': team_name,
+                        'player': player_name,
+                        'date': injury_date,
+                        'status': status,
+                        'description': description
+                    })
+        
+        return injuries
+    except Exception as e:
+        print(f"Error fetching injuries: {e}")
+        return []
+
+
+def get_team_streaks(standings_df):
+    """Calculate hot and cold teams based on standings data."""
+    if standings_df is None or standings_df.empty:
+        return {'hot': [], 'cold': []}
+    
+    hot_teams = []
+    cold_teams = []
+    
+    for _, row in standings_df.iterrows():
+        team_abbrev = get_team_abbrev(row.get('TeamCity', ''))
+        team_name = f"{row.get('TeamCity', '')} {row.get('TeamName', '')}"
+        record = row.get('Record', '')
+        l10 = row.get('L10', '')
+        streak = row.get('strCurrentStreak', '')
+        conference = row.get('Conference', '')
+        rank = int(row.get('PlayoffRank', 0))
+        
+        # Parse L10 record (e.g., "7-3" means 7 wins, 3 losses)
+        l10_wins = 0
+        l10_losses = 0
+        try:
+            if '-' in str(l10):
+                parts = str(l10).split('-')
+                l10_wins = int(parts[0])
+                l10_losses = int(parts[1])
+        except:
+            pass
+        
+        # Parse streak (e.g., "W 5" or "L 3")
+        streak_type = ""
+        streak_count = 0
+        try:
+            if streak:
+                parts = str(streak).split()
+                if len(parts) >= 2:
+                    streak_type = parts[0]  # "W" or "L"
+                    streak_count = int(parts[1])
+        except:
+            pass
+        
+        team_data = {
+            'abbrev': team_abbrev,
+            'name': team_name,
+            'record': record,
+            'l10': l10,
+            'l10_wins': l10_wins,
+            'streak': streak,
+            'streak_type': streak_type,
+            'streak_count': streak_count,
+            'conference': conference,
+            'rank': rank
+        }
+        
+        # Hot team criteria: 7+ wins in L10 OR 5+ game winning streak
+        if l10_wins >= 7 or (streak_type == 'W' and streak_count >= 5):
+            hot_teams.append(team_data)
+        
+        # Cold team criteria: 3 or fewer wins in L10 OR 5+ game losing streak
+        if l10_wins <= 3 or (streak_type == 'L' and streak_count >= 5):
+            cold_teams.append(team_data)
+    
+    # Sort hot teams by streak count (descending), then by L10 wins
+    hot_teams.sort(key=lambda x: (x['streak_count'] if x['streak_type'] == 'W' else 0, x['l10_wins']), reverse=True)
+    
+    # Sort cold teams by streak count (descending), then by L10 losses (most losses first)
+    cold_teams.sort(key=lambda x: (x['streak_count'] if x['streak_type'] == 'L' else 0, 10 - x['l10_wins']), reverse=True)
+    
+    return {'hot': hot_teams, 'cold': cold_teams}
+
+
+@st.cache_data(ttl=900)  # 15 minute cache
+def get_nba_news():
+    """Fetch latest NBA news headlines from NBA.com."""
+    import requests
+    from bs4 import BeautifulSoup
+    
+    try:
+        url = "https://www.nba.com/news"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        news_items = []
+        
+        # Based on research, the headline links often have this class
+        articles = soup.find_all('a', class_=lambda x: x and 'ArticleTile_tileHeadlineLink' in x if x else False)
+        
+        for article in articles[:10]:
+            title_elem = article.find(['h1', 'h2', 'h3', 'h4', 'span'])
+            title = title_elem.get_text(strip=True) if title_elem else article.get_text(strip=True)
+            link = article.get('href', '')
+            
+            if link and not link.startswith('http'):
+                link = 'https://www.nba.com' + link
+                
+            if title and len(title) > 10:
+                news_items.append({
+                    'title': title,
+                    'link': link
+                })
+        
+        # Fallback for other structures
+        if not news_items:
+            headlines = soup.find_all(['h3', 'h4'])
+            for h in headlines:
+                parent_link = h.find_parent('a')
+                if parent_link:
+                    title = h.get_text(strip=True)
+                    link = parent_link.get('href', '')
+                    if link and not link.startswith('http'):
+                        link = 'https://www.nba.com' + link
+                    if title and len(title) > 20:
+                        news_items.append({'title': title, 'link': link})
+        
+        return news_items[:10]
+    except Exception as e:
+        print(f"Error fetching news: {e}")
+        return []
+
+
+@st.cache_data(ttl=3600*24*7)  # 7-day cache for MVP ladder (updates weekly)
+def get_mvp_ladder():
+    """Fetch the latest Kia MVP Ladder rankings from NBA.com with dynamic URL calculation."""
+    import requests
+    from bs4 import BeautifulSoup
+    import re
+    from datetime import datetime, timedelta
+    
+    # Fallback data (Jan 16, 2026 article)
+    fallback_players = [
+        {'rank': '1', 'name': 'Shai Gilgeous-Alexander', 'team': 'Oklahoma City Thunder', 'team_abbrev': 'OKC', 'stats': '31.9 PPG, 4.5 RPG, 6.4 APG', 'games_played': '40', 'player_id': '1628983'},
+        {'rank': '2', 'name': 'Nikola Jokić', 'team': 'Denver Nuggets', 'team_abbrev': 'DEN', 'stats': '29.6 PPG, 12.2 RPG, 11.0 APG', 'games_played': '39', 'player_id': '203999'},
+        {'rank': '3', 'name': 'Luka Dončić', 'team': 'Los Angeles Lakers', 'team_abbrev': 'LAL', 'stats': '33.4 PPG, 7.9 RPG, 8.8 APG', 'games_played': '38', 'player_id': '1629029'},
+        {'rank': '4', 'name': 'Victor Wembanyama', 'team': 'San Antonio Spurs', 'team_abbrev': 'SAS', 'stats': '23.9 PPG, 10.9 RPG, 3.0 APG', 'games_played': '37', 'player_id': '1641705'},
+        {'rank': '5', 'name': 'Jaylen Brown', 'team': 'Boston Celtics', 'team_abbrev': 'BOS', 'stats': '28.2 PPG, 3.2 RPG, 6.1 APG', 'games_played': '41', 'player_id': '1627759'},
+        {'rank': '6', 'name': 'Cade Cunningham', 'team': 'Detroit Pistons', 'team_abbrev': 'DET', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1630595'},
+        {'rank': '7', 'name': 'Anthony Edwards', 'team': 'Minnesota Timberwolves', 'team_abbrev': 'MIN', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1630162'},
+        {'rank': '8', 'name': 'Tyrese Maxey', 'team': 'Philadelphia 76ers', 'team_abbrev': 'PHI', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1630178'},
+        {'rank': '9', 'name': 'Jalen Brunson', 'team': 'New York Knicks', 'team_abbrev': 'NYK', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1628973'},
+        {'rank': '10', 'name': 'Jamal Murray', 'team': 'Denver Nuggets', 'team_abbrev': 'DEN', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1627750'}
+    ]
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+    }
+    
+    try:
+        # Dynamically calculate URL based on current date
+        # Articles are published weekly on Thursdays (day 3)
+        today = datetime.now()
+        # Find most recent Thursday (or today if Thursday)
+        days_since_thursday = (today.weekday() - 3) % 7
+        recent_thursday = today - timedelta(days=days_since_thursday)
+        
+        # Try URLs for the past few weeks to find the latest article
+        article_url = None
+        for weeks_back in range(4):  # Check up to 4 weeks back
+            check_date = recent_thursday - timedelta(weeks=weeks_back)
+            month_abbrev = check_date.strftime('%b').lower()
+            day = check_date.day
+            year = check_date.year
+            url = f"https://www.nba.com/news/kia-mvp-ladder-{month_abbrev}-{day}-{year}"
+            
+            try:
+                resp = requests.head(url, headers=headers, timeout=5, allow_redirects=True)
+                if resp.status_code == 200:
+                    article_url = url
+                    break
+            except:
+                continue
+        
+        if not article_url:
+            return fallback_players
+            
+        # Scrape the article
+        art_resp = requests.get(article_url, headers=headers, timeout=10)
+        art_resp.raise_for_status()
+        art_soup = BeautifulSoup(art_resp.text, 'html.parser')
+        
+        players = []
+        
+        # Parse TOP 5 from h2/h3/h4 headings (e.g., "1. Shai Gilgeous-Alexander, Oklahoma City Thunder")
+        rankings = art_soup.find_all(['h2', 'h3', 'h4'])
+        for r in rankings:
+            text = r.get_text(strip=True)
+            # Match pattern like "1. Player Name, Team Name"
+            match = re.match(r'^(\d+)\.?\s+(.+)', text)
+            if match and int(match.group(1)) <= 5:
+                rank = match.group(1)
+                rest = match.group(2)
+                
+                # Split name and team
+                if ',' in rest:
+                    parts = rest.split(',', 1)
+                    name = parts[0].strip()
+                    team = parts[1].strip() if len(parts) > 1 else "N/A"
+                else:
+                    name = rest
+                    team = "N/A"
+                
+                # Get stats from following paragraph
+                stats = "N/A"
+                current = r.find_next()
+                while current and current.name not in ['h2', 'h3', 'h4']:
+                    if current.name == 'p':
+                        p_text = current.get_text(strip=True)
+                        if "stats:" in p_text.lower():
+                            stats = p_text.split('stats:')[-1].split('|')[0].strip()
+                            break
+                    current = current.find_next()
+                
+                team_abbrev = get_team_abbrev(team)
+                
+                players.append({
+                    'rank': rank,
+                    'name': name,
+                    'team': team,
+                    'team_abbrev': team_abbrev,
+                    'stats': stats,
+                    'games_played': 'N/A',
+                    'player_id': None
+                })
+        
+        # Parse "The Next 5" section (contained in a <p> with <strong> tags for ranks)
+        next5_header = art_soup.find(lambda tag: tag.name in ['h2', 'h3', 'h4'] and 'next 5' in tag.get_text().lower())
+        if next5_header:
+            next_p = next5_header.find_next('p')
+            if next_p:
+                # The paragraph contains: <strong>6.</strong> Player, Team ↔️<br>...
+                p_html = str(next_p)
+                # Split by <br> or <br/>
+                lines = re.split(r'<br\s*/?\s*>', p_html)
+                for line in lines:
+                    # Extract rank from <strong>N.</strong>
+                    rank_match = re.search(r'<strong>(\d+)\.?</strong>\s*(.+)', line, re.IGNORECASE)
+                    if rank_match:
+                        rank = rank_match.group(1)
+                        rest = rank_match.group(2)
+                        # Remove HTML tags and emojis, keep only text
+                        rest = re.sub(r'<[^>]+>', '', rest)
+                        rest = re.sub(r'[↔️⬆️⬇️↗️↘️]', '', rest).strip()
+                        # Clean up any potential invisible characters
+                        rest = re.sub(r'\s+', ' ', rest).strip()
+                        
+                        if ',' in rest:
+                            parts = rest.split(',', 1)
+                            name = parts[0].strip()
+                            team = parts[1].strip() if len(parts) > 1 else "N/A"
+                        else:
+                            name = rest
+                            team = "N/A"
+                        
+                        team_abbrev = get_team_abbrev(team)
+                        
+                        players.append({
+                            'rank': rank,
+                            'name': name,
+                            'team': team,
+                            'team_abbrev': team_abbrev,
+                            'stats': 'N/A',
+                            'games_played': 'N/A',
+                            'player_id': None
+                        })
+        
+        # Sort by rank and ensure we have 10
+        players.sort(key=lambda x: int(x['rank']))
+        
+        if len(players) >= 10:
+            return players[:10]
+        else:
+            return fallback_players
+            
+    except Exception as e:
+        print(f"Error fetching MVP ladder: {e}")
+        return fallback_players
+
+
+def get_today_game_slate():
+    """Get today's games from the full schedule."""
+    from datetime import datetime
+    import pytz
+    
+    # Get current date in ET (NBA standard)
+    et_tz = pytz.timezone('US/Eastern')
+    now_et = datetime.now(et_tz)
+    date_today = now_et.strftime("%Y-%m-%d")
+    
+    full_schedule = get_nba_schedule()
+    today_games = [g for g in full_schedule if g['game_date'].startswith(date_today)]
+    
+    return today_games
 
 
 # ==================== HELPER FUNCTIONS ====================
@@ -759,9 +1145,9 @@ if 'current_page' not in st.session_state:
 
 # Navigation options based on auth status
 if is_authenticated:
-    nav_options = ["Home", "Predictions", "Player Stats", "Compare Players", "Standings", "Favorites", "About"]
+    nav_options = ["Home", "Predictions", "Player Stats", "Compare Players", "Around the NBA", "Standings", "Favorites", "About"]
 else:
-    nav_options = ["Home", "Predictions", "Player Stats", "Compare Players", "Standings", "About"]
+    nav_options = ["Home", "Predictions", "Player Stats", "Compare Players", "Around the NBA", "Standings", "About"]
 
 # Check if we have pending navigation (from buttons like "View" or upcoming games)
 # This must be checked BEFORE the radio widget is rendered
@@ -1884,13 +2270,18 @@ elif page == "Player Stats":
                             player_df['Score'] = 'N/A'
                     
                     display_cols = ['GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN', 'Points', 'Rebounds', 'Assists', 
-                                   'Steals', 'Blocks', 'Turnovers', 'PF', 'FG', '3P', 'FT', 'TS%']
+                                   'FG', 'FG%', '3P', '3P%', 'FT', 'FT%', 'TS%',
+                                   'Steals', 'Blocks', 'Turnovers', 'PF']
                     available_cols = [col for col in display_cols if col in player_df.columns]
                     
                     display_df = player_df[available_cols].iloc[::-1].copy()
                     
+                    # Format percentage columns (FG%, 3P%, FT% come as decimals from NBA API, TS% is already calculated as percentage)
+                    for pct_col in ['FG%', '3P%', 'FT%']:
+                        if pct_col in display_df.columns:
+                            display_df[pct_col] = display_df[pct_col].apply(lambda x: f"{x*100:.1f}%" if pd.notnull(x) and x != 0 else "-")
                     if 'TS%' in display_df.columns:
-                        display_df['TS%'] = display_df['TS%'].apply(lambda x: f"{x:.1f}%" if pd.notnull(x) else "N/A")
+                        display_df['TS%'] = display_df['TS%'].apply(lambda x: f"{x:.1f}%" if pd.notnull(x) and x != 0 else "-")
                     
                     # Format PF as integer
                     if 'PF' in display_df.columns:
@@ -1910,7 +2301,14 @@ elif page == "Player Stats":
                         use_container_width=True, 
                         hide_index=True,
                         column_config={
-                            "Score": st.column_config.TextColumn("Score", width="small")
+                            "Score": st.column_config.TextColumn("Score", width="small"),
+                            "FG": st.column_config.TextColumn("FG", width="small"),
+                            "FG%": st.column_config.TextColumn("FG%", width="small"),
+                            "3P": st.column_config.TextColumn("3P", width="small"),
+                            "3P%": st.column_config.TextColumn("3P%", width="small"),
+                            "FT": st.column_config.TextColumn("FT", width="small"),
+                            "FT%": st.column_config.TextColumn("FT%", width="small"),
+                            "TS%": st.column_config.TextColumn("TS%", width="small"),
                         }
                     )
                     
@@ -2403,10 +2801,23 @@ elif page == "Favorites":
                                 # Get MOST RECENT 5 games (tail, then reverse for newest first)
                                 recent = player_df.tail(5).iloc[::-1].copy()
                                 
-                                # Display columns matching Live Predictions
-                                display_cols = ['GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN', 'Points', 'Rebounds', 'Assists', 'Steals', 'Blocks', 'Turnovers', 'PF']
+                                # Display columns matching Live Predictions + shooting metrics
+                                display_cols = ['GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN', 'Points', 'Rebounds', 'Assists', 
+                                               'FG', 'FG%', '3P', '3P%', 'FT', 'FT%', 'TS%',
+                                               'Steals', 'Blocks', 'Turnovers', 'PF']
                                 available = [c for c in display_cols if c in recent.columns]
                                 recent_display = recent[available].copy()
+                                
+                                # Format percentage columns (FG%, 3P%, FT% come as decimals from NBA API, TS% is already calculated as percentage)
+                                for pct_col in ['FG%', '3P%', 'FT%']:
+                                    if pct_col in recent_display.columns:
+                                        recent_display[pct_col] = recent_display[pct_col].apply(
+                                            lambda x: f"{x*100:.1f}%" if pd.notna(x) and x != 0 else "0"
+                                        )
+                                if 'TS%' in recent_display.columns:
+                                    recent_display['TS%'] = recent_display['TS%'].apply(
+                                        lambda x: f"{x:.1f}%" if pd.notna(x) and x != 0 else "0"
+                                    )
                                 
                                 # Rename columns
                                 rename_map = {
@@ -2436,6 +2847,13 @@ elif page == "Favorites":
                                         "Matchup": st.column_config.TextColumn("Matchup", width="medium"),
                                         "W/L": st.column_config.TextColumn("W/L", width="small"),
                                         "Score": st.column_config.TextColumn("Score", width="small"),
+                                        "FG": st.column_config.TextColumn("FG", width="small"),
+                                        "FG%": st.column_config.TextColumn("FG%", width="small"),
+                                        "3P": st.column_config.TextColumn("3P", width="small"),
+                                        "3P%": st.column_config.TextColumn("3P%", width="small"),
+                                        "FT": st.column_config.TextColumn("FT", width="small"),
+                                        "FT%": st.column_config.TextColumn("FT%", width="small"),
+                                        "TS%": st.column_config.TextColumn("TS%", width="small"),
                                     }
                                 )
                             else:
@@ -2871,6 +3289,9 @@ elif page == "Compare Players":
                 player1_df, player1_team = get_player_game_log(selected_player1, season)
                 player2_df, player2_team = get_player_game_log(selected_player2, season)
                 
+                # Load schedule for next matchup display
+                nba_schedule = get_nba_schedule()
+                
                 if player1_df is None or len(player1_df) == 0:
                     st.error(f"No data found for {selected_player1}")
                 elif player2_df is None or len(player2_df) == 0:
@@ -3066,9 +3487,494 @@ elif page == "Compare Players":
                             </div>
                             """, unsafe_allow_html=True)
                     
+                    # ==================== HEAD-TO-HEAD MATCHUPS ====================
+                    st.markdown("---")
+                    st.markdown("<h3 style='text-align: center;'>Head-to-Head Matchups</h3>", unsafe_allow_html=True)
+                    st.markdown("<p style='text-align: center; color: #9CA3AF; font-size: 0.85rem;'>Games where these players faced each other</p>", unsafe_allow_html=True)
+                    
+                    # Find the next matchup between these two teams
+                    from datetime import datetime
+                    today = datetime.now().date()
+                    next_matchup = None
+                    
+                    if nba_schedule:
+                        for game in nba_schedule:
+                            try:
+                                game_date_str = game['game_date']
+                                game_date = datetime.strptime(game_date_str.split(' ')[0], '%m/%d/%Y').date()
+                                
+                                if game_date < today:
+                                    continue
+                                if game['game_status'] == 3:  # Already finished
+                                    continue
+                                
+                                # Check if these two teams are playing
+                                home = game['home_team']
+                                away = game['away_team']
+                                if (home == player1_team and away == player2_team) or (home == player2_team and away == player1_team):
+                                    is_p1_home = home == player1_team
+                                    location = f"@ {player2_team}" if not is_p1_home else f"vs {player2_team}"
+                                    next_matchup = {
+                                        'date': game_date.strftime('%b %d, %Y'),
+                                        'location': location,
+                                        'home': home,
+                                        'away': away
+                                    }
+                                    break
+                            except:
+                                continue
+                    
+                    if next_matchup:
+                        st.markdown(f"<p style='text-align: center; color: #F59E0B; font-size: 1.1rem;'>📅 <strong>Next Matchup:</strong> {next_matchup['date']} — {player1_team} {next_matchup['location']}</p>", unsafe_allow_html=True)
+                    
+                    # Find games where player 1 played vs player 2's team
+                    p1_vs_p2_team = player1_df[player1_df['Opponent'] == player2_team].copy()
+                    # Find games where player 2 played vs player 1's team
+                    p2_vs_p1_team = player2_df[player2_df['Opponent'] == player1_team].copy()
+                    
+                    # Filter to only TRUE head-to-head games (both players played on the same date)
+                    p1_dates = set(p1_vs_p2_team['GAME_DATE'].tolist()) if len(p1_vs_p2_team) > 0 else set()
+                    p2_dates = set(p2_vs_p1_team['GAME_DATE'].tolist()) if len(p2_vs_p1_team) > 0 else set()
+                    common_dates = p1_dates & p2_dates  # Games where both played
+                    
+                    # Filter to only common dates for display
+                    p1_h2h = p1_vs_p2_team[p1_vs_p2_team['GAME_DATE'].isin(common_dates)].copy() if len(p1_vs_p2_team) > 0 else p1_vs_p2_team
+                    p2_h2h = p2_vs_p1_team[p2_vs_p1_team['GAME_DATE'].isin(common_dates)].copy() if len(p2_vs_p1_team) > 0 else p2_vs_p1_team
+                    
+                    if len(p1_h2h) == 0 and len(p2_h2h) == 0:
+                        st.info(f"No head-to-head matchups found between {player1_name} and {player2_name} this season.")
+                    else:
+                        # Display both players' game logs vs each other's teams (stacked for more columns)
+                        
+                        # Helper to calculate Score if not present
+                        def add_score_column(df, team_abbrev):
+                            if 'Score' not in df.columns:
+                                score_lookup = {}
+                                team_game_data = get_team_game_log(team_abbrev, season, num_games=82)
+                                if team_game_data is not None and len(team_game_data) > 0:
+                                    for _, trow in team_game_data.iterrows():
+                                        game_id = str(trow.get('GAME_ID', ''))
+                                        if 'PTS' in trow and 'PLUS_MINUS' in trow:
+                                            team_pts = int(trow['PTS'])
+                                            opp_pts = int(trow['PTS'] - trow['PLUS_MINUS'])
+                                            score_lookup[game_id] = f"{team_pts} - {opp_pts}"
+                                if score_lookup:
+                                    df['Score'] = df.apply(
+                                        lambda row: score_lookup.get(str(row.get('Game_ID', row.get('GAME_ID', ''))), 'N/A'),
+                                        axis=1
+                                    )
+                                else:
+                                    df['Score'] = 'N/A'
+                            return df
+                        
+                        # Player 1 vs Player 2
+                        st.markdown(f"#### {player1_name} vs {player2_name}")
+                        if len(p1_h2h) > 0:
+                            # Add Score if not present
+                            p1_h2h = add_score_column(p1_h2h, player1_team)
+                            
+                            # Select all game log columns (use correct names)
+                            display_cols = ['GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN', 'Points', 'Rebounds', 'Assists', 'Steals', 'Blocks', 'Turnovers', 'PF', 'FG', '3P', 'FT', 'FG%', '3P%', 'FT%', 'TS%']
+                            available_cols = [c for c in display_cols if c in p1_h2h.columns]
+                            h2h_display = p1_h2h[available_cols].copy()
+                            
+                            # Rename columns for cleaner display
+                            h2h_display = h2h_display.rename(columns={
+                                'GAME_DATE': 'Date',
+                                'Points': 'PTS',
+                                'Rebounds': 'REB',
+                                'Assists': 'AST',
+                                'Steals': 'STL',
+                                'Blocks': 'BLK',
+                                'Turnovers': 'TOV'
+                            })
+                            
+                            # Format percentages (multiply by 100 if they're decimals)
+                            for pct_col in ['FG%', '3P%', 'FT%']:
+                                if pct_col in h2h_display.columns:
+                                    h2h_display[pct_col] = h2h_display[pct_col].apply(
+                                        lambda x: f"{x*100:.1f}%" if pd.notnull(x) and x <= 1 else (f"{x:.1f}%" if pd.notnull(x) else "N/A")
+                                    )
+                            if 'TS%' in h2h_display.columns:
+                                h2h_display['TS%'] = h2h_display['TS%'].apply(
+                                    lambda x: f"{x:.1f}%" if pd.notnull(x) else "N/A"
+                                )
+                            
+                            # Style W/L column with colors
+                            def style_wl(df):
+                                styles = pd.DataFrame('', index=df.index, columns=df.columns)
+                                if 'W/L' in df.columns:
+                                    styles['W/L'] = df['W/L'].apply(
+                                        lambda x: 'color: #10B981' if x == 'W' else ('color: #EF4444' if x == 'L' else '')
+                                    )
+                                return styles
+                            
+                            styled_df = h2h_display.style.apply(style_wl, axis=None)
+                            st.dataframe(styled_df, use_container_width=True, hide_index=True)
+                            
+                            # Show averages (using all games vs opponent, not just H2H)
+                            avg_pts = p1_vs_p2_team['Points'].mean()
+                            avg_reb = p1_vs_p2_team['Rebounds'].mean()
+                            avg_ast = p1_vs_p2_team['Assists'].mean()
+                            st.markdown(f"<p style='color: #9CA3AF; font-size: 0.9rem;'>Avg vs {player2_team}: <strong>{avg_pts:.1f}</strong> PTS, <strong>{avg_reb:.1f}</strong> REB, <strong>{avg_ast:.1f}</strong> AST ({len(p1_vs_p2_team)} games)</p>", unsafe_allow_html=True)
+                        else:
+                            st.info(f"No H2H games where both players played")
+                        
+                        st.markdown("")  # Spacer
+                        
+                        # Player 2 vs Player 1
+                        st.markdown(f"#### {player2_name} vs {player1_name}")
+                        if len(p2_h2h) > 0:
+                            # Add Score if not present
+                            p2_h2h = add_score_column(p2_h2h, player2_team)
+                            
+                            # Select all game log columns (use correct names)
+                            display_cols = ['GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN', 'Points', 'Rebounds', 'Assists', 'Steals', 'Blocks', 'Turnovers', 'PF', 'FG', '3P', 'FT', 'FG%', '3P%', 'FT%', 'TS%']
+                            available_cols = [c for c in display_cols if c in p2_h2h.columns]
+                            h2h_display = p2_h2h[available_cols].copy()
+                            
+                            # Rename columns for cleaner display
+                            h2h_display = h2h_display.rename(columns={
+                                'GAME_DATE': 'Date',
+                                'Points': 'PTS',
+                                'Rebounds': 'REB',
+                                'Assists': 'AST',
+                                'Steals': 'STL',
+                                'Blocks': 'BLK',
+                                'Turnovers': 'TOV'
+                            })
+                            
+                            # Format percentages (multiply by 100 if they're decimals)
+                            for pct_col in ['FG%', '3P%', 'FT%']:
+                                if pct_col in h2h_display.columns:
+                                    h2h_display[pct_col] = h2h_display[pct_col].apply(
+                                        lambda x: f"{x*100:.1f}%" if pd.notnull(x) and x <= 1 else (f"{x:.1f}%" if pd.notnull(x) else "N/A")
+                                    )
+                            if 'TS%' in h2h_display.columns:
+                                h2h_display['TS%'] = h2h_display['TS%'].apply(
+                                    lambda x: f"{x:.1f}%" if pd.notnull(x) else "N/A"
+                                )
+                            
+                            # Style W/L column with colors
+                            def style_wl(df):
+                                styles = pd.DataFrame('', index=df.index, columns=df.columns)
+                                if 'W/L' in df.columns:
+                                    styles['W/L'] = df['W/L'].apply(
+                                        lambda x: 'color: #10B981' if x == 'W' else ('color: #EF4444' if x == 'L' else '')
+                                    )
+                                return styles
+                            
+                            styled_df = h2h_display.style.apply(style_wl, axis=None)
+                            st.dataframe(styled_df, use_container_width=True, hide_index=True)
+                            
+                            # Show averages (using all games vs opponent, not just H2H)
+                            avg_pts = p2_vs_p1_team['Points'].mean()
+                            avg_reb = p2_vs_p1_team['Rebounds'].mean()
+                            avg_ast = p2_vs_p1_team['Assists'].mean()
+                            st.markdown(f"<p style='color: #9CA3AF; font-size: 0.9rem;'>Avg vs {player1_team}: <strong>{avg_pts:.1f}</strong> PTS, <strong>{avg_reb:.1f}</strong> REB, <strong>{avg_ast:.1f}</strong> AST ({len(p2_vs_p1_team)} games)</p>", unsafe_allow_html=True)
+                        else:
+                            st.info(f"No H2H games where both players played")
                     
     else:
         st.info("👆 Enter two player names above to compare their stats")
+
+# ==================== AROUND THE NBA PAGE ====================
+elif page == "Around the NBA":
+    from datetime import datetime
+    import pytz
+    
+    st.title("🏀 Around the NBA")
+    
+    # Display current date in ET
+    et_tz = pytz.timezone('US/Eastern')
+    now_et = datetime.now(et_tz)
+    current_date = now_et.strftime("%B %d, %Y")
+    st.markdown(f"**As of: {current_date}**")
+    st.markdown("---")
+    
+    # Fetch data
+    with st.spinner("Fetching latest NBA updates..."):
+        mvp_ladder = get_mvp_ladder()
+        nba_schedule = get_nba_schedule()
+        standings_df = get_league_standings(season)
+        nba_news = get_nba_news()
+
+        
+    # ===== SECTION 1: 🏆 KIA MVP LADDER =====
+    st.markdown("## 🏆 KIA MVP Ladder")
+    st.caption("The latest rankings in the race for the 2025-26 MVP award")
+    
+    if mvp_ladder:
+        # Helper function to render a single MVP card
+        def render_mvp_card(player, rank_idx):
+            # Display rank badge with color coding
+            rank_color = "#FFD700" if rank_idx == 0 else "#C0C0C0" if rank_idx == 1 else "#CD7F32" if rank_idx == 2 else "#667eea"
+            
+            st.markdown(f"""
+            <div style="text-align: center; font-size: 1.2rem; font-weight: bold; color: {rank_color}; margin-bottom: 5px;">#{player['rank']}</div>
+            """, unsafe_allow_html=True)
+            
+            # Parse player name and team
+            raw_full = player.get('name', '')
+            player_name = raw_full
+            team_abbrev = player.get('team_abbrev')
+            team_name = player.get('team', '')
+            
+            if ',' in raw_full:
+                parts = raw_full.split(',')
+                player_name = parts[0].strip()
+                team_part = parts[1].strip()
+                if team_part:
+                    team_name = team_part
+                
+                # Try to find team abbreviation from name
+                sorted_cities = sorted(TEAM_ABBREV_MAP.keys(), key=len, reverse=True)
+                for city in sorted_cities:
+                    if city.lower() == team_part.lower() or f" {city.lower()} " in f" {team_part.lower()} ":
+                        team_abbrev = TEAM_ABBREV_MAP[city]
+                        break
+                    if city == 'Oklahoma City' and 'oklahoma' in team_part.lower():
+                        team_abbrev = 'OKC'
+                        break
+
+            # Get photo URLs
+            player_photo_url = get_player_photo_url(player_name)
+            team_logo_url = get_team_logo_url(team_abbrev) if team_abbrev else None
+            
+            # Fetch Games Played, Stats, and Team Record from NBA API
+            games_played = player.get('games_played', 'N/A')
+            player_stats = player.get('stats', 'N/A')
+            team_record = "N/A"
+            
+            if player_name:
+                try:
+                    # Use default season from function definition to avoid scope issues
+                    # get_player_game_log is defined in this file (app.py)
+                    df_log, _ = get_player_game_log(player_name)
+                    
+                    if df_log is not None and not df_log.empty:
+                        games_played = str(len(df_log))
+                        
+                        # Calculate live season averages from game log
+                        # Note: get_player_game_log renames columns PTS->Points, REB->Rebounds, AST->Assists
+                        ppg = df_log['Points'].mean() if 'Points' in df_log.columns else 0
+                        rpg = df_log['Rebounds'].mean() if 'Rebounds' in df_log.columns else 0
+                        apg = df_log['Assists'].mean() if 'Assists' in df_log.columns else 0
+                        
+                        # Calculate Shooting Splits and Efficiency
+                        # FGM, FGA, 3PM, 3PA, FTM, FTA 
+                        # Note: get_player_game_log returns: 'FGM', 'FGA', '3PM', '3PA', 'FTM', 'FTA' (renamed from FG3M etc)
+                        
+                        total_fgm = df_log['FGM'].sum() if 'FGM' in df_log.columns else 0
+                        total_fga = df_log['FGA'].sum() if 'FGA' in df_log.columns else 0
+                        fg_pct = (total_fgm / total_fga * 100) if total_fga > 0 else 0
+                        
+                        total_3pm = df_log['3PM'].sum() if '3PM' in df_log.columns else 0
+                        total_3pa = df_log['3PA'].sum() if '3PA' in df_log.columns else 0
+                        three_pct = (total_3pm / total_3pa * 100) if total_3pa > 0 else 0
+                        
+                        total_ftm = df_log['FTM'].sum() if 'FTM' in df_log.columns else 0
+                        total_fta = df_log['FTA'].sum() if 'FTA' in df_log.columns else 0
+                        ft_pct = (total_ftm / total_fta * 100) if total_fta > 0 else 0
+                        
+                        # Removed TS% per user request
+                        
+                        shooting_stats = f"{fg_pct:.1f}% FG • {three_pct:.1f}% 3P • {ft_pct:.1f}% FT"
+
+                        # Format live stats - Overwrite scraped stats to ensure accuracy
+                        player_stats = f"{ppg:.1f} PPG, {rpg:.1f} RPG, {apg:.1f} APG"
+                    else:
+                        shooting_stats = ""
+                        # If fetching fails and we have no stats (positions 6-10), show standardized N/A or try cached
+                        if player_stats == 'N/A':
+                             pass 
+                except Exception as e:
+                    # st.error(f"Debug Error {player_name}: {str(e)}")
+                    pass
+            
+            if not standings_df.empty and team_name:
+                matching = standings_df[standings_df['TeamCity'].str.contains(team_name.split()[0], case=False, na=False)]
+                if not matching.empty:
+                    team_record = matching.iloc[0]['Record']
+            
+            # Show photos
+            if team_logo_url:
+                spacer1, photo_col, logo_col, spacer2 = st.columns([0.5, 1.5, 1.5, 0.5])
+                with photo_col:
+                    if player_photo_url:
+                        st.image(player_photo_url, width=90)
+                with logo_col:
+                    if team_logo_url:
+                        st.image(team_logo_url, width=70)
+            else:
+                if player_photo_url:
+                    st.image(player_photo_url, width=100)
+            
+            # Player name and stats
+            st.markdown(f"""
+            <div style="text-align: center; margin-top: 10px;">
+                <div style="color: #FAFAFA; font-weight: bold; font-size: 0.95rem; margin-bottom: 5px; line-height: 1.2;">{raw_full}</div>
+                <div style="color: #9CA3AF; font-size: 0.8rem; margin-bottom: 2px;">{player_stats}</div>
+                <div style="color: #6B7280; font-size: 0.75rem; margin-bottom: 8px;">{shooting_stats}</div>
+                <div style="display: flex; justify-content: center; gap: 12px; font-size: 0.75rem;">
+                    <div style="background: #374151; padding: 2px 8px; border-radius: 4px;">
+                        <span style="color: #9CA3AF;">GP:</span> <span style="color: #FAFAFA; font-weight: bold;">{games_played}</span>
+                    </div>
+                    <div style="background: #374151; padding: 2px 8px; border-radius: 4px;">
+                        <span style="color: #9CA3AF;">TEAM REC:</span> <span style="color: #FAFAFA; font-weight: bold;">{team_record}</span>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Row 1: Top 5
+        cols = st.columns(5)
+        for i, player in enumerate(mvp_ladder[:5]):
+            with cols[i]:
+                render_mvp_card(player, i)
+        
+        # Row 2: 6-10 (if available)
+        if len(mvp_ladder) > 5:
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("##### The Next 5")
+            cols2 = st.columns(5)
+            for i, player in enumerate(mvp_ladder[5:10]):
+                with cols2[i]:
+                    render_mvp_card(player, i + 5)
+    else:
+        st.info("MVP Ladder data currently unavailable.")
+    
+    st.markdown("---")
+    
+    # ===== SECTION 2: 📅 DAILY GAME SLATE =====
+    st.markdown("## Today's Games")
+    
+    # Get today's games using the same function as Predictions page
+    todays_games = get_todays_games(nba_schedule, standings_df)
+    
+    # Fetch live/final scores
+    scoreboard = get_todays_scoreboard()
+    
+    if todays_games:
+        from datetime import datetime
+        st.caption(f"**{datetime.now().strftime('%A, %B %d, %Y')}** • {len(todays_games)} game(s) • _All times in PST_")
+        
+        # Display games in a grid
+        cols_per_row = 3
+        for i in range(0, len(todays_games), cols_per_row):
+            cols = st.columns(cols_per_row)
+            for j, col in enumerate(cols):
+                if i + j < len(todays_games):
+                    game = todays_games[i + j]
+                    with col:
+                        # Get team logos
+                        away_logo = get_team_logo_url(game['away_team'])
+                        home_logo = get_team_logo_url(game['home_team'])
+                        
+                        # Format seeds and conference
+                        away_seed = f"#{game['away_rank']}" if game['away_rank'] else ""
+                        home_seed = f"#{game['home_rank']}" if game['home_rank'] else ""
+                        
+                        game_time = game.get('game_time', 'TBD')
+                        if not game_time:
+                            game_time = 'TBD'
+                        
+                        # Get records
+                        away_record = game.get('away_record', '')
+                        home_record = game.get('home_record', '')
+                        
+                        # Get live score from scoreboard
+                        game_id = game.get('game_id')
+                        live_data = scoreboard.get(game_id, {})
+                        game_status = live_data.get('game_status', 1)
+                        status_text = live_data.get('game_status_text', '')
+                        home_score = live_data.get('home_score', 0)
+                        away_score = live_data.get('away_score', 0)
+                        
+                        # Determine display based on game status
+                        if game_status == 3:  # Final
+                            status_display = f"<span style='color: #10B981;'>FINAL</span>"
+                            away_score_display = f"<span style='font-size: 1.3rem; font-weight: bold; color: {'#10B981' if away_score > home_score else '#FAFAFA'};'>{away_score}</span>"
+                            home_score_display = f"<span style='font-size: 1.3rem; font-weight: bold; color: {'#10B981' if home_score > away_score else '#FAFAFA'};'>{home_score}</span>"
+                        elif game_status == 2:  # In Progress
+                            status_display = f"<span style='color: #F59E0B;'>{status_text}</span>"
+                            away_score_display = f"<span style='font-size: 1.3rem; font-weight: bold;'>{away_score}</span>"
+                            home_score_display = f"<span style='font-size: 1.3rem; font-weight: bold;'>{home_score}</span>"
+                        else:  # Scheduled - show 'Home' label for home team
+                            status_display = f"<span style='color: #FF6B35;'>{game_time}</span>"
+                            away_score_display = ""
+                            home_score_display = "<span style='color: #9CA3AF; font-size: 0.75rem;'>Home</span>"
+                        
+                        # Create a more visual card with logos and scores
+                        st.markdown(f"""
+                        <div style="background: linear-gradient(135deg, #1F2937 0%, #111827 100%); 
+                                    border-radius: 10px; padding: 15px; text-align: center; 
+                                    border: 1px solid #374151; margin-bottom: 10px;">
+                            <div style="font-size: 0.8rem; font-weight: bold; margin-bottom: 8px;">{status_display}</div>
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <img src="{away_logo}" width="35" height="35" style="vertical-align: middle;" onerror="this.style.display='none'"/>
+                                    <div style="text-align: left;">
+                                        <div style="font-weight: bold; color: #FAFAFA;">{game['away_team']}</div>
+                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{away_record} {away_seed}</div>
+                                    </div>
+                                </div>
+                                <div>{away_score_display}</div>
+                            </div>
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <img src="{home_logo}" width="35" height="35" style="vertical-align: middle;" onerror="this.style.display='none'"/>
+                                    <div style="text-align: left;">
+                                        <div style="font-weight: bold; color: #FAFAFA;">{game['home_team']}</div>
+                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{home_record} {home_seed}</div>
+                                    </div>
+                                </div>
+                                <div>{home_score_display}</div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+    else:
+        st.info("No games scheduled for today.")
+    
+    st.markdown("---")
+    
+    # ===== SECTION 3: 📰 TOP HEADLINES =====
+    st.markdown("## 📰 Top NBA Headlines")
+    st.caption("Latest news from NBA.com")
+    
+    if nba_news:
+        # Show top 3 headlines as requested
+        for i, item in enumerate(nba_news[:3]):
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); 
+                        border-radius: 12px; padding: 25px; margin-bottom: 20px;
+                        border-left: 5px solid #667eea;
+                        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                        transition: transform 0.2s ease;">
+                <a href="{item['link']}" target="_blank" style="text-decoration: none;">
+                    <h3 style="margin: 0; color: #F1F5F9; font-size: 1.2rem; line-height: 1.4;">{item['title']}</h3>
+                    <p style="margin: 12px 0 0 0; color: #94A3B8; font-size: 0.9rem;">
+                        <span style="display: inline-flex; align-items: center;">
+                            📖 Read full story on NBA.com →
+                        </span>
+                    </p>
+                </a>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.info("Latest news currently unavailable. [Visit NBA.com →](https://www.nba.com/news)")
+    
+    st.markdown("---")
+    st.markdown("#### Discover More")
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("📊 View Standings", use_container_width=True):
+            st.session_state.pending_nav_target = "Standings"
+            st.rerun()
+    with c2:
+        st.link_button("🏥 Injury Report", "https://www.espn.com/nba/injuries", use_container_width=True)
+    
+
 
 
 # ==================== STANDINGS PAGE ====================
@@ -3496,4 +4402,3 @@ elif page == "About":
     This tool is for entertainment and educational purposes. Predictions are based on 
     statistical models and may not reflect actual game outcomes.
     """)
-

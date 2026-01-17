@@ -59,14 +59,19 @@ def apply_dark_theme():
         color: #FAFAFA !important;
     }
     /* ===== BUTTONS ===== */
-    .stButton > button {
-        background-color: #FF6B35;
-        color: white;
-        border-radius: 8px;
-        font-weight: 600;
+    .stButton > button, .stLinkButton > a {
+        background-color: #FF6B35 !important;
+        color: white !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        text-decoration: none !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
     }
-    .stButton > button:hover {
-        background-color: #FF8C5A;
+    .stButton > button:hover, .stLinkButton > a:hover {
+        background-color: #FF8C5A !important;
+        border-color: #FF8C5A !important;
     }
     /* ===== SUCCESS / INFO / WARNING ===== */
     .stAlert {
