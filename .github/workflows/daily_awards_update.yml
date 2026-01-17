@@ -1,0 +1,39 @@
+name: Daily Awards Odds Update
+
+on:
+  schedule:
+    # Midnight PST is 8:00 AM UTC
+    - cron: '0 8 * * *'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  update-odds:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas nba_api requests beautifulsoup4 pytz
+
+      - name: Run update script
+        run: python scripts/update_awards_odds.py
+        env:
+          # Add any required API keys here if needed
+          NBA_API_KEY: ${{ secrets.NBA_API_KEY }}
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add data/awards_odds.json
+          git commit -m "Auto-update awards odds [skip ci]" || echo "No changes to commit"
+          git push

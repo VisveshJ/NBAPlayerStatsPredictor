@@ -13,6 +13,8 @@ import warnings
 from nba_api.stats.static import players, teams
 from nba_api.stats.endpoints import playergamelog, leaguedashteamstats, leaguestandings, teamgamelog
 import matplotlib.pyplot as plt
+import json
+import os
 
 # Import our custom modules
 from src.auth.google_oauth import get_auth_manager
@@ -53,6 +55,7 @@ is_authenticated = auth.check_authentication()
 
 # Team abbreviation mapping used across the app
 TEAM_ABBREV_MAP = {
+    'Los Angeles Clippers': 'LAC', 'LA Clippers': 'LAC', # Specific matches first
     'Los Angeles': 'LAL', 'Golden State': 'GSW', 'Phoenix': 'PHX', 'Denver': 'DEN',
     'Memphis': 'MEM', 'Sacramento': 'SAC', 'Dallas': 'DAL', 'New Orleans': 'NOP',
     'LA': 'LAC', 'Minnesota': 'MIN', 'Oklahoma City': 'OKC', 'Portland': 'POR',
@@ -217,6 +220,21 @@ def get_league_standings(season="2025-26"):
                 'TeamAbbrev': row.get('TeamCity', '')[:3].upper() if 'TeamCity' in row else '',
                 'TeamName': row.get('TeamName', ''),
                 'TeamCity': row.get('TeamCity', ''),
+                'TeamCity': row.get('TeamCity', ''),
+            }
+            # Fix Clippers name to ensure unique abbreviation mapping
+            if team_data['TeamCity'] == 'LA' and team_data['TeamName'] == 'Clippers':
+                team_data['TeamCity'] = 'Los Angeles Clippers'
+                team_data['TeamName'] = '' # Prevent "Los Angeles Clippers Clippers"
+
+            
+            # Update derived fields after fix
+            if team_data['TeamCity'] == 'Los Angeles Clippers':
+                 team_data['TeamAbbrev'] = 'LAC'
+            else:
+                 team_data['TeamAbbrev'] = team_data['TeamCity'][:3].upper() if team_data['TeamCity'] else ''
+
+            team_data.update({
                 'Conference': row.get('Conference', ''),
                 'Division': row.get('Division', ''),
                 'ConferenceRecord': row.get('ConferenceRecord', ''),
@@ -233,7 +251,7 @@ def get_league_standings(season="2025-26"):
                 'PointsPG': row.get('PointsPG', 0),
                 'OppPointsPG': row.get('OppPointsPG', 0),
                 'GB': row.get('ConferenceGamesBack', '-'),
-            }
+            })
             standings_data.append(team_data)
         
         return pd.DataFrame(standings_data)
@@ -626,7 +644,73 @@ def get_player_game_log(player_name, season="2025-26"):
         return None, None
 
 
+@st.cache_data(ttl=3600)
+def get_bulk_player_stats(season="2025-26"):
+    """Fetch stats for ALL players in one go to optimize loading."""
+    from nba_api.stats.endpoints import leaguedashplayerstats
+    try:
+        # PerGame for averages
+        stats = leaguedashplayerstats.LeagueDashPlayerStats(
+            season=season,
+            season_type_all_star="Regular Season",
+            per_mode_detailed="PerGame"
+        )
+        df = stats.get_data_frames()[0]
+        return df
+    except Exception as e:
+        print(f"Error fetching bulk stats: {e}")
+        return None
+
+
 @st.cache_data(ttl=86400)
+def abbreviate_position(pos, player_name=None):
+    """Abbreviate position names for UI compact display."""
+    # Special case for Victor Wembanyama
+    if player_name and "Wembanyama" in player_name:
+        return "C"
+        
+    if not pos:
+        return ""
+    pos = pos.strip()
+    
+    # Specific type mappings (if endpoint provides them)
+    if "Point Guard" in pos or pos == "PG": return "PG"
+    if "Shooting Guard" in pos or pos == "SG": return "SG"
+    if "Small Forward" in pos or pos == "SF": return "SF"
+    if "Power Forward" in pos or pos == "PF": return "PF"
+    
+    # Standard mappings with preference for G/F and F/C order per user request
+    mapping = {
+        "Guard": "G",
+        "Forward": "F",
+        "Center": "C",
+        "Guard-Forward": "G/F",
+        "Forward-Guard": "G/F", # Force G/F
+        "Forward-Center": "F/C",
+        "Center-Forward": "F/C", # Force F/C
+        "Guard-Center": "G/C",
+        "Center-Guard": "G/C"
+    }
+    
+    if pos in mapping:
+        return mapping[pos]
+    
+    # Handle dash-separated values from API with re-ordering
+    if "-" in pos:
+        parts = [p.strip() for p in pos.split("-")]
+        abbrev_parts = [mapping.get(p, p) for p in parts]
+        
+        # Sort/Reorder to ensure G/F and F/C order
+        if "G" in abbrev_parts and "F" in abbrev_parts:
+            return "G/F"
+        if "F" in abbrev_parts and "C" in abbrev_parts:
+            return "F/C"
+            
+        return "/".join(abbrev_parts)
+        
+    return pos
+
+
 def fetch_player_bio(player_name):
     """Get player bio info including height, weight, and draft year."""
     from nba_api.stats.endpoints import commonplayerinfo
@@ -1145,9 +1229,9 @@ if 'current_page' not in st.session_state:
 
 # Navigation options based on auth status
 if is_authenticated:
-    nav_options = ["Home", "Predictions", "Player Stats", "Compare Players", "Around the NBA", "Standings", "Favorites", "About"]
+    nav_options = ["Home", "Predictions", "Player Stats", "Compare Players", "Around the NBA", "Standings", "Awards", "Favorites", "About"]
 else:
-    nav_options = ["Home", "Predictions", "Player Stats", "Compare Players", "Around the NBA", "Standings", "About"]
+    nav_options = ["Home", "Predictions", "Player Stats", "Compare Players", "Around the NBA", "Standings", "Awards", "About"]
 
 # Check if we have pending navigation (from buttons like "View" or upcoming games)
 # This must be checked BEFORE the radio widget is rendered
@@ -1248,18 +1332,63 @@ if page == "Home":
             
             if favorite_players:
                 for player_name in favorite_players[:6]:
-                    col_a, col_b, col_c = st.columns([3, 1, 1])
-                    with col_a:
-                        st.write(f"**{player_name}**")
-                    with col_b:
-                        if st.button("View", key=f"home_view_{player_name}", help="View stats"):
+                    col_img, col_info, col_actions = st.columns([1.0, 3.5, 1.5])
+                    
+                    # Fetch bio if not in cache
+                    if 'player_bio_cache' not in st.session_state:
+                        st.session_state['player_bio_cache'] = {}
+                    
+                    if player_name not in st.session_state['player_bio_cache']:
+                        st.session_state['player_bio_cache'][player_name] = fetch_player_bio(player_name)
+                    
+                    bio = st.session_state['player_bio_cache'][player_name]
+                    
+                    with col_img:
+                        if bio and bio.get('player_id'):
+                            headshot_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{bio['player_id']}.png"
+                            st.image(headshot_url, width=100)
+                        else:
+                            st.markdown("<div style='font-size: 2.5rem; text-align: center; margin-top: 10px;'>👤</div>", unsafe_allow_html=True)
+                    
+                    with col_info:
+                        # Team Logo + Name
+                        team_abbrev = bio.get('team_abbrev') if bio else None
+                        
+                        title_col1, title_col2 = st.columns([0.15, 0.85])
+                        with title_col1:
+                            if team_abbrev:
+                                logo = get_team_logo_url(team_abbrev)
+                                if logo:
+                                    st.image(logo, width=45)
+                                else:
+                                    st.write(team_abbrev)
+                        with title_col2:
+                            # Fetch position from bio
+                            pos_label = ""
+                            if bio and bio.get('position'):
+                                abbrev_pos = abbreviate_position(bio['position'], player_name)
+                                pos_label = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 0.8rem;'>({abbrev_pos})</span>"
+                            st.markdown(f"<h4 style='margin: 0; font-size: 1.1rem;'>{player_name}{pos_label}</h4>", unsafe_allow_html=True)
+                        
+                        # Bio Stats
+                        if bio:
+                            st.markdown(f"""
+                            <div style="display: flex; gap: 10px; flex-wrap: wrap; color: #9CA3AF; font-size: 0.75rem; margin-top: 4px;">
+                                <span>HT: <strong style="color: #FAFAFA;">{bio.get('height', '-')}</strong></span>
+                                <span>WT: <strong style="color: #FAFAFA;">{bio.get('weight', '-')}</strong></span>
+                                <span>Age: <strong style="color: #FAFAFA;">{bio.get('age', '-')}</strong></span>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    
+                    with col_actions:
+                        if st.button("Stats", key=f"home_stats_{player_name}", use_container_width=True):
+                            st.session_state['player_stats_search'] = player_name
+                            st.session_state['pending_nav_target'] = "Player Stats"
+                            st.rerun()
+                        if st.button("Analyze", key=f"home_predict_{player_name}", use_container_width=True, type="primary"):
                             st.session_state["redirect_to_predictions"] = player_name
                             st.session_state["auto_load_player"] = player_name
-                            st.session_state['pending_nav_target'] = "Live Predictions"
-                            st.rerun()
-                    with col_c:
-                        if st.button("X", key=f"home_remove_{player_name}", help="Remove"):
-                            auth.remove_favorite_player(player_name)
+                            st.session_state['pending_nav_target'] = "Predictions"
                             st.rerun()
             else:
                 render_empty_state(
@@ -1276,14 +1405,16 @@ if page == "Home":
             
             if favorite_teams:
                 for team_abbrev in favorite_teams[:6]:
-                    col_a, col_b = st.columns([4, 1])
                     rating = team_def_ratings.get(team_abbrev, "N/A")
-                    with col_a:
-                        st.write(f"**{team_abbrev}** - DEF RTG: {rating}")
-                    with col_b:
-                        if st.button("X", key=f"home_remove_team_{team_abbrev}", help="Remove"):
-                            auth.remove_favorite_team(team_abbrev)
-                            st.rerun()
+                    logo = get_team_logo_url(team_abbrev)
+                    
+                    l_col, t_col = st.columns([0.2, 0.8])
+                    with l_col:
+                        if logo:
+                            st.image(logo, width=50)
+                    with t_col:
+                        st.markdown(f"<div style='font-size: 1.1rem; font-weight: bold;'>{team_abbrev}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='font-size: 0.85rem; color: #9CA3AF;'>DEF RTG: {rating}</div>", unsafe_allow_html=True)
             else:
                 render_empty_state(
                     "No watched teams yet! Add teams from the Live Predictions page.",
@@ -1310,10 +1441,10 @@ if page == "Home":
                     with col1:
                         st.write(f"• {player}")
                     with col2:
-                        if st.button("View", key=f"quick_{player}"):
+                        if st.button("Predict", key=f"quick_{player}"):
                             st.session_state["redirect_to_predictions"] = player
                             st.session_state["auto_load_player"] = player
-                            st.session_state['pending_nav_target'] = "Live Predictions"
+                            st.session_state['pending_nav_target'] = "Predictions"
                             st.rerun()
 
 
@@ -1498,50 +1629,41 @@ elif page == "Predictions":
         if bio and bio.get('team_abbrev'):
             player_team = bio['team_abbrev']
 
-        # Show player photo and team logo centered
-        spacer1, photo_col, logo_col, spacer2 = st.columns([1.5, 0.5, 0.5, 1.5])
+        # Show player photo and team logo centered (Standardized layout)
+        spacer1, photo_col, logo_col, spacer2 = st.columns([1.2, 0.8, 0.8, 1.2])
         with photo_col:
             player_photo = get_player_photo_url(selected_player)
             if player_photo:
-                st.image(player_photo, width=100)
+                st.image(player_photo, width=150)
         with logo_col:
             team_logo = get_team_logo_url(player_team)
             if team_logo:
-                st.image(team_logo, width=80)
+                st.image(team_logo, width=120)
         
-        # Player name and info centered
-        st.markdown(f"<h3 style='text-align: center;'>{selected_player}</h3>", unsafe_allow_html=True)
-        
-        bio_info = ""
-        if bio:
-            height = bio.get('height', '')
-            weight = bio.get('weight', '')
-            draft = bio.get('draft_year', '')
-        bio_info = ""
-        if bio:
-            height = bio.get('height', '')
-            weight = bio.get('weight', '')
-            age = bio.get('age', '')
-            draft = bio.get('draft_year', '')
-            draft_round = bio.get('draft_round', '')
-            draft_num = bio.get('draft_number', '')
+        # Player name and position centered
+        pos_label = ""
+        if bio and bio.get('position'):
+            abbrev_pos = abbreviate_position(bio['position'], selected_player)
+            pos_label = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 1.1rem;'>({abbrev_pos})</span>"
             
-            parts = []
-            if height and weight:
-                parts.append(f"{height}, {weight} lbs")
-            if age and age != 'N/A':
-                parts.append(f"Age: {age}")
-            if draft and draft != 'Undrafted':
-                draft_str = f"Drafted {draft}"
-                if draft_round and draft_num and draft_round != 'Undrafted':
-                     draft_str += f" (R{draft_round}, #{draft_num})"
-                parts.append(draft_str)
-            
-            bio_info = " • ".join(parts)
-            if bio_info:
-                bio_info += " • "
+        st.markdown(f"<h3 style='text-align: center; margin-bottom: 5px;'>{selected_player}{pos_label}</h3>", unsafe_allow_html=True)
         
-        st.markdown(f"<p style='text-align: center; color: #9CA3AF;'>{bio_info}{player_team} • {len(player_df)} games loaded</p>", unsafe_allow_html=True)
+        # Format Bio Info with muted labels and bold values (Awards card style)
+        if bio:
+            height = bio.get('height', '-')
+            weight = bio.get('weight', '-')
+            age = bio.get('age', '-')
+            draft = bio.get('draft_year', '-')
+            
+            bio_html = f"""<div style="text-align: center; color: #9CA3AF; font-size: 0.85rem; margin-bottom: 12px;">
+<span style="color: #9CA3AF;">HT:</span> <span style="color: #FAFAFA; font-weight: bold;">{height}</span> • 
+<span style="color: #9CA3AF;">WT:</span> <span style="color: #FAFAFA; font-weight: bold;">{weight} lbs</span> • 
+<span style="color: #9CA3AF;">Age:</span> <span style="color: #FAFAFA; font-weight: bold;">{age}</span> • 
+<span style="color: #9CA3AF;">Draft:</span> <span style="color: #FAFAFA; font-weight: bold;">{draft}</span>
+</div>"""
+            st.markdown(bio_html, unsafe_allow_html=True)
+        else:
+            st.markdown(f"<div style='text-align: center; color: #9CA3AF; font-size: 0.85rem; margin-bottom: 12px;'>Team: {player_team}</div>", unsafe_allow_html=True)
         
         # Get team seed for the button
         team_seed_suffix = ""
@@ -1718,9 +1840,9 @@ elif page == "Predictions":
             'Blocks': f"{avg_blocks:.1f}",
             'Turnovers': f"{avg_turnovers:.1f}",
             'PF': f"{round(last_5_df['PF'].mean(), 1):.1f}" if 'PF' in last_5_df.columns else "N/A",
-            'FG': f"{fg_pct:.1f}%" if fg_pct != "N/A" else "N/A",
-            '3P': f"{three_pct:.1f}%" if three_pct != "N/A" else "N/A",
-            'FT': f"{ft_pct:.1f}%" if ft_pct != "N/A" else "N/A",
+            'FG': avg_fg,
+            '3P': avg_3p,
+            'FT': avg_ft,
             'TS%': f"{ts_pct:.1f}%" if isinstance(ts_pct, (int, float)) else ts_pct
         }
         
@@ -2131,50 +2253,92 @@ elif page == "Player Stats":
                     if bio and bio.get('team_abbrev'):
                         player_team = bio['team_abbrev']
 
-                    # Show player photo and team logo centered
-                    spacer1, photo_col, logo_col, spacer2 = st.columns([1.5, 0.5, 0.5, 1.5])
+
+                    # Show player photo and team logo centered (Standardized layout)
+                    spacer1, photo_col, logo_col, spacer2 = st.columns([1.2, 0.8, 0.8, 1.2])
                     with photo_col:
                         player_photo = get_player_photo_url(selected_player)
                         if player_photo:
-                            st.image(player_photo, width=100)
+                            st.image(player_photo, width=150)
                     with logo_col:
                         team_logo = get_team_logo_url(player_team)
                         if team_logo:
-                            st.image(team_logo, width=80)
+                            st.image(team_logo, width=120)
                     
-                    # Player name and info centered
-                    st.markdown(f"<h3 style='text-align: center;'>{selected_player}</h3>", unsafe_allow_html=True)
+                    # Get team record and rank
+                    standings_df = get_league_standings(season)
+                    team_record = "N/A"
+                    team_rank = "N/A"
+                    team_conf = "N/A"
+                    if not standings_df.empty:
+                        for _, row in standings_df.iterrows():
+                            if get_team_abbrev(row['TeamCity']) == player_team:
+                                team_record = row['Record']
+                                team_rank = row['PlayoffRank']
+                                team_conf = row['Conference']
+                                break
+                    # Calculate stats
+                    ppg = player_df['Points'].mean() if 'Points' in player_df.columns else 0
+                    rpg = player_df['Rebounds'].mean() if 'Rebounds' in player_df.columns else 0
+                    apg = player_df['Assists'].mean() if 'Assists' in player_df.columns else 0
+                    player_stats_line = f"{ppg:.1f} PPG, {rpg:.1f} RPG, {apg:.1f} APG"
                     
-                    bio_info = ""
+                    # Calculate shooting splits
+                    total_fgm = player_df['FGM'].sum() if 'FGM' in player_df.columns else 0
+                    total_fga = player_df['FGA'].sum() if 'FGA' in player_df.columns else 0
+                    fg_pct_display = (total_fgm / total_fga * 100) if total_fga > 0 else 0
+                    
+                    total_3pm = player_df['3PM'].sum() if '3PM' in player_df.columns else 0
+                    total_3pa = player_df['3PA'].sum() if '3PA' in player_df.columns else 0
+                    three_pct_display = (total_3pm / total_3pa * 100) if total_3pa > 0 else 0
+                    
+                    total_ftm = player_df['FTM'].sum() if 'FTM' in player_df.columns else 0
+                    total_fta = player_df['FTA'].sum() if 'FTA' in player_df.columns else 0
+                    ft_pct_display = (total_ftm / total_fta * 100) if total_fta > 0 else 0
+                    
+                    shooting_line = f"{fg_pct_display:.1f}% FG • {three_pct_display:.1f}% 3P • {ft_pct_display:.1f}% FT"
+                    
+                    # Calculate individual record using correct column name
+                    wins = (player_df['W/L'] == 'W').sum() if 'W/L' in player_df.columns else 0
+                    losses = (player_df['W/L'] == 'L').sum() if 'W/L' in player_df.columns else 0
+                    ind_record = f"{wins}-{losses}"
+                    
+                    # Player name and position centered
+                    pos_label = ""
+                    if bio and bio.get('position'):
+                        abbrev_pos = abbreviate_position(bio['position'], selected_player)
+                        pos_label = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 1.1rem;'>({abbrev_pos})</span>"
+
+                    # Format Bio Info with muted labels and bold values (Awards card style)
                     if bio:
-                        height = bio.get('height', '')
-                        weight = bio.get('weight', '')
-                        draft = bio.get('draft_year', '')
-                    bio_info = ""
-                    if bio:
-                        height = bio.get('height', '')
-                        weight = bio.get('weight', '')
-                        age = bio.get('age', '')
-                        draft = bio.get('draft_year', '')
-                        draft_round = bio.get('draft_round', '')
-                        draft_num = bio.get('draft_number', '')
-                        
-                        parts = []
-                        if height and weight:
-                            parts.append(f"{height}, {weight} lbs")
-                        if age and age != 'N/A':
-                            parts.append(f"Age: {age}")
-                        if draft and draft != 'Undrafted':
-                            draft_str = f"Drafted {draft}"
-                            if draft_round and draft_num and draft_round != 'Undrafted':
-                                draft_str += f" (R{draft_round}, #{draft_num})"
-                            parts.append(draft_str)
-                        
-                        bio_info = " • ".join(parts)
-                        if bio_info:
-                            bio_info += " • "
-                    
-                    st.markdown(f"<p style='text-align: center; color: #9CA3AF;'>{bio_info}{player_team} • {len(player_df)} games loaded</p>", unsafe_allow_html=True)
+                        height = bio.get('height', '-')
+                        weight = bio.get('weight', '-')
+                        age = bio.get('age', '-')
+                        draft = bio.get('draft_year', '-')
+                        bio_html = f"""<div style="text-align: center; color: #9CA3AF; font-size: 0.85rem; margin-bottom: 12px;">
+<span style="color: #9CA3AF;">HT:</span> <span style="color: #FAFAFA; font-weight: bold;">{height}</span> • 
+<span style="color: #9CA3AF;">WT:</span> <span style="color: #FAFAFA; font-weight: bold;">{weight} lbs</span> • 
+<span style="color: #9CA3AF;">Age:</span> <span style="color: #FAFAFA; font-weight: bold;">{age}</span> • 
+<span style="color: #9CA3AF;">Draft:</span> <span style="color: #FAFAFA; font-weight: bold;">{draft}</span>
+</div>"""
+                    else:
+                        bio_html = f"<div style='text-align: center; color: #9CA3AF; font-size: 0.85rem; margin-bottom: 12px;'>Team: {player_team}</div>"
+
+                    st.markdown(f"""<div style="text-align: center; margin-top: 15px;">
+<div style="color: #FAFAFA; font-weight: bold; font-size: 1.5rem; margin-bottom: 5px;">{selected_player}{pos_label}</div>
+{bio_html}
+<div style="display: flex; justify-content: center; gap: 12px; font-size: 0.9rem;">
+<div style="background: #374151; padding: 4px 12px; border-radius: 5px;">
+<span style="color: #9CA3AF;">GP:</span> <span style="color: #FAFAFA; font-weight: bold;">{len(player_df)}</span>
+</div>
+<div style="background: #374151; padding: 4px 12px; border-radius: 5px;">
+<span style="color: #9CA3AF;">IND REC:</span> <span style="color: #FAFAFA; font-weight: bold;">{ind_record}</span>
+</div>
+<div style="background: #374151; padding: 4px 12px; border-radius: 5px;">
+<span style="color: #9CA3AF;">TEAM REC:</span> <span style="color: #FAFAFA; font-weight: bold;">{team_record}</span> | <span style="color: #FAFAFA; font-weight: bold;">#{team_rank} in {team_conf}</span>
+</div>
+</div>
+</div>""", unsafe_allow_html=True)
                     
                     # Calculate shooting stats
                     if 'FGM' in player_df.columns and 'FGA' in player_df.columns:
@@ -2283,9 +2447,76 @@ elif page == "Player Stats":
                     if 'TS%' in display_df.columns:
                         display_df['TS%'] = display_df['TS%'].apply(lambda x: f"{x:.1f}%" if pd.notnull(x) and x != 0 else "-")
                     
-                    # Format PF as integer
-                    if 'PF' in display_df.columns:
-                        display_df['PF'] = display_df['PF'].astype(int)
+                    # Calculate averages for the whole log
+                    if not player_df.empty:
+                        last_all_df = player_df.copy()
+                        
+                        # Calculate numeric averages
+                        avg_pts = last_all_df['Points'].mean() if 'Points' in last_all_df.columns else 0
+                        avg_reb = last_all_df['Rebounds'].mean() if 'Rebounds' in last_all_df.columns else 0
+                        avg_ast = last_all_df['Assists'].mean() if 'Assists' in last_all_df.columns else 0
+                        avg_stl = last_all_df['Steals'].mean() if 'Steals' in last_all_df.columns else 0
+                        avg_blk = last_all_df['Blocks'].mean() if 'Blocks' in last_all_df.columns else 0
+                        avg_to = last_all_df['Turnovers'].mean() if 'Turnovers' in last_all_df.columns else 0
+                        avg_pf = last_all_df['PF'].mean() if 'PF' in last_all_df.columns else 0
+                        
+                        # Handle MIN
+                        def parse_minutes(m):
+                            try:
+                                if isinstance(m, str) and ':' in m:
+                                    return float(m.split(':')[0]) + float(m.split(':')[1])/60
+                                return float(m)
+                            except: return 0
+                        avg_min = last_all_df['MIN'].apply(parse_minutes).mean() if 'MIN' in last_all_df.columns else 0
+                        
+                        # Calculate shooting % (weighted)
+                        def calc_pct(num_col, den_col):
+                            num = last_all_df[num_col].sum() if num_col in last_all_df.columns else 0
+                            den = last_all_df[den_col].sum() if den_col in last_all_df.columns else 0
+                            return (num / den * 100) if den > 0 else 0
+                        
+                        avg_fg_pct = calc_pct('FGM', 'FGA')
+                        avg_3p_pct = calc_pct('3PM', '3PA')
+                        avg_ft_pct = calc_pct('FTM', 'FTA')
+                        
+                        # Calculate TS%
+                        total_pts = last_all_df['Points'].sum()
+                        total_fga = last_all_df['FGA'].sum() if 'FGA' in last_all_df.columns else 0
+                        total_fta = last_all_df['FTA'].sum() if 'FTA' in last_all_df.columns else 0
+                        avg_ts_pct = (total_pts / (2 * (total_fga + 0.44 * total_fta)) * 100) if (total_fga + 0.44 * total_fta) > 0 else 0
+                        
+                        # Create average row
+                        avg_row = {
+                            'GAME_DATE': 'AVERAGE',
+                            'MATCHUP': '',
+                            'W/L': '',
+                            'Score': '',
+                            'MIN': f"{avg_min:.1f}",
+                            'Points': f"{avg_pts:.1f}",
+                            'Rebounds': f"{avg_reb:.1f}",
+                            'Assists': f"{avg_ast:.1f}",
+                            'Steals': f"{avg_stl:.1f}",
+                            'Blocks': f"{avg_blk:.1f}",
+                            'Turnovers': f"{avg_to:.1f}",
+                            'PF': f"{avg_pf:.1f}",
+                            'FG': f"{last_all_df['FGM'].mean():.1f}/{last_all_df['FGA'].mean():.1f}" if 'FGM' in last_all_df.columns else '',
+                            'FG%': f"{avg_fg_pct:.1f}%",
+                            '3P': f"{last_all_df['3PM'].mean():.1f}/{last_all_df['3PA'].mean():.1f}" if '3PM' in last_all_df.columns else '',
+                            '3P%': f"{avg_3p_pct:.1f}%",
+                            'FT': f"{last_all_df['FTM'].mean():.1f}/{last_all_df['FTA'].mean():.1f}" if 'FTM' in last_all_df.columns else '',
+                            'FT%': f"{avg_ft_pct:.1f}%",
+                            'TS%': f"{avg_ts_pct:.1f}%"
+                        }
+                        
+                        # Filter avg_row to only available columns
+                        avg_row_filtered = {k: v for k, v in avg_row.items() if k in display_df.columns}
+                        avg_df = pd.DataFrame([avg_row_filtered])
+                        display_df = pd.concat([display_df, avg_df], ignore_index=True)
+
+                    def highlight_avg(row):
+                        if row.iloc[0] == 'AVERAGE':
+                            return ['background-color: #374151; font-weight: bold'] * len(row)
+                        return [''] * len(row)
                     
                     def style_wl(val):
                         if val == 'W':
@@ -2294,7 +2525,9 @@ elif page == "Player Stats":
                             return 'color: #EF4444; font-weight: bold'
                         return ''
                     
-                    styled_display_df = display_df.style.applymap(style_wl, subset=['W/L']) if 'W/L' in display_df.columns else display_df
+                    styled_display_df = display_df.style.apply(highlight_avg, axis=1)
+                    if 'W/L' in display_df.columns:
+                        styled_display_df = styled_display_df.applymap(style_wl, subset=['W/L'])
                     
                     st.dataframe(
                         styled_display_df, 
@@ -2720,7 +2953,7 @@ elif page == "Favorites":
                         with col_img:
                             if bio and bio.get('player_id'):
                                 headshot_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{bio['player_id']}.png"
-                                st.image(headshot_url, width=100)
+                                st.image(headshot_url, width=150)
                             else:
                                 st.write("👤")
                         
@@ -2728,12 +2961,12 @@ elif page == "Favorites":
                             # Team Logo + Name
                             team_abbrev = bio.get('team_abbrev') if bio else None
                             
-                            title_col1, title_col2 = st.columns([0.15, 0.85])
+                            title_col1, title_col2 = st.columns([0.2, 0.8])
                             with title_col1:
                                 if team_abbrev:
                                     logo = get_team_logo_url(team_abbrev)
                                     if logo:
-                                        st.image(logo, width=40)
+                                        st.image(logo, width=80)
                                     else:
                                         st.write(team_abbrev)
                             with title_col2:
@@ -2827,16 +3060,88 @@ elif page == "Favorites":
                                 }
                                 recent_display = recent_display.rename(columns=rename_map)
                                 
+                                # Calculate averages for the last 5 games
+                                if not recent.empty:
+                                    last_5_df = recent.copy()
+                                    
+                                    # Calculate numeric averages
+                                    avg_pts = last_5_df['Points'].mean() if 'Points' in last_5_df.columns else 0
+                                    avg_reb = last_5_df['Rebounds'].mean() if 'Rebounds' in last_5_df.columns else 0
+                                    avg_ast = last_5_df['Assists'].mean() if 'Assists' in last_5_df.columns else 0
+                                    avg_stl = last_5_df['Steals'].mean() if 'Steals' in last_5_df.columns else 0
+                                    avg_blk = last_5_df['Blocks'].mean() if 'Blocks' in last_5_df.columns else 0
+                                    avg_to = last_5_df['Turnovers'].mean() if 'Turnovers' in last_5_df.columns else 0
+                                    avg_pf = last_5_df['PF'].mean() if 'PF' in last_5_df.columns else 0
+                                    
+                                    # Handle MIN
+                                    def parse_minutes(m):
+                                        try:
+                                            if isinstance(m, str) and ':' in m:
+                                                return float(m.split(':')[0]) + float(m.split(':')[1])/60
+                                            return float(m)
+                                        except: return 0
+                                    avg_min = last_5_df['MIN'].apply(parse_minutes).mean() if 'MIN' in last_5_df.columns else 0
+                                    
+                                    # Calculate shooting % (weighted)
+                                    def calc_pct(num_col, den_col):
+                                        num = last_5_df[num_col].sum() if num_col in last_5_df.columns else 0
+                                        den = last_5_df[den_col].sum() if den_col in last_5_df.columns else 0
+                                        return (num / den * 100) if den > 0 else 0
+                                    
+                                    avg_fg_pct = calc_pct('FGM', 'FGA')
+                                    avg_3p_pct = calc_pct('3PM', '3PA')
+                                    avg_ft_pct = calc_pct('FTM', 'FTA')
+                                    
+                                    # Calculate TS%
+                                    total_pts = last_5_df['Points'].sum()
+                                    total_fga = last_5_df['FGA'].sum() if 'FGA' in last_5_df.columns else 0
+                                    total_fta = last_5_df['FTA'].sum() if 'FTA' in last_5_df.columns else 0
+                                    avg_ts_pct = (total_pts / (2 * (total_fga + 0.44 * total_fta)) * 100) if (total_fga + 0.44 * total_fta) > 0 else 0
+                                    
+                                    # Create average row
+                                    avg_row = {
+                                        'Date': 'AVERAGE',
+                                        'Matchup': '',
+                                        'W/L': '',
+                                        'Score': '',
+                                        'MIN': f"{avg_min:.1f}",
+                                        'PTS': f"{avg_pts:.1f}",
+                                        'REB': f"{avg_reb:.1f}",
+                                        'AST': f"{avg_ast:.1f}",
+                                        'STL': f"{avg_stl:.1f}",
+                                        'BLK': f"{avg_blk:.1f}",
+                                        'TO': f"{avg_to:.1f}",
+                                        'PF': f"{avg_pf:.1f}",
+                                        'FG': f"{last_5_df['FGM'].mean():.1f}/{last_5_df['FGA'].mean():.1f}" if 'FGM' in last_5_df.columns else '',
+                                        'FG%': f"{avg_fg_pct:.1f}%",
+                                        '3P': f"{last_5_df['3PM'].mean():.1f}/{last_5_df['3PA'].mean():.1f}" if '3PM' in last_5_df.columns else '',
+                                        '3P%': f"{avg_3p_pct:.1f}%",
+                                        'FT': f"{last_5_df['FTM'].mean():.1f}/{last_5_df['FTA'].mean():.1f}" if 'FTM' in last_5_df.columns else '',
+                                        'FT%': f"{avg_ft_pct:.1f}%",
+                                        'TS%': f"{avg_ts_pct:.1f}%"
+                                    }
+                                    
+                                    # Append average row
+                                    avg_df = pd.DataFrame([avg_row])
+                                    recent_display = pd.concat([recent_display, avg_df], ignore_index=True)
+                                
                                 # Style W/L
+                                def highlight_avg(row):
+                                    if row.iloc[0] == 'AVERAGE':
+                                        return ['background-color: #374151; font-weight: bold'] * len(row)
+                                    return [''] * len(row)
+
                                 def color_wl(val):
                                     if val == 'W': return 'color: #10B981; font-weight: bold'
                                     elif val == 'L': return 'color: #EF4444; font-weight: bold'
                                     return ''
                                 
                                 if 'W/L' in recent_display.columns:
-                                    styled = recent_display.style.applymap(color_wl, subset=['W/L'])
+                                    # Combine styling
+                                    styled = recent_display.style.apply(highlight_avg, axis=1)
+                                    styled = styled.applymap(color_wl, subset=['W/L'])
                                 else:
-                                    styled = recent_display
+                                    styled = recent_display.style.apply(highlight_avg, axis=1)
                                     
                                 st.dataframe(
                                     styled, 
@@ -2979,6 +3284,17 @@ elif page == "Favorites":
                     "SAS": {"name": "Spurs", "city": "San Antonio"}
                 }
                 
+                # Load Coach-to-Team mapping from CSV
+                coach_team_map = {}
+                try:
+                    coaches_df = pd.read_csv('nbacoaches.csv')
+                    for _, row in coaches_df.iterrows():
+                        coach_name = row['NAME']
+                        team_abbrev = row['ABBREV']
+                        coach_team_map[team_abbrev] = {"name": coach_name}
+                except Exception:
+                    pass
+
                 for team in favorite_teams:
                     rating = team_ratings.get(team, "N/A")
                     info = team_info.get(team, {"name": team, "city": ""})
@@ -3061,11 +3377,11 @@ elif page == "Favorites":
                     logo_url = get_team_logo_url(team)
                     
                     # Show team logo and card side by side
-                    logo_col, card_col = st.columns([0.15, 0.85])
+                    logo_col, card_col = st.columns([0.25, 0.75])
                     
                     with logo_col:
                         if logo_url:
-                            st.image(logo_url, width=60)
+                            st.image(logo_url, width=120)
                     
                     with card_col:
                         st.markdown(f"""
@@ -3113,6 +3429,10 @@ elif page == "Favorites":
                                 <div style="text-align: center;">
                                     <div style="color: #9CA3AF; font-size: 0.75rem;">vs <.500</div>
                                     <div style="color: #60A5FA; font-weight: 600;">{vs_losing}</div>
+                                </div>
+                                <div style="text-align: center;">
+                                    <div style="color: #9CA3AF; font-size: 0.75rem;">COACH</div>
+                                    <div style="color: #FAFAFA; font-weight: 600;">{coach_team_map.get(team, {}).get('name', 'N/A')}</div>
                                 </div>
                             </div>
                         </div>
@@ -3311,62 +3631,173 @@ elif page == "Compare Players":
                     
                     st.markdown("---")
                     
-                    # Player profile cards
+                    # Player profile cards (MVP Ladder style)
                     col1, col2 = st.columns(2)
+                    
+                    # Get standings for team records
+                    standings_df = get_league_standings(season)
                     
                     with col1:
                         # Player 1 card
                         p1_photo = get_player_photo_url(player1_name)
                         p1_logo = get_team_logo_url(player1_team)
                         
-                        # Build bio line (no draft info)
-                        bio1_parts = []
-                        if bio1:
-                            if bio1.get('height') and bio1.get('weight'):
-                                bio1_parts.append(f"{bio1['height']}, {bio1['weight']} lbs")
-                            if bio1.get('age') and bio1['age'] != 'N/A':
-                                bio1_parts.append(f"Age: {bio1['age']}")
-                        bio1_parts.append(player1_team)
-                        bio1_parts.append(f"{len(player1_df)} games loaded")
-                        bio1_line = " • ".join(bio1_parts)
+                        # Calculate stats
+                        ppg1 = player1_df['Points'].mean() if 'Points' in player1_df.columns else 0
+                        rpg1 = player1_df['Rebounds'].mean() if 'Rebounds' in player1_df.columns else 0
+                        apg1 = player1_df['Assists'].mean() if 'Assists' in player1_df.columns else 0
+                        stats1 = f"{ppg1:.1f} PPG, {rpg1:.1f} RPG, {apg1:.1f} APG"
                         
-                        st.markdown(f"""
-                        <div style="text-align: center; padding: 20px; background: #1F2937; border-radius: 10px;">
-                            <div style="display: flex; justify-content: center; align-items: center; gap: 15px; margin-bottom: 10px;">
-                                <img src="{p1_photo}" width="80" onerror="this.style.display='none'"/>
-                                <img src="{p1_logo}" width="60" onerror="this.style.display='none'"/>
-                            </div>
-                            <h2 style="color: #FAFAFA; margin: 10px 0;">{player1_name}</h2>
-                            <p style="color: #9CA3AF; margin: 5px 0; font-size: 0.9rem;">{bio1_line}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
+                        # Shooting splits
+                        total_fgm1 = player1_df['FGM'].sum() if 'FGM' in player1_df.columns else 0
+                        total_fga1 = player1_df['FGA'].sum() if 'FGA' in player1_df.columns else 0
+                        fg_pct1 = (total_fgm1 / total_fga1 * 100) if total_fga1 > 0 else 0
+                        total_3pm1 = player1_df['3PM'].sum() if '3PM' in player1_df.columns else 0
+                        total_3pa1 = player1_df['3PA'].sum() if '3PA' in player1_df.columns else 0
+                        three_pct1 = (total_3pm1 / total_3pa1 * 100) if total_3pa1 > 0 else 0
+                        total_ftm1 = player1_df['FTM'].sum() if 'FTM' in player1_df.columns else 0
+                        total_fta1 = player1_df['FTA'].sum() if 'FTA' in player1_df.columns else 0
+                        ft_pct1 = (total_ftm1 / total_fta1 * 100) if total_fta1 > 0 else 0
+                        shooting1 = f"{fg_pct1:.1f}% FG • {three_pct1:.1f}% 3P • {ft_pct1:.1f}% FT"
+                        
+                        # Team record and rank
+                        team_record1 = "N/A"
+                        team_rank1 = "N/A"
+                        team_conf1 = "N/A"
+                        if not standings_df.empty:
+                            for _, row in standings_df.iterrows():
+                                if get_team_abbrev(row['TeamCity']) == player1_team:
+                                    team_record1 = row['Record']
+                                    team_rank1 = row['PlayoffRank']
+                                    team_conf1 = row['Conference']
+                                    break
+                        
+                        # Photo and logo (Centered standardized layout)
+                        spacer1, photo_col1, logo_col1, spacer2 = st.columns([1, 1, 1, 1])
+                        with photo_col1:
+                            if p1_photo:
+                                st.image(p1_photo, width=120)
+                        with logo_col1:
+                            if p1_logo:
+                                st.image(p1_logo, width=100)
+                        
+                        p1_pos = ""
+                        if bio1 and bio1.get('position'):
+                            abbrev_p1 = abbreviate_position(bio1['position'], player1_name)
+                            p1_pos = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 0.85rem;'>({abbrev_p1})</span>"
+                        
+                        # Bio for player 1 (Muted labels, bold values)
+                        p1_height = bio1.get('height', '-') if bio1 else '-'
+                        p1_weight = bio1.get('weight', '-') if bio1 else '-'
+                        p1_age = bio1.get('age', '-') if bio1 else '-'
+                        p1_draft = bio1.get('draft_year', '-') if bio1 else '-'
+
+                        # Calculate individual record using correct column name
+                        p1_wins = (player1_df['W/L'] == 'W').sum() if 'W/L' in player1_df.columns else 0
+                        p1_losses = (player1_df['W/L'] == 'L').sum() if 'W/L' in player1_df.columns else 0
+                        p1_ind_record = f"{p1_wins}-{p1_losses}"
+
+                        st.markdown(f"""<div style="text-align: center; margin-top: 10px;">
+<div style="color: #FAFAFA; font-weight: bold; font-size: 1.1rem; margin-bottom: 5px;">{player1_name}{p1_pos}</div>
+<div style="color: #9CA3AF; font-size: 0.8rem; margin-bottom: 10px;">
+<span style="color: #9CA3AF;">HT:</span> <span style="color: #FAFAFA; font-weight: bold;">{p1_height}</span> • 
+<span style="color: #9CA3AF;">WT:</span> <span style="color: #FAFAFA; font-weight: bold;">{p1_weight} lbs</span> • 
+<span style="color: #9CA3AF;">Age:</span> <span style="color: #FAFAFA; font-weight: bold;">{p1_age}</span> • 
+<span style="color: #9CA3AF;">Draft:</span> <span style="color: #FAFAFA; font-weight: bold;">{p1_draft}</span>
+</div>
+<div style="display: flex; justify-content: center; gap: 6px; font-size: 0.72rem;">
+<div style="background: #374151; padding: 2px 6px; border-radius: 4px;">
+<span style="color: #9CA3AF;">GP:</span> <span style="color: #FAFAFA; font-weight: bold;">{len(player1_df)}</span>
+</div>
+<div style="background: #374151; padding: 2px 6px; border-radius: 4px;">
+<span style="color: #9CA3AF;">IND:</span> <span style="color: #FAFAFA; font-weight: bold;">{p1_ind_record}</span>
+</div>
+<div style="background: #374151; padding: 2px 6px; border-radius: 4px;">
+<span style="color: #9CA3AF;">REC:</span> <span style="color: #FAFAFA; font-weight: bold;">{team_record1}</span> | <span style="color: #FAFAFA; font-weight: bold;">#{team_rank1} in {team_conf1}</span>
+</div>
+</div>
+</div>""", unsafe_allow_html=True)
                     
                     with col2:
                         # Player 2 card
                         p2_photo = get_player_photo_url(player2_name)
                         p2_logo = get_team_logo_url(player2_team)
                         
-                        # Build bio line (no draft info)
-                        bio2_parts = []
-                        if bio2:
-                            if bio2.get('height') and bio2.get('weight'):
-                                bio2_parts.append(f"{bio2['height']}, {bio2['weight']} lbs")
-                            if bio2.get('age') and bio2['age'] != 'N/A':
-                                bio2_parts.append(f"Age: {bio2['age']}")
-                        bio2_parts.append(player2_team)
-                        bio2_parts.append(f"{len(player2_df)} games loaded")
-                        bio2_line = " • ".join(bio2_parts)
+                        # Calculate stats
+                        ppg2 = player2_df['Points'].mean() if 'Points' in player2_df.columns else 0
+                        rpg2 = player2_df['Rebounds'].mean() if 'Rebounds' in player2_df.columns else 0
+                        apg2 = player2_df['Assists'].mean() if 'Assists' in player2_df.columns else 0
+                        stats2 = f"{ppg2:.1f} PPG, {rpg2:.1f} RPG, {apg2:.1f} APG"
                         
-                        st.markdown(f"""
-                        <div style="text-align: center; padding: 20px; background: #1F2937; border-radius: 10px;">
-                            <div style="display: flex; justify-content: center; align-items: center; gap: 15px; margin-bottom: 10px;">
-                                <img src="{p2_photo}" width="80" onerror="this.style.display='none'"/>
-                                <img src="{p2_logo}" width="60" onerror="this.style.display='none'"/>
-                            </div>
-                            <h2 style="color: #FAFAFA; margin: 10px 0;">{player2_name}</h2>
-                            <p style="color: #9CA3AF; margin: 5px 0; font-size: 0.9rem;">{bio2_line}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
+                        # Shooting splits
+                        total_fgm2 = player2_df['FGM'].sum() if 'FGM' in player2_df.columns else 0
+                        total_fga2 = player2_df['FGA'].sum() if 'FGA' in player2_df.columns else 0
+                        fg_pct2 = (total_fgm2 / total_fga2 * 100) if total_fga2 > 0 else 0
+                        total_3pm2 = player2_df['3PM'].sum() if '3PM' in player2_df.columns else 0
+                        total_3pa2 = player2_df['3PA'].sum() if '3PA' in player2_df.columns else 0
+                        three_pct2 = (total_3pm2 / total_3pa2 * 100) if total_3pa2 > 0 else 0
+                        total_ftm2 = player2_df['FTM'].sum() if 'FTM' in player2_df.columns else 0
+                        total_fta2 = player2_df['FTA'].sum() if 'FTA' in player2_df.columns else 0
+                        ft_pct2 = (total_ftm2 / total_fta2 * 100) if total_fta2 > 0 else 0
+                        shooting2 = f"{fg_pct2:.1f}% FG • {three_pct2:.1f}% 3P • {ft_pct2:.1f}% FT"
+                        
+                        # Team record and rank
+                        team_record2 = "N/A"
+                        team_rank2 = "N/A"
+                        team_conf2 = "N/A"
+                        if not standings_df.empty:
+                            for _, row in standings_df.iterrows():
+                                if get_team_abbrev(row['TeamCity']) == player2_team:
+                                    team_record2 = row['Record']
+                                    team_rank2 = row['PlayoffRank']
+                                    team_conf2 = row['Conference']
+                                    break
+                        
+                        # Photo and logo (Centered standardized layout)
+                        spacer1, photo_col2, logo_col2, spacer2 = st.columns([1, 1, 1, 1])
+                        with photo_col2:
+                            if p2_photo:
+                                st.image(p2_photo, width=120)
+                        with logo_col2:
+                            if p2_logo:
+                                st.image(p2_logo, width=100)
+                        
+                        p2_pos = ""
+                        if bio2 and bio2.get('position'):
+                            abbrev_p2 = abbreviate_position(bio2['position'], player2_name)
+                            p2_pos = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 0.85rem;'>({abbrev_p2})</span>"
+                            
+                        # Bio for player 2 (Muted labels, bold values)
+                        p2_height = bio2.get('height', '-') if bio2 else '-'
+                        p2_weight = bio2.get('weight', '-') if bio2 else '-'
+                        p2_age = bio2.get('age', '-') if bio2 else '-'
+                        p2_draft = bio2.get('draft_year', '-') if bio2 else '-'
+
+                        # Calculate individual record using correct column name
+                        p2_wins = (player2_df['W/L'] == 'W').sum() if 'W/L' in player2_df.columns else 0
+                        p2_losses = (player2_df['W/L'] == 'L').sum() if 'W/L' in player2_df.columns else 0
+                        p2_ind_record = f"{p2_wins}-{p2_losses}"
+
+                        st.markdown(f"""<div style="text-align: center; margin-top: 10px;">
+<div style="color: #FAFAFA; font-weight: bold; font-size: 1.1rem; margin-bottom: 5px;">{player2_name}{p2_pos}</div>
+<div style="color: #9CA3AF; font-size: 0.8rem; margin-bottom: 10px;">
+<span style="color: #9CA3AF;">HT:</span> <span style="color: #FAFAFA; font-weight: bold;">{p2_height}</span> • 
+<span style="color: #9CA3AF;">WT:</span> <span style="color: #FAFAFA; font-weight: bold;">{p2_weight} lbs</span> • 
+<span style="color: #9CA3AF;">Age:</span> <span style="color: #FAFAFA; font-weight: bold;">{p2_age}</span> • 
+<span style="color: #9CA3AF;">Draft:</span> <span style="color: #FAFAFA; font-weight: bold;">{p2_draft}</span>
+</div>
+<div style="display: flex; justify-content: center; gap: 6px; font-size: 0.72rem;">
+<div style="background: #374151; padding: 2px 6px; border-radius: 4px;">
+<span style="color: #9CA3AF;">GP:</span> <span style="color: #FAFAFA; font-weight: bold;">{len(player2_df)}</span>
+</div>
+<div style="background: #374151; padding: 2px 6px; border-radius: 4px;">
+<span style="color: #9CA3AF;">IND:</span> <span style="color: #FAFAFA; font-weight: bold;">{p2_ind_record}</span>
+</div>
+<div style="background: #374151; padding: 2px 6px; border-radius: 4px;">
+<span style="color: #9CA3AF;">REC:</span> <span style="color: #FAFAFA; font-weight: bold;">{team_record2}</span> | <span style="color: #FAFAFA; font-weight: bold;">#{team_rank2} in {team_conf2}</span>
+</div>
+</div>
+</div>""", unsafe_allow_html=True)
                     
                     st.markdown("---")
                     st.markdown("<h3 style='text-align: center;'>Season Averages Comparison</h3>", unsafe_allow_html=True)
@@ -3411,6 +3842,13 @@ elif page == "Compare Players":
                             stats['TS%'] = round((total_pts / (2 * (total_fga + 0.44 * total_fta)) * 100), 1) if (total_fga + 0.44 * total_fta) > 0 else 0
                         else:
                             stats['TS%'] = 0
+                            
+                        # IND REC
+                        wins = (df['W/L'] == 'W').sum() if 'W/L' in df.columns else 0
+                        losses = (df['W/L'] == 'L').sum() if 'W/L' in df.columns else 0
+                        stats['IND REC'] = f"{wins}-{losses}"
+                        # Calculate win pct for comparison logic
+                        stats['Win%'] = round((wins / (wins + losses) * 100), 1) if (wins + losses) > 0 else 0
                         
                         # Games and minutes
                         stats['Games'] = len(df)
@@ -3436,12 +3874,16 @@ elif page == "Compare Players":
                     
                     # Create comparison table
                     comparison_data = []
-                    for stat in ['PPG', 'RPG', 'APG', 'SPG', 'BPG', 'TPG', 'FG%', '3P%', 'FT%', 'TS%', 'MPG', 'Games']:
+                    for stat in ['PPG', 'RPG', 'APG', 'SPG', 'BPG', 'TPG', 'FG%', '3P%', 'FT%', 'TS%', 'MPG', 'Games', 'IND REC']:
                         v1 = p1_stats.get(stat, 0)
                         v2 = p2_stats.get(stat, 0)
                         
                         # Determine winner
-                        if stat in higher_is_better:
+                        if stat == 'IND REC':
+                            # Compare win percentages for ID REC
+                            p1_better = p1_stats.get('Win%', 0) > p2_stats.get('Win%', 0)
+                            p2_better = p2_stats.get('Win%', 0) > p1_stats.get('Win%', 0)
+                        elif stat in higher_is_better:
                             p1_better = v1 > v2
                             p2_better = v2 > v1
                         else:  # lower is better (like turnovers)
@@ -3486,6 +3928,9 @@ elif page == "Compare Players":
                                 {value}
                             </div>
                             """, unsafe_allow_html=True)
+                    
+                    
+                    st.caption("Note: 'IND REC' comparison is based on individual player win percentage in games played.")
                     
                     # ==================== HEAD-TO-HEAD MATCHUPS ====================
                     st.markdown("---")
@@ -3699,154 +4144,9 @@ elif page == "Around the NBA":
         standings_df = get_league_standings(season)
         nba_news = get_nba_news()
 
-        
-    # ===== SECTION 1: 🏆 KIA MVP LADDER =====
-    st.markdown("## 🏆 KIA MVP Ladder")
-    st.caption("The latest rankings in the race for the 2025-26 MVP award")
+    # MVP Ladder has been moved to the Awards page
     
-    if mvp_ladder:
-        # Helper function to render a single MVP card
-        def render_mvp_card(player, rank_idx):
-            # Display rank badge with color coding
-            rank_color = "#FFD700" if rank_idx == 0 else "#C0C0C0" if rank_idx == 1 else "#CD7F32" if rank_idx == 2 else "#667eea"
-            
-            st.markdown(f"""
-            <div style="text-align: center; font-size: 1.2rem; font-weight: bold; color: {rank_color}; margin-bottom: 5px;">#{player['rank']}</div>
-            """, unsafe_allow_html=True)
-            
-            # Parse player name and team
-            raw_full = player.get('name', '')
-            player_name = raw_full
-            team_abbrev = player.get('team_abbrev')
-            team_name = player.get('team', '')
-            
-            if ',' in raw_full:
-                parts = raw_full.split(',')
-                player_name = parts[0].strip()
-                team_part = parts[1].strip()
-                if team_part:
-                    team_name = team_part
-                
-                # Try to find team abbreviation from name
-                sorted_cities = sorted(TEAM_ABBREV_MAP.keys(), key=len, reverse=True)
-                for city in sorted_cities:
-                    if city.lower() == team_part.lower() or f" {city.lower()} " in f" {team_part.lower()} ":
-                        team_abbrev = TEAM_ABBREV_MAP[city]
-                        break
-                    if city == 'Oklahoma City' and 'oklahoma' in team_part.lower():
-                        team_abbrev = 'OKC'
-                        break
-
-            # Get photo URLs
-            player_photo_url = get_player_photo_url(player_name)
-            team_logo_url = get_team_logo_url(team_abbrev) if team_abbrev else None
-            
-            # Fetch Games Played, Stats, and Team Record from NBA API
-            games_played = player.get('games_played', 'N/A')
-            player_stats = player.get('stats', 'N/A')
-            team_record = "N/A"
-            
-            if player_name:
-                try:
-                    # Use default season from function definition to avoid scope issues
-                    # get_player_game_log is defined in this file (app.py)
-                    df_log, _ = get_player_game_log(player_name)
-                    
-                    if df_log is not None and not df_log.empty:
-                        games_played = str(len(df_log))
-                        
-                        # Calculate live season averages from game log
-                        # Note: get_player_game_log renames columns PTS->Points, REB->Rebounds, AST->Assists
-                        ppg = df_log['Points'].mean() if 'Points' in df_log.columns else 0
-                        rpg = df_log['Rebounds'].mean() if 'Rebounds' in df_log.columns else 0
-                        apg = df_log['Assists'].mean() if 'Assists' in df_log.columns else 0
-                        
-                        # Calculate Shooting Splits and Efficiency
-                        # FGM, FGA, 3PM, 3PA, FTM, FTA 
-                        # Note: get_player_game_log returns: 'FGM', 'FGA', '3PM', '3PA', 'FTM', 'FTA' (renamed from FG3M etc)
-                        
-                        total_fgm = df_log['FGM'].sum() if 'FGM' in df_log.columns else 0
-                        total_fga = df_log['FGA'].sum() if 'FGA' in df_log.columns else 0
-                        fg_pct = (total_fgm / total_fga * 100) if total_fga > 0 else 0
-                        
-                        total_3pm = df_log['3PM'].sum() if '3PM' in df_log.columns else 0
-                        total_3pa = df_log['3PA'].sum() if '3PA' in df_log.columns else 0
-                        three_pct = (total_3pm / total_3pa * 100) if total_3pa > 0 else 0
-                        
-                        total_ftm = df_log['FTM'].sum() if 'FTM' in df_log.columns else 0
-                        total_fta = df_log['FTA'].sum() if 'FTA' in df_log.columns else 0
-                        ft_pct = (total_ftm / total_fta * 100) if total_fta > 0 else 0
-                        
-                        # Removed TS% per user request
-                        
-                        shooting_stats = f"{fg_pct:.1f}% FG • {three_pct:.1f}% 3P • {ft_pct:.1f}% FT"
-
-                        # Format live stats - Overwrite scraped stats to ensure accuracy
-                        player_stats = f"{ppg:.1f} PPG, {rpg:.1f} RPG, {apg:.1f} APG"
-                    else:
-                        shooting_stats = ""
-                        # If fetching fails and we have no stats (positions 6-10), show standardized N/A or try cached
-                        if player_stats == 'N/A':
-                             pass 
-                except Exception as e:
-                    # st.error(f"Debug Error {player_name}: {str(e)}")
-                    pass
-            
-            if not standings_df.empty and team_name:
-                matching = standings_df[standings_df['TeamCity'].str.contains(team_name.split()[0], case=False, na=False)]
-                if not matching.empty:
-                    team_record = matching.iloc[0]['Record']
-            
-            # Show photos
-            if team_logo_url:
-                spacer1, photo_col, logo_col, spacer2 = st.columns([0.5, 1.5, 1.5, 0.5])
-                with photo_col:
-                    if player_photo_url:
-                        st.image(player_photo_url, width=90)
-                with logo_col:
-                    if team_logo_url:
-                        st.image(team_logo_url, width=70)
-            else:
-                if player_photo_url:
-                    st.image(player_photo_url, width=100)
-            
-            # Player name and stats
-            st.markdown(f"""
-            <div style="text-align: center; margin-top: 10px;">
-                <div style="color: #FAFAFA; font-weight: bold; font-size: 0.95rem; margin-bottom: 5px; line-height: 1.2;">{raw_full}</div>
-                <div style="color: #9CA3AF; font-size: 0.8rem; margin-bottom: 2px;">{player_stats}</div>
-                <div style="color: #6B7280; font-size: 0.75rem; margin-bottom: 8px;">{shooting_stats}</div>
-                <div style="display: flex; justify-content: center; gap: 12px; font-size: 0.75rem;">
-                    <div style="background: #374151; padding: 2px 8px; border-radius: 4px;">
-                        <span style="color: #9CA3AF;">GP:</span> <span style="color: #FAFAFA; font-weight: bold;">{games_played}</span>
-                    </div>
-                    <div style="background: #374151; padding: 2px 8px; border-radius: 4px;">
-                        <span style="color: #9CA3AF;">TEAM REC:</span> <span style="color: #FAFAFA; font-weight: bold;">{team_record}</span>
-                    </div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # Row 1: Top 5
-        cols = st.columns(5)
-        for i, player in enumerate(mvp_ladder[:5]):
-            with cols[i]:
-                render_mvp_card(player, i)
-        
-        # Row 2: 6-10 (if available)
-        if len(mvp_ladder) > 5:
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("##### The Next 5")
-            cols2 = st.columns(5)
-            for i, player in enumerate(mvp_ladder[5:10]):
-                with cols2[i]:
-                    render_mvp_card(player, i + 5)
-    else:
-        st.info("MVP Ladder data currently unavailable.")
-    
-    st.markdown("---")
-    
-    # ===== SECTION 2: 📅 DAILY GAME SLATE =====
+    # ===== SECTION 1: 📅 DAILY GAME SLATE =====
     st.markdown("## Today's Games")
     
     # Get today's games using the same function as Predictions page
@@ -4006,16 +4306,98 @@ elif page == "Standings":
         tab_west, tab_east, tab_divisions, tab_playoffs = st.tabs(["Western Conference", "Eastern Conference", "Divisions", "Playoff Picture"])
         
         def display_conference_standings(conference_df, favorite_teams, team_ratings, schedule, all_standings):
-            """Display standings for a conference with favorite team highlighting."""
+            """Display standings for a conference with favorite team highlighting and tiebreaker notes."""
             # Sort by playoff rank
             conference_df = conference_df.sort_values('PlayoffRank')
             
+            # Detect ties and calculate tiebreakers
+            tiebreaker_notes = []
+            active_ties = {} # rank -> symbol
+            
+            df_reset = conference_df.reset_index(drop=True)
+            
+            # Helper to check H2H record
+            def check_h2h_winner(team_a_abbr, team_b_abbr):
+                try:
+                     # Fetch logs for team A vs team B
+                     # Optimization: For now we skip live fetch inside loop or implement strictly
+                     # Just return neutral explanation if API heavy.
+                     # But user asked for reason.
+                     games = get_team_game_log(team_a_abbr, season, num_games=82)
+                     if games is not None and not games.empty:
+                         wins = 0
+                         losses = 0
+                         played = False
+                         for _, game in games.iterrows():
+                             if team_b_abbr in game.get('MATCHUP', ''):
+                                 played = True
+                                 if game['WL'] == 'W':
+                                     wins += 1
+                                 else:
+                                     losses += 1
+                         if played:
+                             if wins > losses:
+                                 return f"Better Head-to-Head record vs {team_b_abbr} ({wins}-{losses})"
+                             elif losses > wins:
+                                 return f"Worse Head-to-Head record vs {team_b_abbr} ({wins}-{losses})"
+                             else:
+                                 return f"Tied Head-to-Head with {team_b_abbr} ({wins}-{losses})"
+                except:
+                    pass
+                return None
+
+            for i in range(len(df_reset) - 1):
+                team1 = df_reset.iloc[i]
+                team2 = df_reset.iloc[i+1]
+                
+                if team1['Record'] == team2['Record']:
+                    t1_abbr = get_team_abbrev(team1['TeamCity'])
+                    t2_abbr = get_team_abbrev(team2['TeamCity'])
+                    t1_name = team1['TeamCity']
+                    t2_name = team2['TeamCity']
+                    
+                    rank = int(team1['PlayoffRank'])
+                    if rank not in active_ties:
+                        active_ties[rank] = "*"
+                    
+                    reason = "Tiebreaker Rule applied"
+                    
+                    # 1. H2H check
+                    h2h = check_h2h_winner(t1_abbr, t2_abbr)
+                    if h2h and "Better" in h2h:
+                        reason = h2h
+                    else:
+                        # 2. Conference Record check
+                        try:
+                            def parse_pct(s):
+                                if '-' in str(s):
+                                    w, l = map(int, s.split('-'))
+                                    return w/(w+l) if (w+l)>0 else 0
+                                return 0
+                            c1 = parse_pct(team1.get('ConferenceRecord', '0-0'))
+                            c2 = parse_pct(team2.get('ConferenceRecord', '0-0'))
+                            
+                            if c1 > c2:
+                                reason = f"Better Conference Record ({team1['ConferenceRecord']} vs {team2.get('ConferenceRecord','')})"
+                            elif c1 < c2:
+                                reason = f"Division Leader or other rule" # Should be team2 higher?
+                            else:
+                                # 3. Division Record
+                                d1_slug = get_team_division(t1_abbr)
+                                d2_slug = get_team_division(t2_abbr)
+                                if d1_slug == d2_slug:
+                                    reason = f"Better Division Record ({team1.get('DivisionRecord','')} vs {team2.get('DivisionRecord','')})"
+                        except:
+                            pass
+                    
+                    tiebreaker_notes.append(f"*{rank} {t1_name} over {t2_name}: {reason}")
+
             for idx, row in conference_df.iterrows():
                 team_abbrev = get_team_abbrev(row['TeamCity'])
                 is_favorite = team_abbrev in favorite_teams
                 
                 rank = int(row['PlayoffRank'])
-                team_name = f"{row['TeamCity']} {row['TeamName']}"
+                team_name = f"{row['TeamCity']} {row['TeamName']}".strip()
                 record = row['Record']
                 win_pct = f"{row['WinPct']:.3f}" if isinstance(row['WinPct'], float) else row['WinPct']
                 l10 = row.get('L10', 'N/A')
@@ -4121,6 +4503,13 @@ elif page == "Standings":
                     """, unsafe_allow_html=True)
                 else:
                     st.divider()
+            
+            # Display collected tiebreaker notes
+            if tiebreaker_notes:
+                st.markdown("---")
+                st.caption(f"**Tiebreaker Notes:**")
+                for note in tiebreaker_notes:
+                    st.caption(note)
         
         with tab_west:
             st.markdown("### Western Conference")
@@ -4147,7 +4536,7 @@ elif page == "Standings":
                 if not team_row.empty:
                     row = team_row.iloc[0]
                     abbrev = get_team_abbrev(row['TeamCity'])
-                    name = f"{row['TeamCity']} {row['TeamName']}"
+                    name = f"{row['TeamCity']} {row['TeamName']}".strip()
                     record = row['Record']
                     return {'abbrev': abbrev, 'name': name, 'record': record, 'seed': seed}
                 return None
@@ -4290,7 +4679,7 @@ elif page == "Standings":
                     team_abbrev = get_team_abbrev(row['TeamCity'])
                     is_favorite = team_abbrev in favorite_teams
                     
-                    team_name = f"{row['TeamCity']} {row['TeamName']}"
+                    team_name = f"{row['TeamCity']} {row['TeamName']}".strip()
                     record = row['Record']
                     div_rec = row.get('DivisionRecord', 'N/A')
                     win_pct = f"{row['WinPct']:.3f}" if isinstance(row['WinPct'], float) else row['WinPct']
@@ -4310,10 +4699,31 @@ elif page == "Standings":
                             st.markdown(f"**{idx}**")
                     
                     with col2:
-                        if is_favorite:
-                            st.markdown(f"**:orange[{team_name}]**")
+                        # Color coding based on seed
+                        seed_val = 99
+                        if isinstance(conf_seed, int):
+                            seed_val = conf_seed
+                        
+                        if seed_val <= 6:
+                            # Playoff spots - Green
+                            color = "#10B981"
+                        elif seed_val <= 10:
+                            # Play-in spots - Yellow/Orange
+                            color = "#F59E0B" 
                         else:
-                            st.markdown(f"**{team_name}**")
+                            color = "#FAFAFA"
+                            
+                        # If favorite, force bold/orange or mix? 
+                        # User priority: "put teams in green/yellow". 
+                        # We will make favorites Orange still to distinguish them, or maybe just bold?
+                        # Let's check session state: favorite users prefer visibility. 
+                        # Compromise: Use Seed Color, but add Star for Favorite.
+                        
+                        display_name = f"<span style='color: {color}; font-weight: bold;'>{team_name}</span>"
+                        if is_favorite:
+                             display_name = f"{display_name} <span style='color: #F59E0B; font-weight: normal; font-size: 0.8rem;'>(Fav)</span>"
+                        
+                        st.markdown(display_name, unsafe_allow_html=True)
                     
                     with col3:
                         st.write(record)
@@ -4326,6 +4736,14 @@ elif page == "Standings":
                     
                     with col6:
                         st.write(win_pct)
+                
+                # Legend at bottom
+                st.markdown("""
+                <div style="margin-top: 15px; font-size: 0.8rem; color: #9CA3AF;">
+                    <span style="color: #10B981; font-weight: bold;">●</span> Playoffs (1-6) &nbsp;&nbsp;
+                    <span style="color: #F59E0B; font-weight: bold;">●</span> Play-In Tournament (7-10)
+                </div>
+                """, unsafe_allow_html=True)
             
             # Create division tabs - all in one row
             all_divs = st.tabs(["Northwest", "Pacific", "Southwest", "Atlantic", "Central", "Southeast"])
@@ -4355,9 +4773,500 @@ elif page == "Standings":
                 display_division_standings("Southeast", divisions["Southeast"], standings_df, user_favorite_teams)
 
 
+# ==================== AWARDS PAGE ====================
+elif st.session_state.current_page == "Awards":
+    st.title("NBA Awards")
+    render_section_header("NBA Awards", "Season award favorites and betting odds")
+    
+    # Get required data for MVP Ladder
+    standings_df = get_league_standings(season)
+    mvp_ladder = get_mvp_ladder()
+    
+    # Pre-fetch stats for MVP candidates (and later awards)
+    bulk_player_stats = get_bulk_player_stats()
+
+    
+    # ===== SECTION 1: MVP LADDER (Moved from Around the NBA) =====
+    st.markdown("## 🏆 KIA MVP Ladder")
+    st.caption("The latest rankings in the race for the 2025-26 MVP award")
+    st.caption("Disclaimer: REC refers to the team record, not the player's individual record. For individual record, view season stats.")
+    
+    if mvp_ladder:
+        # Helper function to render a single MVP card
+        def render_mvp_card(player, rank_idx):
+            rank_color = "#FFD700" if rank_idx == 0 else "#C0C0C0" if rank_idx == 1 else "#CD7F32" if rank_idx == 2 else "#667eea"
+            
+            st.markdown(f"""
+            <div style="text-align: center; font-size: 1.2rem; font-weight: bold; color: {rank_color}; margin-bottom: 5px;">#{player['rank']}</div>
+            """, unsafe_allow_html=True)
+            
+            raw_full = player.get('name', '')
+            player_name = raw_full
+            team_abbrev = player.get('team_abbrev')
+            team_name = player.get('team', '')
+            
+            if ',' in raw_full:
+                parts = raw_full.split(',')
+                player_name = parts[0].strip()
+                team_part = parts[1].strip()
+                if team_part:
+                    team_name = team_part
+                sorted_cities = sorted(TEAM_ABBREV_MAP.keys(), key=len, reverse=True)
+                for city in sorted_cities:
+                    if city.lower() == team_part.lower():
+                        team_abbrev = TEAM_ABBREV_MAP[city]
+                        break
+
+            player_photo_url = get_player_photo_url(player_name)
+            team_logo_url = get_team_logo_url(team_abbrev) if team_abbrev else None
+            
+            games_played = player.get('games_played', 'N/A')
+            player_stats = player.get('stats', 'N/A')
+            shooting_stats = ""
+            team_record = "N/A"
+            team_rank = "N/A"
+            team_conf = ""
+            
+            if player_name:
+                try:
+                    # Optimized lookup in bulk stats
+                    found_stats = None
+                    if bulk_player_stats is not None and not bulk_player_stats.empty:
+                        match = bulk_player_stats[bulk_player_stats['PLAYER_NAME'].str.lower() == player_name.lower()]
+                        if not match.empty:
+                            found_stats = match.iloc[0]
+                        else:
+                            match = bulk_player_stats[bulk_player_stats['PLAYER_NAME'].str.lower().str.contains(player_name.lower())]
+                            if not match.empty:
+                                found_stats = match.iloc[0]
+                    
+                    if found_stats is not None:
+                        games_played = str(int(found_stats['GP']))
+                        ppg = found_stats['PTS']
+                        rpg = found_stats['REB']
+                        apg = found_stats['AST']
+                        
+                        fg_pct = found_stats['FG_PCT'] * 100
+                        three_pct = found_stats['FG3_PCT'] * 100
+                        ft_pct = found_stats['FT_PCT'] * 100
+                        
+                        shooting_stats = f"{fg_pct:.1f}% FG • {three_pct:.1f}% 3P • {ft_pct:.1f}% FT"
+                        player_stats = f"{ppg:.1f} PPG · {rpg:.1f} RPG · {apg:.1f} APG"
+                    else:
+                         # Fallback to slow API
+                         df_log, _ = get_player_game_log(player_name)
+                         if df_log is not None and not df_log.empty:
+                            games_played = str(len(df_log))
+                            ppg = df_log['Points'].mean()
+                            rpg = df_log['Rebounds'].mean()
+                            apg = df_log['Assists'].mean()
+                            player_stats = f"{ppg:.1f} PPG · {rpg:.1f} RPG · {apg:.1f} APG"
+                except:
+                    pass
+            
+            if not standings_df.empty and team_name:
+                matching = standings_df[standings_df['TeamCity'].str.contains(team_name.split()[0], case=False, na=False)]
+                if not matching.empty:
+                    team_record = matching.iloc[0]['Record']
+                    team_rank = matching.iloc[0].get('PlayoffRank', 'N/A')
+                    team_conf = matching.iloc[0].get('Conference', '')
+            
+            if team_logo_url:
+                spacer1, photo_col, logo_col, spacer2 = st.columns([1, 4.5, 4.5, 1])
+                with photo_col:
+                    if player_photo_url:
+                        st.image(player_photo_url, width=220)
+                with logo_col:
+                    if team_logo_url:
+                        st.image(team_logo_url, width=200)
+            else:
+                if player_photo_url:
+                    st.image(player_photo_url, width=100)
+            
+            # Fetch position from bio
+            pos_label = ""
+            try:
+                bio = fetch_player_bio(player_name)
+                if bio and bio.get('position'):
+                    abbrev_pos = abbreviate_position(bio['position'], player_name)
+                    pos_label = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 0.8rem;'>({abbrev_pos})</span>"
+            except:
+                pass
+            
+            st.markdown(f"""
+            <div style="text-align: center; margin-top: 10px;">
+                <div style="color: #FAFAFA; font-weight: bold; font-size: 0.9rem; margin-bottom: 5px; line-height: 1.2;">{player_name}{pos_label}</div>
+                <div style="color: #9CA3AF; font-size: 0.72rem; margin-bottom: 2px;">{player_stats}</div>
+                <div style="color: #6B7280; font-size: 0.75rem; margin-bottom: 8px;">{shooting_stats}</div>
+                <div style="display: flex; justify-content: center; gap: 12px; font-size: 0.75rem;">
+                    <div style="background: #374151; padding: 2px 8px; border-radius: 4px;">
+                        <span style="color: #9CA3AF;">GP:</span> <span style="color: #FAFAFA; font-weight: bold;">{games_played}</span>
+                    </div>
+                    <div style="background: #374151; padding: 2px 8px; border-radius: 4px;">
+                        <span style="color: #9CA3AF;">REC:</span> <span style="color: #FAFAFA; font-weight: bold;">{team_record}</span> | <span style="color: #FAFAFA; font-weight: bold;">#{team_rank} in {team_conf}</span>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Row 1: Top 5
+        cols = st.columns(5)
+        for i, player in enumerate(mvp_ladder[:5]):
+            with cols[i]:
+                render_mvp_card(player, i)
+        
+        # Row 2: 6-10 (if available)
+        if len(mvp_ladder) > 5:
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("##### The Next 5")
+            cols2 = st.columns(5)
+            for i, player in enumerate(mvp_ladder[5:10]):
+                with cols2[i]:
+                    render_mvp_card(player, i + 5)
+    else:
+        st.info("MVP Ladder data currently unavailable.")
+    
+    st.markdown("---")
+    
+    # ===== SECTION 2: BETTING ODDS FOR OTHER AWARDS =====
+    st.markdown("## 🎲 Other Award Favorites")
+    st.caption("Top 5 betting favorites per award. Odds may be affected by 65-game rule.")
+    
+    data_path = "data/awards_odds.json"
+    
+    if os.path.exists(data_path):
+        try:
+            with open(data_path, "r") as f:
+                awards_data = json.load(f)
+            
+            last_modified = os.path.getmtime(data_path)
+            last_updated_str = time.strftime('%Y-%m-%d %I:%M %p', time.localtime(last_modified))
+            st.caption(f"Odds Updated: {last_updated_str} | Source: DraftKings")
+            
+            # Load Coach-to-Team mapping from CSV
+            coach_team_map = {}
+            try:
+                coaches_df = pd.read_csv('nbacoaches.csv')
+                for _, row in coaches_df.iterrows():
+                    coach_name = row['NAME'].strip()
+                    team_name = row['TEAM'].strip()
+                    team_abbrev = row['ABBREV'].strip()  # Use abbreviation from CSV
+                    coach_team_map[coach_name] = {"team": team_name, "abbrev": team_abbrev}
+            except Exception as e:
+                # Fallback to empty if CSV not found
+                pass
+            
+
+            
+            # Helper function to render a PLAYER award card with stats (MVP Ladder style)
+            def render_player_award_card(candidate, rank_idx, odds, award_name=""):
+                rank_color = "#FFD700" if rank_idx == 0 else "#C0C0C0" if rank_idx == 1 else "#CD7F32" if rank_idx == 2 else "#667eea"
+                player_name = candidate
+                
+                player_photo_url = get_player_photo_url(player_name)
+                team_abbrev = None
+                team_logo_url = None
+                
+                # Fetch player stats, shooting splits, GP, and team
+                player_stats = ""
+                shooting_stats = ""
+                games_played = "N/A"
+                team_record = "N/A"
+                team_rank = "N/A"
+                team_conf = ""
+                
+                try:
+                    # Optimized lookup in bulk stats
+                    found_stats = None
+                    if bulk_player_stats is not None and not bulk_player_stats.empty:
+                        # Try exact match first
+                        match = bulk_player_stats[bulk_player_stats['PLAYER_NAME'].str.lower() == player_name.lower()]
+                        if not match.empty:
+                            found_stats = match.iloc[0]
+                        else:
+                            # Try fuzzy match if needed (simple contains)
+                            match = bulk_player_stats[bulk_player_stats['PLAYER_NAME'].str.lower().str.contains(player_name.lower())]
+                            if not match.empty:
+                                found_stats = match.iloc[0]
+                    
+                    if found_stats is not None:
+                        games_played = str(int(found_stats['GP']))
+                        
+                        ppg = found_stats['PTS']
+                        rpg = found_stats['REB']
+                        apg = found_stats['AST']
+                        
+                        if "Defensive Player" in award_name:
+                            spg = found_stats['STL']
+                            bpg = found_stats['BLK']
+                            player_stats = f"{ppg:.1f} PPG · {rpg:.1f} RPG · {apg:.1f} APG · {spg:.1f} SPG · {bpg:.1f} BPG"
+                        else:
+                            player_stats = f"{ppg:.1f} PPG · {rpg:.1f} RPG · {apg:.1f} APG"
+                        
+                        # Stats are decimals in leaguedashplayerstats, need to multiply by 100 for display
+                        fg_pct = found_stats['FG_PCT'] * 100
+                        three_pct = found_stats['FG3_PCT'] * 100
+                        ft_pct = found_stats['FT_PCT'] * 100
+                        
+                        shooting_stats = f"{fg_pct:.1f}% FG • {three_pct:.1f}% 3P • {ft_pct:.1f}% FT"
+                        
+                        # Team info
+                        team_abbrev = found_stats['TEAM_ABBREVIATION']
+                        team_logo_url = get_team_logo_url(team_abbrev) if team_abbrev else None
+                        
+                        # Get team record from standings
+                        if team_abbrev and not standings_df.empty:
+                            for _, row in standings_df.iterrows():
+                                row_abbrev = get_team_abbrev(row['TeamCity'])
+                                if row_abbrev == team_abbrev:
+                                    team_record = row['Record']
+                                    team_rank = row.get('PlayoffRank', 'N/A')
+                                    team_conf = row.get('Conference', '')
+                                    break
+                    else:
+                        # Fallback to old slow method if not found in bulk for some reason
+                         df_log, _ = get_player_game_log(player_name)
+                         if df_log is not None and not df_log.empty:
+                            games_played = str(len(df_log))
+                            ppg = df_log['Points'].mean()
+                            rpg = df_log['Rebounds'].mean()
+                            apg = df_log['Assists'].mean()
+                            player_stats = f"{ppg:.1f} PPG · {rpg:.1f} RPG · {apg:.1f} APG"
+                except Exception as e:
+                    # st.error(f"Error: {e}") 
+                    pass
+                
+                # Rank badge
+                st.markdown(f"""
+                <div style="text-align: center; font-size: 1.2rem; font-weight: bold; color: {rank_color}; margin-bottom: 5px;">#{rank_idx + 1}</div>
+                """, unsafe_allow_html=True)
+                
+                # Show player photo and team logo side by side
+                if team_logo_url and player_photo_url:
+                    spacer1, photo_col, logo_col, spacer2 = st.columns([1, 4.5, 4.5, 1])
+                    with photo_col:
+                        st.image(player_photo_url, width=220)
+                    with logo_col:
+                        st.image(team_logo_url, width=200)
+                elif player_photo_url:
+                    st.image(player_photo_url, width=220)
+                
+                # Fetch position from bio (This is still an API call, but we can't easily avoid it without bulk bio. 
+                # Optimization: Could cache bio or skip position if slow. For now we leave it as it's just 1 call instead of 2)
+                pos_label = ""
+                try:
+                    # Try to use position from bulk stats if available? 
+                    # leaguedashplayerstats doesn't have position. leaguedashplayerbiostats or commonallplayers does.
+                    # For now, we'll keep the bio fetch but it's much faster than game log.
+                    bio = fetch_player_bio(player_name)
+                    if bio and bio.get('position'):
+                        abbrev_pos = abbreviate_position(bio['position'], player_name)
+                        pos_label = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 0.8rem;'>({abbrev_pos})</span>"
+                except:
+                    pass
+                
+                # Further reduce font size for defensive stats to prevent overflow
+                stat_font_size = "0.72rem"
+                if "Defensive Player" in award_name:
+                    stat_font_size = "0.62rem"
+
+                # Player name, stats, shooting splits, GP/REC badge
+                st.markdown(f"""
+                <div style="text-align: center; margin-top: 10px;">
+                    <div style="color: #FAFAFA; font-weight: bold; font-size: 0.9rem; margin-bottom: 5px; line-height: 1.2; display: flex; justify-content: center; align-items: center; gap: 8px;">
+                        {player_name}{pos_label}
+                        <span style="background: #10B981; color: #FFF; font-weight: bold; font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; display: inline-block;">{odds}</span>
+                    </div>
+                    <div style="color: #9CA3AF; font-size: {stat_font_size}; margin-bottom: 2px;">{player_stats}</div>
+                    <div style="color: #6B7280; font-size: 0.75rem; margin-bottom: 8px;">{shooting_stats}</div>
+                    <div style="display: flex; justify-content: center; gap: 8px; font-size: 0.75rem; flex-wrap: wrap;">
+                        <div style="background: #374151; padding: 2px 8px; border-radius: 4px;">
+                            <span style="color: #9CA3AF;">GP:</span> <span style="color: #FAFAFA; font-weight: bold;">{games_played}</span>
+                        </div>
+                        <div style="background: #374151; padding: 2px 8px; border-radius: 4px;">
+                            <span style="color: #9CA3AF;">REC:</span> <span style="color: #FAFAFA; font-weight: bold;">{team_record}</span> | <span style="color: #FAFAFA; font-weight: bold;">#{team_rank} in {team_conf}</span>
+                        </div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Helper function to render a COACH award card (centered logo, no photo)
+            def render_coach_award_card(coach_name, rank_idx, odds, standings_df):
+                rank_color = "#FFD700" if rank_idx == 0 else "#C0C0C0" if rank_idx == 1 else "#CD7F32" if rank_idx == 2 else "#667eea"
+                
+                team_info = coach_team_map.get(coach_name, None)
+                team_name = team_info['team'] if team_info else "Unknown Team"
+                team_abbrev = team_info['abbrev'] if team_info else None
+                team_record = "N/A"
+                team_rank = "N/A"
+                team_conf = ""
+                
+                if team_abbrev and not standings_df.empty:
+                    matching = standings_df[standings_df['TeamCity'].str.contains(team_name.split()[0], case=False, na=False)]
+                    if not matching.empty:
+                        team_record = matching.iloc[0]['Record']
+                        team_rank = matching.iloc[0].get('PlayoffRank', 'N/A')
+                        team_conf = matching.iloc[0].get('Conference', '')
+                
+                team_logo_url = get_team_logo_url(team_abbrev) if team_abbrev else None
+                
+                # Rank badge
+                st.markdown(f"""
+                <div style="text-align: center; font-size: 1.2rem; font-weight: bold; color: {rank_color}; margin-bottom: 5px;">#{rank_idx + 1}</div>
+                """, unsafe_allow_html=True)
+                
+                # Centered team logo
+                if team_logo_url:
+                    spacer1, logo_col, spacer2 = st.columns([1, 4, 1])
+                    with logo_col:
+                        st.image(team_logo_url, width=220)
+                
+                # Coach name, team, record, odds badge
+                st.markdown(f"""
+                <div style="text-align: center; margin-top: 10px;">
+                    <div style="color: #FAFAFA; font-weight: bold; font-size: 0.95rem; margin-bottom: 5px; display: flex; justify-content: center; align-items: center; gap: 8px;">
+                        {coach_name}
+                        <span style="background: #10B981; color: #FFF; font-weight: bold; font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; display: inline-block;">{odds}</span>
+                    </div>
+                    <div style="color: #9CA3AF; font-size: 0.8rem; margin-bottom: 2px;">{team_name}</div>
+                    <div style="display: flex; justify-content: center; gap: 12px; font-size: 0.75rem; margin-top: 8px;">
+                        <div style="background: #374151; padding: 2px 8px; border-radius: 4px;">
+                            <span style="color: #9CA3AF;">REC:</span> <span style="color: #FAFAFA; font-weight: bold;">{team_record}</span> | <span style="color: #FAFAFA; font-weight: bold;">#{team_rank} in {team_conf}</span>
+                        </div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Separate Coach of the Year from player awards
+            player_awards = [a for a in awards_data if "Coach" not in a['award_name']]
+            coach_awards = [a for a in awards_data if "Coach" in a['award_name']]
+            
+            # Logic to collect ties for footnotes
+            ties_list = []
+            
+            # Render PLAYER awards first
+            for award in player_awards:
+                st.markdown(f"### {award['award_name']}")
+                
+                top_candidates = award['candidates'][:5]
+                
+                # Check for ties in top 5
+                odds_map = {}
+                for cand in top_candidates:
+                    o = cand['odds']
+                    if o in odds_map:
+                        odds_map[o].append(cand['player'])
+                    else:
+                        odds_map[o] = [cand['player']]
+                
+                for o, hitters in odds_map.items():
+                    if len(hitters) > 1:
+                        # Find team for the tied player to mention in footnote
+                        # We'll just display the first pair of ties found for simplicity as requested
+                        # "player is also tied with player (team)"
+                        # Let's collect all pairs for the footnote section
+                        p1 = hitters[0]
+                        for p2 in hitters[1:]:
+                            ties_list.append({
+                                "award": award['award_name'],
+                                "p1": p1,
+                                "p2": p2,
+                                "odds": o
+                            })
+
+                cols = st.columns(5)
+                for idx, cand in enumerate(top_candidates):
+                    with cols[idx]:
+                        render_player_award_card(cand['player'], idx, cand['odds'], award['award_name'])
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+            
+            # Render COACH awards at the bottom
+            for award in coach_awards:
+                st.markdown(f"### {award['award_name']}")
+                
+                top_candidates = award['candidates'][:5]
+                
+                # Check for ties in top 5 for coaches
+                odds_map = {}
+                for cand in top_candidates:
+                    o = cand['odds']
+                    if o in odds_map:
+                        odds_map[o].append(cand['player'])
+                    else:
+                        odds_map[o] = [cand['player']]
+                
+                for o, hitters in odds_map.items():
+                    if len(hitters) > 1:
+                        p1 = hitters[0]
+                        for p2 in hitters[1:]:
+                            ties_list.append({
+                                "award": award['award_name'],
+                                "p1": p1,
+                                "p2": p2,
+                                "odds": o,
+                                "is_coach": True
+                            })
+
+                cols = st.columns(5)
+                for idx, cand in enumerate(top_candidates):
+                    with cols[idx]:
+                        render_coach_award_card(cand['player'], idx, cand['odds'], standings_df)
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+
+            # Footer section for Ties
+            if ties_list:
+                st.markdown("---")
+                st.markdown("#### 🔗 Tied Favorites")
+                for tie in ties_list:
+                    p1 = tie['p1']
+                    p2 = tie['p2']
+                    
+                    # Get team for p2
+                    p2_team_info = ""
+                    if tie.get('is_coach'):
+                        t_info = coach_team_map.get(p2)
+                        p2_team_info = f" ({t_info['abbrev']})" if t_info else ""
+                    else:
+                        # For players, we could fetch bio, but to keep it fast let's just 
+                        # try to get team from game log or just skip if too slow.
+                        # User said "insert player (other player's team)".
+                        # Let's try a quick lookup.
+                        try:
+                            # We can use a cache or just skip team for now if it's too heavy
+                            # but let's try to get it from bio cache
+                            p2_bio = fetch_player_bio(p2)
+                            p2_team_info = f" ({p2_bio.get('team_abbrev', 'N/A')})" if p2_bio else ""
+                        except:
+                            pass
+                    
+                    col_text, col_btn = st.columns([4, 1])
+                    with col_text:
+                        st.markdown(f"**{p1}** is tied with **{p2}**{p2_team_info} for {tie['award']} at **{tie['odds']}**")
+                    with col_btn:
+                        # Use unique key for button
+                        btn_key = f"compare_{p1}_{p2}_{tie['award']}".replace(" ", "_")
+                        if st.button(f"Compare Players", key=btn_key, type="secondary", use_container_width=True):
+                            st.session_state.current_page = "Compare Players"
+                            st.session_state.compare_player1_search = p1
+                            st.session_state.compare_player2_search = p2
+                            # Setting these should trigger the selectbox to filter in the next run
+                            # and the user might have to select them, OR we can set the selection directly
+                            # let's try setting the selection key too if it matches exactly
+                            st.rerun()
+            
+            st.markdown("---")
+            st.info("💡 To update odds, run `python scripts/update_awards_odds.py`")
+            
+        except Exception as e:
+            st.error(f"Error loading awards data: {e}")
+    else:
+        st.warning("Awards data not found. Please run the data update script.")
+
 
 # ==================== ABOUT PAGE ====================
-elif page == "About":
+elif st.session_state.current_page == "About":
     st.title("About NBA Live Stats Predictor")
     
     st.markdown("""

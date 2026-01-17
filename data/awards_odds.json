@@ -1,0 +1,77 @@
+[
+  {
+    "award_name": "Rookie of the Year",
+    "candidates": [
+      {"player": "Cooper Flagg", "odds": "-750"},
+      {"player": "Kon Knueppel", "odds": "+600"},
+      {"player": "VJ Edgecombe", "odds": "+2200"},
+      {"player": "Derik Queen", "odds": "+6000"},
+      {"player": "Cedric Coward", "odds": "+10000"},
+      {"player": "Jeremiah Fears", "odds": "+20000"},
+      {"player": "Dylan Harper", "odds": "+25000"},
+      {"player": "Egor Demin", "odds": "+40000"},
+      {"player": "Tre Johnson", "odds": "+50000"},
+      {"player": "Maxime Raynaud", "odds": "+50000"}
+    ]
+  },
+  {
+    "award_name": "Most Improved Player",
+    "candidates": [
+      {"player": "Deni Avdija", "odds": "-160"},
+      {"player": "Jalen Johnson", "odds": "+275"},
+      {"player": "Keyonte George", "odds": "+950"},
+      {"player": "Anthony Black", "odds": "+2200"},
+      {"player": "Peyton Watson", "odds": "+2800"},
+      {"player": "Nickeil Alexander-Walker", "odds": "+2800"},
+      {"player": "Michael Porter Jr.", "odds": "+4500"},
+      {"player": "Jaylon Tyson", "odds": "+5000"},
+      {"player": "Jalen Duren", "odds": "+5500"},
+      {"player": "Ryan Rollins", "odds": "+8000"}
+    ]
+  },
+  {
+    "award_name": "Defensive Player of the Year",
+    "candidates": [
+      {"player": "Chet Holmgren", "odds": "-120"},
+      {"player": "Rudy Gobert", "odds": "+300"},
+      {"player": "Victor Wembanyama", "odds": "+650"},
+      {"player": "Bam Adebayo", "odds": "+1500"},
+      {"player": "Amen Thompson", "odds": "+1800"},
+      {"player": "Scottie Barnes", "odds": "+3000"},
+      {"player": "Evan Mobley", "odds": "+3000"},
+      {"player": "Ausar Thompson", "odds": "+3500"},
+      {"player": "Cason Wallace", "odds": "+4000"},
+      {"player": "Draymond Green", "odds": "+6000"}
+    ]
+  },
+  {
+    "award_name": "Coach of the Year",
+    "candidates": [
+      {"player": "JB Bickerstaff", "odds": "+150"},
+      {"player": "Mitch Johnson", "odds": "+320"},
+      {"player": "Jordan Ott", "odds": "+350"},
+      {"player": "Joe Mazzulla", "odds": "+380"},
+      {"player": "Mike Brown", "odds": "+3500"},
+      {"player": "Mark Daigneault", "odds": "+4000"},
+      {"player": "David Adelman", "odds": "+4000"},
+      {"player": "Darko Rajakovic", "odds": "+4000"},
+      {"player": "Ime Udoka", "odds": "+6000"},
+      {"player": "Erik Spoelstra", "odds": "+6000"}
+    ]
+  },
+  {
+    "award_name": "Sixth Man of the Year",
+    "candidates": [
+      {"player": "Naz Reid", "odds": "+260"},
+      {"player": "Keldon Johnson", "odds": "+370"},
+      {"player": "Anthony Black", "odds": "+800"},
+      {"player": "Jaime Jaquez Jr.", "odds": "+850"},
+      {"player": "Anfernee Simons", "odds": "+1200"},
+      {"player": "Reed Sheppard", "odds": "+1200"},
+      {"player": "Grayson Allen", "odds": "+1500"},
+      {"player": "Ajay Mitchell", "odds": "+2200"},
+      {"player": "Jaylon Tyson", "odds": "+2500"},
+      {"player": "Collin Gillespie", "odds": "+2500"}
+    ]
+  }
+]
