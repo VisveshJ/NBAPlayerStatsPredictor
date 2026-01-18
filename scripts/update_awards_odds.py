@@ -17,11 +17,11 @@ def scrape_dk_odds():
     
     # Map of tab names to Award Names
     awards_to_scrape = [
-        {"tab": "Rookie of the Year", "name": "Rookie of the Year"},
-        {"tab": "Defensive Player of the Year", "name": "Defensive Player of the Year"},
-        {"tab": "Most Improved Player", "name": "Most Improved Player"},
-        {"tab": "Sixth Man of the Year", "name": "Sixth Man of the Year"},
-        {"tab": "Coach of the Year", "name": "Coach of the Year"}
+        {"tab": "ROTY", "name": "Rookie of the Year"},
+        {"tab": "DPOY", "name": "Defensive Player of the Year"},
+        {"tab": "Most Improved", "name": "Most Improved Player"},
+        {"tab": "6th Man", "name": "Sixth Man of the Year"},
+        {"tab": "COTY", "name": "Coach of the Year"}
     ]
     
     with sync_playwright() as p:
@@ -31,10 +31,10 @@ def scrape_dk_odds():
         
         print(f"Loading {DRAFTKINGS_URL}...")
         try:
-            page.goto(DRAFTKINGS_URL, timeout=30000)
+            page.goto(DRAFTKINGS_URL, timeout=60000)
             
-            # Wait for potential subcategory nav
-            page.wait_for_selector('div.subcategory-navigation', timeout=10000)
+            # Wait for any tab switcher sub tab to appear
+            page.wait_for_selector('.tab-switcher-sub-tab', timeout=15000)
         except Exception as e:
             print(f"Error loading page or navigation: {e}")
             browser.close()
@@ -52,13 +52,13 @@ def scrape_dk_odds():
                     
                     candidates = []
                     
-                    # Locate outcome cells
-                    outcomes = page.query_selector_all('.sportsbook-outcome-cell__body')
+                    # Locate outcome cells (using new selectors for current DK structure)
+                    outcomes = page.query_selector_all('.cb-market__button')
                     
                     for outcome in outcomes[:10]: # Top 10
                          try:
-                             label_el = outcome.query_selector('.sportsbook-outcome-cell__label')
-                             odds_el = outcome.query_selector('.sportsbook-outcome-cell__elements')
+                             label_el = outcome.query_selector('.cb-market__button-title')
+                             odds_el = outcome.query_selector('.cb-market__button-odds')
                              
                              if label_el and odds_el:
                                  player_name = label_el.inner_text().strip()

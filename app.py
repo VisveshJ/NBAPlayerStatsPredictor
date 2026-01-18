@@ -73,6 +73,45 @@ def get_team_abbrev(city):
             return TEAM_ABBREV_MAP[key]
     return city[:3].upper()
 
+
+def format_pct(val):
+    """Format percentage value: show '100.0' for 100%, otherwise 'X.X%'."""
+    if val is None or val == "N/A":
+        return "N/A"
+    try:
+        val_f = float(val)
+        # Use a small epsilon for floating point comparison
+        if abs(val_f - 100.0) < 0.001:
+            return "100.0"
+        return f"{val_f:.1f}%"
+    except (ValueError, TypeError):
+        return str(val)
+
+
+# ==================== NAVIGATION HELPERS ====================
+def nav_to_compare(p1, p2):
+    """Callback to navigate to Compare Players page and load two specific players."""
+    st.session_state.current_page = "Compare Players"
+    st.session_state.nav_radio = "Compare Players"
+    st.session_state.compare_player1_search = p1
+    st.session_state.compare_player2_search = p2
+    st.session_state.compare_select1 = p1
+    st.session_state.compare_select2 = p2
+    st.session_state.trigger_compare = True
+
+def nav_to_player_stats(player_name):
+    """Callback to navigate to Player Stats page for a specific player."""
+    st.session_state.current_page = "Player Stats"
+    st.session_state.nav_radio = "Player Stats"
+    st.session_state.player_stats_search = player_name
+
+def nav_to_predictions(player_name):
+    """Callback to navigate to Predictions page for a specific player."""
+    st.session_state.current_page = "Predictions"
+    st.session_state.nav_radio = "Predictions"
+    st.session_state.redirect_to_predictions = player_name
+    st.session_state.auto_load_player = player_name
+
 # ==================== DATA FETCHING FUNCTIONS ====================
 @st.cache_data(ttl=3600)
 def get_current_defensive_ratings(season="2025-26"):
@@ -289,6 +328,7 @@ def get_nba_schedule():
                     'away_team_name': game.get('awayTeam', {}).get('teamName', ''),
                     'game_status': game.get('gameStatus', 1),  # 1=scheduled, 2=in progress, 3=final
                     'game_time_utc': game.get('gameDateTimeUTC', ''),  # UTC time
+                    'broadcasters': game.get('broadcasters', {})
                 })
         
         return games
@@ -457,6 +497,22 @@ def get_todays_games(schedule, standings_df):
             except:
                 pass
             
+            # Extract channel/broadcaster
+            broadcasters = game.get('broadcasters', {})
+            channel = ""
+            if broadcasters:
+                natl = broadcasters.get('nationalBroadcasters', [])
+                if natl:
+                    channel = natl[0].get('broadcasterAbbreviation', '')
+                else:
+                    home_tv = broadcasters.get('homeTvBroadcasters', [])
+                    if home_tv:
+                        channel = home_tv[0].get('broadcasterAbbreviation', '')
+                    else:
+                        away_tv = broadcasters.get('awayTvBroadcasters', [])
+                        if away_tv:
+                            channel = away_tv[0].get('broadcasterAbbreviation', '')
+
             todays_games.append({
                 'game_id': game.get('game_id'),
                 'home_team': home_team,
@@ -474,6 +530,7 @@ def get_todays_games(schedule, standings_df):
                 'game_status': game.get('game_status', 1),
                 'game_time': game_time_pst,
                 'game_time_sort': game.get('game_time_utc', ''),  # For sorting
+                'channel': channel
             })
     
     # Sort games by time (earliest to latest)
@@ -988,24 +1045,40 @@ def get_nba_news():
         
         news_items = []
         
-        # Based on research, the headline links often have this class
-        articles = soup.find_all('a', class_=lambda x: x and 'ArticleTile_tileHeadlineLink' in x if x else False)
+        # Look for headlines and timestamps
+        articles = soup.find_all(['div', 'a'], class_=lambda x: x and ('ArticleTile' in x or 'HeroArticle' in x) if x else False)
         
-        for article in articles[:10]:
-            title_elem = article.find(['h1', 'h2', 'h3', 'h4', 'span'])
-            title = title_elem.get_text(strip=True) if title_elem else article.get_text(strip=True)
-            link = article.get('href', '')
+        for article in articles:
+            # Look for headline within this container
+            link_elem = article.find('a', class_=lambda x: x and 'HeadlineLink' in x if x else False) or \
+                        (article if article.name == 'a' and 'HeadlineLink' in (article.get('class', [])) else None)
             
-            if link and not link.startswith('http'):
-                link = 'https://www.nba.com' + link
+            if not link_elem:
+                # Try finding any link that might be the headline
+                link_elem = article.find('a') if article.name != 'a' else article
+            
+            if link_elem:
+                title_elem = link_elem.find(['h1', 'h2', 'h3', 'h4', 'span', 'p'])
+                title = title_elem.get_text(strip=True) if title_elem else link_elem.get_text(strip=True)
+                link = link_elem.get('href', '')
                 
-            if title and len(title) > 10:
-                news_items.append({
-                    'title': title,
-                    'link': link
-                })
+                # Look for timestamp
+                time_elem = article.find(class_=lambda x: x and 'Timestamp' in x if x else False)
+                timestamp = time_elem.get_text(strip=True) if time_elem else ""
+                
+                if link and not link.startswith('http'):
+                    link = 'https://www.nba.com' + link
+                    
+                if title and len(title) > 10:
+                    # Avoid duplicates
+                    if not any(item['title'] == title for item in news_items):
+                        news_items.append({
+                            'title': title,
+                            'link': link,
+                            'time': timestamp
+                        })
         
-        # Fallback for other structures
+        # If no items found with specific classes, try fallback
         if not news_items:
             headlines = soup.find_all(['h3', 'h4'])
             for h in headlines:
@@ -1016,7 +1089,7 @@ def get_nba_news():
                     if link and not link.startswith('http'):
                         link = 'https://www.nba.com' + link
                     if title and len(title) > 20:
-                        news_items.append({'title': title, 'link': link})
+                        news_items.append({'title': title, 'link': link, 'time': ''})
         
         return news_items[:10]
     except Exception as e:
@@ -1391,15 +1464,10 @@ if page == "Home":
                             """, unsafe_allow_html=True)
                     
                     with col_actions:
-                        if st.button("Stats", key=f"home_stats_{player_name}", use_container_width=True):
-                            st.session_state['player_stats_search'] = player_name
-                            st.session_state['pending_nav_target'] = "Player Stats"
-                            st.rerun()
-                        if st.button("Analyze", key=f"home_predict_{player_name}", use_container_width=True, type="primary"):
-                            st.session_state["redirect_to_predictions"] = player_name
-                            st.session_state["auto_load_player"] = player_name
-                            st.session_state['pending_nav_target'] = "Predictions"
-                            st.rerun()
+                        st.button("Stats", key=f"home_stats_{player_name}", use_container_width=True, 
+                                  on_click=nav_to_player_stats, args=(player_name,))
+                        st.button("Analyze", key=f"home_predict_{player_name}", use_container_width=True, type="primary",
+                                  on_click=nav_to_predictions, args=(player_name,))
             else:
                 render_empty_state(
                     "No favorite players yet! Go to Live Predictions to add some.",
@@ -1499,6 +1567,10 @@ elif page == "Predictions":
                         # Get team logos
                         away_logo = get_team_logo_url(game['away_team'])
                         home_logo = get_team_logo_url(game['home_team'])
+                        channel_display = game.get('channel', '')
+                        
+                        # Add channel display to top right if available
+                        channel_html = f"<div style='position: absolute; top: 12px; right: 12px; color: #9CA3AF; font-size: 0.72rem; font-weight: 600;'>{channel_display}</div>" if channel_display else ""
                         
                         # Format seeds and conference
                         away_seed = f"#{game['away_rank']}" if game['away_rank'] else ""
@@ -1543,10 +1615,14 @@ elif page == "Predictions":
                             home_score_display = "<span style='color: #9CA3AF; font-size: 0.75rem;'>Home</span>"
                         
                         # Create a more visual card with logos and scores
+                        channel_display = game.get('channel', '')
+                        channel_html = f"<div style='position: absolute; top: 12px; right: 12px; color: #9CA3AF; font-size: 0.72rem; font-weight: 600;'>{channel_display}</div>" if channel_display else ""
+                        
                         st.markdown(f"""
                         <div style="background: linear-gradient(135deg, #1F2937 0%, #111827 100%); 
                                     border-radius: 10px; padding: 15px; text-align: center; 
-                                    border: 1px solid #374151; margin-bottom: 10px;">
+                                    border: 1px solid #374151; margin-bottom: 10px; position: relative;">
+                            {channel_html}
                             <div style="font-size: 0.8rem; font-weight: bold; margin-bottom: 8px;">{status_display}</div>
                             <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -1649,8 +1725,8 @@ elif page == "Predictions":
         if bio and bio.get('team_abbrev'):
             player_team = bio['team_abbrev']
 
-        # Show player photo and team logo centered (Standardized layout)
-        spacer1, photo_col, logo_col, spacer2 = st.columns([1.2, 0.8, 0.8, 1.2])
+        # Show player photo and team logo centered (Standardized layout) - Shifted slightly right for balance
+        spacer1, photo_col, logo_col, spacer2 = st.columns([1.35, 0.8, 0.8, 1.05])
         with photo_col:
             player_photo = get_player_photo_url(selected_player)
             if player_photo:
@@ -1666,8 +1742,12 @@ elif page == "Predictions":
         if standings_df is not None:
             for _, row in standings_df.iterrows():
                 if get_team_abbrev(row['TeamCity']) == player_team:
-                    team_seed_suffix = f" (#{int(row['PlayoffRank'])})"
+                    team_rec = row['Record']
+                    team_rank = row['PlayoffRank']
+                    team_conf = row['Conference']
+                    team_seed_suffix = f" (#{int(team_rank)})"
                     team_full_name = f"{row['TeamCity']} {row['TeamName']}".strip()
+                    team_display = f"{team_full_name} <span style='color: #6B7280; font-size: 0.9rem;'>({team_rec} | #{team_rank} in {team_conf})</span>"
                     break
         
         # Player name, position and team centered
@@ -1679,7 +1759,7 @@ elif page == "Predictions":
         st.markdown(f"""
             <div style='text-align: center;'>
                 <h3 style='margin-bottom: 0px;'>{selected_player}{pos_label}</h3>
-                <div style='color: #9CA3AF; font-size: 1.1rem; margin-bottom: 10px;'>{team_full_name}</div>
+                <div style='color: #9CA3AF; font-size: 1.1rem; margin-bottom: 10px;'>{team_display}</div>
             </div>
         """, unsafe_allow_html=True)
         
@@ -1688,13 +1768,18 @@ elif page == "Predictions":
             height = bio.get('height', '-')
             weight = bio.get('weight', '-')
             age = bio.get('age', '-')
-            draft = bio.get('draft_year', '-')
+            draft_year = bio.get('draft_year', '-')
+            draft_round = bio.get('draft_round', '')
+            draft_num = bio.get('draft_number', '')
+            draft_display = draft_year
+            if draft_round and draft_num and draft_year != 'Undrafted':
+                draft_display = f"{draft_year} R{draft_round}, #{draft_num}"
             
             bio_html = f"""<div style="text-align: center; color: #9CA3AF; font-size: 0.85rem; margin-bottom: 12px;">
 <span style="color: #9CA3AF;">HT:</span> <span style="color: #FAFAFA; font-weight: bold;">{height}</span> • 
 <span style="color: #9CA3AF;">WT:</span> <span style="color: #FAFAFA; font-weight: bold;">{weight} lbs</span> • 
 <span style="color: #9CA3AF;">Age:</span> <span style="color: #FAFAFA; font-weight: bold;">{age}</span> • 
-<span style="color: #9CA3AF;">Draft:</span> <span style="color: #FAFAFA; font-weight: bold;">{draft}</span>
+<span style="color: #9CA3AF;">Draft:</span> <span style="color: #FAFAFA; font-weight: bold;">{draft_display}</span>
 </div>"""
             st.markdown(bio_html, unsafe_allow_html=True)
         else:
@@ -2282,8 +2367,8 @@ elif page == "Player Stats":
                         player_team = bio['team_abbrev']
 
 
-                    # Show player photo and team logo centered (Standardized layout)
-                    spacer1, photo_col, logo_col, spacer2 = st.columns([1.2, 0.8, 0.8, 1.2])
+                    # Show player photo and team logo centered (Standardized layout) - Slightly shifted right for better balance
+                    spacer1, photo_col, logo_col, spacer2 = st.columns([1.35, 0.8, 0.8, 1.05])
                     with photo_col:
                         player_photo = get_player_photo_url(selected_player)
                         if player_photo:
@@ -2326,7 +2411,7 @@ elif page == "Player Stats":
                     total_fta = player_df['FTA'].sum() if 'FTA' in player_df.columns else 0
                     ft_pct_display = (total_ftm / total_fta * 100) if total_fta > 0 else 0
                     
-                    shooting_line = f"{fg_pct_display:.1f}% FG • {three_pct_display:.1f}% 3P • {ft_pct_display:.1f}% FT"
+                    shooting_line = f"{format_pct(fg_pct_display)} FG • {format_pct(three_pct_display)} 3P • {format_pct(ft_pct_display)} FT"
                     
                     # Calculate individual record using correct column name
                     wins = (player_df['W/L'] == 'W').sum() if 'W/L' in player_df.columns else 0
@@ -2344,19 +2429,25 @@ elif page == "Player Stats":
                         height = bio.get('height', '-')
                         weight = bio.get('weight', '-')
                         age = bio.get('age', '-')
-                        draft = bio.get('draft_year', '-')
+                        draft_year = bio.get('draft_year', '-')
+                        draft_round = bio.get('draft_round', '')
+                        draft_num = bio.get('draft_number', '')
+                        draft_display = draft_year
+                        if draft_round and draft_num and draft_year != 'Undrafted':
+                            draft_display = f"{draft_year} R{draft_round}, #{draft_num}"
+
                         bio_html = f"""<div style="text-align: center; color: #9CA3AF; font-size: 0.85rem; margin-bottom: 12px;">
 <span style="color: #9CA3AF;">HT:</span> <span style="color: #FAFAFA; font-weight: bold;">{height}</span> • 
 <span style="color: #9CA3AF;">WT:</span> <span style="color: #FAFAFA; font-weight: bold;">{weight} lbs</span> • 
 <span style="color: #9CA3AF;">Age:</span> <span style="color: #FAFAFA; font-weight: bold;">{age}</span> • 
-<span style="color: #9CA3AF;">Draft:</span> <span style="color: #FAFAFA; font-weight: bold;">{draft}</span>
+<span style="color: #9CA3AF;">Draft:</span> <span style="color: #FAFAFA; font-weight: bold;">{draft_display}</span>
 </div>"""
                     else:
                         bio_html = f"<div style='text-align: center; color: #9CA3AF; font-size: 0.85rem; margin-bottom: 12px;'>Team: {player_team}</div>"
 
                     st.markdown(f"""<div style="text-align: center; margin-top: 15px;">
 <div style="color: #FAFAFA; font-weight: bold; font-size: 1.5rem; margin-bottom: 0px;">{selected_player}{pos_label}</div>
-<div style="color: #9CA3AF; font-size: 1.1rem; margin-bottom: 10px;">{team_full_name}</div>
+<div style="color: #9CA3AF; font-size: 1.1rem; margin-bottom: 10px;">{team_full_name} <span style="color: #6B7280; font-size: 0.9rem;">({team_record} | #{team_rank} in {team_conf})</span></div>
 {bio_html}
 <div style="display: flex; justify-content: center; gap: 12px; font-size: 0.9rem;">
 <div style="background: #374151; padding: 4px 12px; border-radius: 5px;">
@@ -2364,9 +2455,6 @@ elif page == "Player Stats":
 </div>
 <div style="background: #374151; padding: 4px 12px; border-radius: 5px;">
 <span style="color: #9CA3AF;">IND REC:</span> <span style="color: #FAFAFA; font-weight: bold;">{ind_record}</span>
-</div>
-<div style="background: #374151; padding: 4px 12px; border-radius: 5px;">
-<span style="color: #9CA3AF;">TEAM REC:</span> <span style="color: #FAFAFA; font-weight: bold;">{team_record}</span> | <span style="color: #FAFAFA; font-weight: bold;">#{team_rank} in {team_conf}</span>
 </div>
 </div>
 </div>""", unsafe_allow_html=True)
@@ -2410,18 +2498,18 @@ elif page == "Player Stats":
                         st.metric("TO", f"{player_df['Turnovers'].mean():.1f}")
                     
                     with col4:
-                        st.metric("FG%", f"{fg_pct:.1f}%")
-                        st.metric("3P%", f"{three_pct:.1f}%")
+                        st.metric("FG%", format_pct(fg_pct))
+                        st.metric("3P%", format_pct(three_pct))
                     
                     with col5:
-                        st.metric("FT%", f"{ft_pct:.1f}%")
+                        st.metric("FT%", format_pct(ft_pct))
                         st.metric("Games", len(player_df))
                     
                     with col6:
                         # Calculate TS%
                         total_pts = player_df['Points'].sum()
                         ts_pct = (total_pts / (2 * (total_fga + 0.44 * total_fta)) * 100) if (total_fga + 0.44 * total_fta) > 0 else 0
-                        st.metric("TS%", f"{ts_pct:.1f}%")
+                        st.metric("TS%", format_pct(ts_pct))
                         st.metric("MPG", f"{player_df['MIN'].mean():.1f}")
                     
                     st.markdown("---")
@@ -2600,17 +2688,17 @@ elif page == "Player Stats":
                         if 'FGM' in last_5.columns and 'FGA' in last_5.columns:
                             total_fgm = last_5['FGM'].sum()
                             total_fga = last_5['FGA'].sum()
-                            l5_fgp = f"{round((total_fgm / total_fga * 100), 1)}%" if total_fga > 0 else "N/A"
+                            l5_fgp = format_pct(total_fgm / total_fga * 100) if total_fga > 0 else "N/A"
                         
                         if '3PM' in last_5.columns and '3PA' in last_5.columns:
                             total_3pm = last_5['3PM'].sum()
                             total_3pa = last_5['3PA'].sum()
-                            l5_3pp = f"{round((total_3pm / total_3pa * 100), 1)}%" if total_3pa > 0 else "N/A"
+                            l5_3pp = format_pct(total_3pm / total_3pa * 100) if total_3pa > 0 else "N/A"
                         
                         if 'FTM' in last_5.columns and 'FTA' in last_5.columns:
                             total_ftm = last_5['FTM'].sum()
                             total_fta = last_5['FTA'].sum()
-                            l5_ftp = f"{round((total_ftm / total_fta * 100), 1)}%" if total_fta > 0 else "N/A"
+                            l5_ftp = format_pct(total_ftm / total_fta * 100) if total_fta > 0 else "N/A"
                         
                         # Display as a compact row
                         l5_cols = st.columns(9)
@@ -3672,8 +3760,12 @@ elif page == "Compare Players":
                 selected_player2 = st.selectbox("Select Player 2:", matching2, key="compare_select2")
     
     # Compare button
+    trigger_compare = st.session_state.get('trigger_compare', False)
     if selected_player1 and selected_player2:
-        if st.button("🔍 Compare Players", type="primary", use_container_width=True):
+        if st.button("🔍 Compare Players", type="primary", use_container_width=True) or trigger_compare:
+            if trigger_compare:
+                if 'trigger_compare' in st.session_state:
+                    del st.session_state['trigger_compare']
             with st.spinner("Loading player stats..."):
                 # Get player data for both
                 player1_df, player1_team = get_player_game_log(selected_player1, season)
@@ -3728,7 +3820,7 @@ elif page == "Compare Players":
                         total_ftm1 = player1_df['FTM'].sum() if 'FTM' in player1_df.columns else 0
                         total_fta1 = player1_df['FTA'].sum() if 'FTA' in player1_df.columns else 0
                         ft_pct1 = (total_ftm1 / total_fta1 * 100) if total_fta1 > 0 else 0
-                        shooting1 = f"{fg_pct1:.1f}% FG • {three_pct1:.1f}% 3P • {ft_pct1:.1f}% FT"
+                        shooting1 = f"{format_pct(fg_pct1)} FG • {format_pct(three_pct1)} 3P • {format_pct(ft_pct1)} FT"
                         
                         # Team record, rank, and full name
                         team_record1 = "N/A"
@@ -3744,8 +3836,8 @@ elif page == "Compare Players":
                                     team_full_name1 = f"{row['TeamCity']} {row['TeamName']}".strip()
                                     break
                         
-                        # Photo and logo (Centered standardized layout)
-                        spacer1, photo_col1, logo_col1, spacer2 = st.columns([1, 1, 1, 1])
+                        # Photo and logo (Centered standardized layout) - Slightly shifted right
+                        spacer1, photo_col1, logo_col1, spacer2 = st.columns([1.35, 1, 1, 0.65])
                         with photo_col1:
                             if p1_photo:
                                 st.image(p1_photo, width=120)
@@ -3762,7 +3854,12 @@ elif page == "Compare Players":
                         p1_height = bio1.get('height', '-') if bio1 else '-'
                         p1_weight = bio1.get('weight', '-') if bio1 else '-'
                         p1_age = bio1.get('age', '-') if bio1 else '-'
-                        p1_draft = bio1.get('draft_year', '-') if bio1 else '-'
+                        p1_draft_year = bio1.get('draft_year', '-') if bio1 else '-'
+                        p1_draft_round = bio1.get('draft_round', '') if bio1 else ''
+                        p1_draft_num = bio1.get('draft_number', '') if bio1 else ''
+                        p1_draft_display = p1_draft_year
+                        if p1_draft_round and p1_draft_num and p1_draft_year != 'Undrafted':
+                            p1_draft_display = f"{p1_draft_year} R{p1_draft_round}, #{p1_draft_num}"
 
                         # Calculate individual record using correct column name
                         p1_wins = (player1_df['W/L'] == 'W').sum() if 'W/L' in player1_df.columns else 0
@@ -3771,12 +3868,12 @@ elif page == "Compare Players":
 
                         st.markdown(f"""<div style="text-align: center; margin-top: 10px;">
 <div style="color: #FAFAFA; font-weight: bold; font-size: 1.1rem; margin-bottom: 0px;">{player1_name}{p1_pos}</div>
-<div style="color: #9CA3AF; font-size: 0.85rem; margin-bottom: 5px;">{team_full_name1}</div>
+<div style="color: #9CA3AF; font-size: 0.85rem; margin-bottom: 5px;">{team_full_name1} <span style="color: #6B7280; font-size: 0.75rem;">({team_record1} | #{team_rank1} in {team_conf1})</span></div>
 <div style="color: #9CA3AF; font-size: 0.8rem; margin-bottom: 10px;">
 <span style="color: #9CA3AF;">HT:</span> <span style="color: #FAFAFA; font-weight: bold;">{p1_height}</span> • 
 <span style="color: #9CA3AF;">WT:</span> <span style="color: #FAFAFA; font-weight: bold;">{p1_weight} lbs</span> • 
 <span style="color: #9CA3AF;">Age:</span> <span style="color: #FAFAFA; font-weight: bold;">{p1_age}</span> • 
-<span style="color: #9CA3AF;">Draft:</span> <span style="color: #FAFAFA; font-weight: bold;">{p1_draft}</span>
+<span style="color: #9CA3AF;">Draft:</span> <span style="color: #FAFAFA; font-weight: bold;">{p1_draft_display}</span>
 </div>
 <div style="display: flex; justify-content: center; gap: 6px; font-size: 0.72rem;">
 <div style="background: #374151; padding: 2px 6px; border-radius: 4px;">
@@ -3784,9 +3881,6 @@ elif page == "Compare Players":
 </div>
 <div style="background: #374151; padding: 2px 6px; border-radius: 4px;">
 <span style="color: #9CA3AF;">IND:</span> <span style="color: #FAFAFA; font-weight: bold;">{p1_ind_record}</span>
-</div>
-<div style="background: #374151; padding: 2px 6px; border-radius: 4px;">
-<span style="color: #9CA3AF;">REC:</span> <span style="color: #FAFAFA; font-weight: bold;">{team_record1}</span> | <span style="color: #FAFAFA; font-weight: bold;">#{team_rank1} in {team_conf1}</span>
 </div>
 </div>
 </div>""", unsafe_allow_html=True)
@@ -3812,7 +3906,7 @@ elif page == "Compare Players":
                         total_ftm2 = player2_df['FTM'].sum() if 'FTM' in player2_df.columns else 0
                         total_fta2 = player2_df['FTA'].sum() if 'FTA' in player2_df.columns else 0
                         ft_pct2 = (total_ftm2 / total_fta2 * 100) if total_fta2 > 0 else 0
-                        shooting2 = f"{fg_pct2:.1f}% FG • {three_pct2:.1f}% 3P • {ft_pct2:.1f}% FT"
+                        shooting2 = f"{format_pct(fg_pct2)} FG • {format_pct(three_pct2)} 3P • {format_pct(ft_pct2)} FT"
                         
                         # Team record, rank, and full name
                         team_record2 = "N/A"
@@ -3828,8 +3922,8 @@ elif page == "Compare Players":
                                     team_full_name2 = f"{row['TeamCity']} {row['TeamName']}".strip()
                                     break
                         
-                        # Photo and logo (Centered standardized layout)
-                        spacer1, photo_col2, logo_col2, spacer2 = st.columns([1, 1, 1, 1])
+                        # Photo and logo (Centered standardized layout) - Slightly shifted right
+                        spacer1, photo_col2, logo_col2, spacer2 = st.columns([1.35, 1, 1, 0.65])
                         with photo_col2:
                             if p2_photo:
                                 st.image(p2_photo, width=120)
@@ -3846,7 +3940,12 @@ elif page == "Compare Players":
                         p2_height = bio2.get('height', '-') if bio2 else '-'
                         p2_weight = bio2.get('weight', '-') if bio2 else '-'
                         p2_age = bio2.get('age', '-') if bio2 else '-'
-                        p2_draft = bio2.get('draft_year', '-') if bio2 else '-'
+                        p2_draft_year = bio2.get('draft_year', '-') if bio2 else '-'
+                        p2_draft_round = bio2.get('draft_round', '') if bio2 else ''
+                        p2_draft_num = bio2.get('draft_number', '') if bio2 else ''
+                        p2_draft_display = p2_draft_year
+                        if p2_draft_round and p2_draft_num and p2_draft_year != 'Undrafted':
+                            p2_draft_display = f"{p2_draft_year} R{p2_draft_round}, #{p2_draft_num}"
 
                         # Calculate individual record using correct column name
                         p2_wins = (player2_df['W/L'] == 'W').sum() if 'W/L' in player2_df.columns else 0
@@ -3855,12 +3954,12 @@ elif page == "Compare Players":
 
                         st.markdown(f"""<div style="text-align: center; margin-top: 10px;">
 <div style="color: #FAFAFA; font-weight: bold; font-size: 1.1rem; margin-bottom: 0px;">{player2_name}{p2_pos}</div>
-<div style="color: #9CA3AF; font-size: 0.85rem; margin-bottom: 5px;">{team_full_name2}</div>
+<div style="color: #9CA3AF; font-size: 0.85rem; margin-bottom: 5px;">{team_full_name2} <span style="color: #6B7280; font-size: 0.75rem;">({team_record2} | #{team_rank2} in {team_conf2})</span></div>
 <div style="color: #9CA3AF; font-size: 0.8rem; margin-bottom: 10px;">
 <span style="color: #9CA3AF;">HT:</span> <span style="color: #FAFAFA; font-weight: bold;">{p2_height}</span> • 
 <span style="color: #9CA3AF;">WT:</span> <span style="color: #FAFAFA; font-weight: bold;">{p2_weight} lbs</span> • 
 <span style="color: #9CA3AF;">Age:</span> <span style="color: #FAFAFA; font-weight: bold;">{p2_age}</span> • 
-<span style="color: #9CA3AF;">Draft:</span> <span style="color: #FAFAFA; font-weight: bold;">{p2_draft}</span>
+<span style="color: #9CA3AF;">Draft:</span> <span style="color: #FAFAFA; font-weight: bold;">{p2_draft_display}</span>
 </div>
 <div style="display: flex; justify-content: center; gap: 6px; font-size: 0.72rem;">
 <div style="background: #374151; padding: 2px 6px; border-radius: 4px;">
@@ -3868,9 +3967,6 @@ elif page == "Compare Players":
 </div>
 <div style="background: #374151; padding: 2px 6px; border-radius: 4px;">
 <span style="color: #9CA3AF;">IND:</span> <span style="color: #FAFAFA; font-weight: bold;">{p2_ind_record}</span>
-</div>
-<div style="background: #374151; padding: 2px 6px; border-radius: 4px;">
-<span style="color: #9CA3AF;">REC:</span> <span style="color: #FAFAFA; font-weight: bold;">{team_record2}</span> | <span style="color: #FAFAFA; font-weight: bold;">#{team_rank2} in {team_conf2}</span>
 </div>
 </div>
 </div>""", unsafe_allow_html=True)
@@ -3983,7 +4079,7 @@ elif page == "Compare Players":
                         p2_color = "#10B981" if item['p2_better'] else "#FAFAFA"
                         
                         with col1:
-                            value = f"{item['p1_value']}%" if '%' in item['Stat'] else item['p1_value']
+                            value = format_pct(item['p1_value']) if '%' in item['Stat'] else item['p1_value']
                             st.markdown(f"""
                             <div style="text-align: right; padding: 8px; font-size: 1.2rem; color: {p1_color}; font-weight: {'bold' if item['p1_better'] else 'normal'};">
                                 {value}
@@ -3998,7 +4094,7 @@ elif page == "Compare Players":
                             """, unsafe_allow_html=True)
                         
                         with col3:
-                            value = f"{item['p2_value']}%" if '%' in item['Stat'] else item['p2_value']
+                            value = format_pct(item['p2_value']) if '%' in item['Stat'] else item['p2_value']
                             st.markdown(f"""
                             <div style="text-align: left; padding: 8px; font-size: 1.2rem; color: {p2_color}; font-weight: {'bold' if item['p2_better'] else 'normal'};">
                                 {value}
@@ -4220,8 +4316,28 @@ elif page == "Around the NBA":
         standings_df = get_league_standings(season)
         nba_news = get_nba_news()
 
-    # MVP Ladder has been moved to the Awards page
-    
+    # News Ticker
+    if nba_news:
+        ticker_items = [f" {item['title']} " for item in nba_news]
+        # Join with a nice separator emoji
+        ticker_text = " 🔥 ".join(ticker_items)
+        # Duplicate for smooth infinite scroll
+        combined_text = ticker_text + " 🔥 " + ticker_text
+        
+        st.markdown(f"""<div style="background: #1e1b4b; color: #e0e7ff; padding: 12px 0; border-radius: 8px; 
+margin-bottom: 30px; border: 1px solid #312e81; overflow: hidden; 
+white-space: nowrap; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+<div style="display: inline-block; padding-left: 20px; animation: ticker 120s linear infinite; font-weight: 500; font-size: 1.1rem;">
+{combined_text}
+</div>
+</div>
+<style>
+@keyframes ticker {{
+0% {{ transform: translateX(0); }}
+100% {{ transform: translateX(-50%); }}
+}}
+</style>""", unsafe_allow_html=True)
+
     # ===== SECTION 1: 📅 DAILY GAME SLATE =====
     st.markdown("## Today's Games")
     
@@ -4291,10 +4407,14 @@ elif page == "Around the NBA":
                             home_score_display = "<span style='color: #9CA3AF; font-size: 0.75rem;'>Home</span>"
                         
                         # Create a more visual card with logos and scores
+                        channel_display = game.get('channel', '')
+                        channel_html = f"<div style='position: absolute; top: 12px; right: 12px; color: #9CA3AF; font-size: 0.72rem; font-weight: 600;'>{channel_display}</div>" if channel_display else ""
+                        
                         st.markdown(f"""
                         <div style="background: linear-gradient(135deg, #1F2937 0%, #111827 100%); 
                                     border-radius: 10px; padding: 15px; text-align: center; 
-                                    border: 1px solid #374151; margin-bottom: 10px;">
+                                    border: 1px solid #374151; margin-bottom: 10px; position: relative;">
+                            {channel_html}
                             <div style="font-size: 0.8rem; font-weight: bold; margin-bottom: 8px;">{status_display}</div>
                             <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -4324,28 +4444,72 @@ elif page == "Around the NBA":
     st.markdown("---")
     
     # ===== SECTION 3: 📰 TOP HEADLINES =====
-    st.markdown("## 📰 Top NBA Headlines")
-    st.caption("Latest news from NBA.com")
+    col_h, col_r = st.columns([4, 1])
+    with col_h:
+        st.markdown("## 📰 NBA News Wire")
+        st.caption("Real-time updates from NBA.com")
+    with col_r:
+        if st.button("🔄 Refresh News", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
     
     if nba_news:
-        # Show top 3 headlines as requested
-        for i, item in enumerate(nba_news[:3]):
-            st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); 
-                        border-radius: 12px; padding: 25px; margin-bottom: 20px;
-                        border-left: 5px solid #667eea;
-                        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                        transition: transform 0.2s ease;">
-                <a href="{item['link']}" target="_blank" style="text-decoration: none;">
-                    <h3 style="margin: 0; color: #F1F5F9; font-size: 1.2rem; line-height: 1.4;">{item['title']}</h3>
-                    <p style="margin: 12px 0 0 0; color: #94A3B8; font-size: 0.9rem;">
-                        <span style="display: inline-flex; align-items: center;">
-                            📖 Read full story on NBA.com →
-                        </span>
-                    </p>
-                </a>
-            </div>
-            """, unsafe_allow_html=True)
+        featured = nba_news[0]
+        if featured:
+            # Derived date: if it says "ago", it's from current date in ET
+            article_time = featured.get('time', '')
+            article_date = article_time
+            if "ago" in article_time.lower() or not article_time:
+                article_date = now_et.strftime("%B %d, %Y")
+            
+            time_display = f"<span style='color: #818cf8; font-size: 0.8rem; font-weight: 600;'>{article_time}</span>" if article_time else ""
+            st.markdown(f"""<div style="background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%); 
+border-radius: 12px; padding: 30px; margin-bottom: 25px;
+border: 1px solid #312e81; position: relative; overflow: hidden;">
+<div style="position: absolute; top: 0; right: 0; background: #6366f1; color: white; 
+padding: 6px 15px; font-size: 0.75rem; font-weight: bold; border-bottom-left-radius: 12px;">
+FEATURED STORY
+</div>
+<a href="{featured['link']}" target="_blank" style="text-decoration: none;">
+<h2 style="margin: 0; color: #fff; font-size: 1.5rem; line-height: 1.3; font-weight: 800;">{featured['title']}</h2>
+<div style="margin-top: 15px; display: flex; justify-content: space-between; align-items: center;">
+<div style="display: flex; align-items: center; gap: 10px;">
+{time_display}
+<p style="margin: 0; color: #a5b4fc; font-weight: 500; font-size: 0.9rem;">
+Read report →
+</p>
+</div>
+<div style="color: #94a3b8; font-size: 0.8rem; font-weight: 500;">{article_date}</div>
+</div>
+</a>
+</div>""", unsafe_allow_html=True)
+
+        # Other Headlines in a cleaner grid or list
+        if len(nba_news) > 1:
+            cols = st.columns(2)
+            for i, item in enumerate(nba_news[1:7]): # Show up to 6 in grid
+                with cols[i % 2]:
+                    # Derived date for grid items
+                    article_time = item.get('time', '')
+                    article_date = article_time
+                    if "ago" in article_time.lower() or not article_time:
+                        article_date = now_et.strftime("%b %d, %Y") # Shorter date for grid
+                    
+                    time_info = f"<p style='margin: 0; color: #6366f1; font-size: 0.75rem; font-weight: bold;'>{article_time}</p>" if article_time else ""
+                    st.markdown(f"""<div style="background: #111827; border-radius: 10px; padding: 18px; 
+margin-bottom: 15px; border: 1px solid #1f2937; height: 180px;
+display: flex; flex-direction: column; justify-content: space-between;">
+<a href="{item['link']}" target="_blank" style="text-decoration: none;">
+<h4 style="margin: 0; color: #e5e7eb; font-size: 0.95rem; line-height: 1.4; font-weight: 600;">{item['title']}</h4>
+<div style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
+{time_info}
+<p style="margin: 0; color: #6366f1; font-weight: 600; font-size: 0.8rem;">Read report →</p>
+</div>
+</a>
+<div style="display: flex; justify-content: flex-end; margin-top: 5px;">
+<div style="color: #4b5563; font-size: 0.7rem; font-weight: 600;">{article_date}</div>
+</div>
+</div>""", unsafe_allow_html=True)
     else:
         st.info("Latest news currently unavailable. [Visit NBA.com →](https://www.nba.com/news)")
     
@@ -4867,7 +5031,23 @@ elif page == "Standings":
 
 # ==================== AWARDS PAGE ====================
 elif st.session_state.current_page == "Awards":
-    st.title("NBA Awards")
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.title("NBA Awards")
+    with col2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🔄 Refresh Odds", use_container_width=True):
+            with st.spinner("Refreshing DraftKings odds..."):
+                import subprocess
+                try:
+                    subprocess.run(["uv", "run", "python", "scripts/update_awards_odds.py", "--force"], check=True)
+                    st.cache_data.clear()
+                    st.success("Odds refreshed!")
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error refreshing: {e}")
+    
     render_section_header("NBA Awards", "Season award favorites and betting odds")
     
     # Get required data for MVP Ladder
@@ -4942,7 +5122,7 @@ elif st.session_state.current_page == "Awards":
                         three_pct = found_stats['FG3_PCT'] * 100
                         ft_pct = found_stats['FT_PCT'] * 100
                         
-                        shooting_stats = f"{fg_pct:.1f}% FG • {three_pct:.1f}% 3P • {ft_pct:.1f}% FT"
+                        shooting_stats = f"{format_pct(fg_pct)} FG • {format_pct(three_pct)} 3P • {format_pct(ft_pct)} FT"
                         player_stats = f"{ppg:.1f} PPG · {rpg:.1f} RPG · {apg:.1f} APG"
                     else:
                          # Fallback to slow API
@@ -4964,7 +5144,8 @@ elif st.session_state.current_page == "Awards":
                     team_conf = matching.iloc[0].get('Conference', '')
             
             if team_logo_url:
-                spacer1, photo_col, logo_col, spacer2 = st.columns([1, 4.5, 4.5, 1])
+                # Slightly shifted right for better balance
+                spacer1, photo_col, logo_col, spacer2 = st.columns([1.35, 4.5, 4.5, 0.65])
                 with photo_col:
                     if player_photo_url:
                         st.image(player_photo_url, width=220)
@@ -4988,7 +5169,7 @@ elif st.session_state.current_page == "Awards":
             st.markdown(f"""
             <div style="text-align: center; margin-top: 10px;">
                 <div style="color: #FAFAFA; font-weight: bold; font-size: 0.9rem; margin-bottom: 5px; line-height: 1.2;">{player_name}{pos_label}</div>
-                <div style="color: #9CA3AF; font-size: 0.72rem; margin-bottom: 2px;">{player_stats}</div>
+                <div style="color: #9CA3AF; font-size: 0.75rem; margin-bottom: 2px;">{player_stats}</div>
                 <div style="color: #6B7280; font-size: 0.75rem; margin-bottom: 8px;">{shooting_stats}</div>
                 <div style="display: flex; justify-content: center; gap: 12px; font-size: 0.75rem;">
                     <div style="background: #374151; padding: 2px 8px; border-radius: 4px;">
@@ -5100,7 +5281,7 @@ elif st.session_state.current_page == "Awards":
                         three_pct = found_stats['FG3_PCT'] * 100
                         ft_pct = found_stats['FT_PCT'] * 100
                         
-                        shooting_stats = f"{fg_pct:.1f}% FG • {three_pct:.1f}% 3P • {ft_pct:.1f}% FT"
+                        shooting_stats = f"{format_pct(fg_pct)} FG • {format_pct(three_pct)} 3P • {format_pct(ft_pct)} FT"
                         
                         # Team info
                         team_abbrev = found_stats['TEAM_ABBREVIATION']
@@ -5133,9 +5314,9 @@ elif st.session_state.current_page == "Awards":
                 <div style="text-align: center; font-size: 1.2rem; font-weight: bold; color: {rank_color}; margin-bottom: 5px;">#{rank_idx + 1}</div>
                 """, unsafe_allow_html=True)
                 
-                # Show player photo and team logo side by side
+                # Show player photo and team logo side by side - Slightly shifted right
                 if team_logo_url and player_photo_url:
-                    spacer1, photo_col, logo_col, spacer2 = st.columns([1, 4.5, 4.5, 1])
+                    spacer1, photo_col, logo_col, spacer2 = st.columns([1.35, 4.5, 4.5, 0.65])
                     with photo_col:
                         st.image(player_photo_url, width=220)
                     with logo_col:
@@ -5207,9 +5388,9 @@ elif st.session_state.current_page == "Awards":
                 <div style="text-align: center; font-size: 1.2rem; font-weight: bold; color: {rank_color}; margin-bottom: 5px;">#{rank_idx + 1}</div>
                 """, unsafe_allow_html=True)
                 
-                # Centered team logo
+                # Centered team logo - Slightly shifted right
                 if team_logo_url:
-                    spacer1, logo_col, spacer2 = st.columns([1, 4, 1])
+                    spacer1, logo_col, spacer2 = st.columns([1.35, 4, 0.65])
                     with logo_col:
                         st.image(team_logo_url, width=220)
                 
@@ -5229,43 +5410,51 @@ elif st.session_state.current_page == "Awards":
                 </div>
                 """, unsafe_allow_html=True)
             
-            # Separate Coach of the Year from player awards
-            player_awards = [a for a in awards_data if "Coach" not in a['award_name']]
+            # Separate Coach of the Year from player awards, and exclude MVP odds
+            player_awards = [a for a in awards_data if "Coach" not in a['award_name'] and "MVP" not in a['award_name']]
             coach_awards = [a for a in awards_data if "Coach" in a['award_name']]
             
             # Logic to collect ties for footnotes
             ties_list = []
             
+            def collect_award_ties(candidates, award_name, is_coach=False):
+                """Collect ties among top 10 candidates, ensuring at least one is in top 5."""
+                # Use top 10 for tie checking
+                check_cands = candidates[:10]
+                odds_map = {}
+                for i, cand in enumerate(check_cands):
+                    # Normalize odds string (strip and replace special minus)
+                    o = cand['odds'].strip().replace('\u2212', '-')
+                    if o in odds_map:
+                        odds_map[o].append({"name": cand['player'], "rank": i})
+                    else:
+                        odds_map[o] = [{"name": cand['player'], "rank": i}]
+                
+                award_ties = []
+                for o, hitters in odds_map.items():
+                    if len(hitters) > 1:
+                        # Only add if at least one player in the tie is in the top 5
+                        if any(h['rank'] < 5 for h in hitters):
+                            # Add all unique pairs
+                            for i in range(len(hitters)):
+                                for j in range(i + 1, len(hitters)):
+                                    award_ties.append({
+                                        "award": award_name,
+                                        "p1": hitters[i]['name'],
+                                        "p2": hitters[j]['name'],
+                                        "odds": o,
+                                        "is_coach": is_coach
+                                    })
+                return award_ties
+
             # Render PLAYER awards first
             for award in player_awards:
                 st.markdown(f"### {award['award_name']}")
                 
+                # Use helper for more inclusive tie detection
+                ties_list.extend(collect_award_ties(award['candidates'], award['award_name']))
+                
                 top_candidates = award['candidates'][:5]
-                
-                # Check for ties in top 5
-                odds_map = {}
-                for cand in top_candidates:
-                    o = cand['odds']
-                    if o in odds_map:
-                        odds_map[o].append(cand['player'])
-                    else:
-                        odds_map[o] = [cand['player']]
-                
-                for o, hitters in odds_map.items():
-                    if len(hitters) > 1:
-                        # Find team for the tied player to mention in footnote
-                        # We'll just display the first pair of ties found for simplicity as requested
-                        # "player is also tied with player (team)"
-                        # Let's collect all pairs for the footnote section
-                        p1 = hitters[0]
-                        for p2 in hitters[1:]:
-                            ties_list.append({
-                                "award": award['award_name'],
-                                "p1": p1,
-                                "p2": p2,
-                                "odds": o
-                            })
-
                 cols = st.columns(5)
                 for idx, cand in enumerate(top_candidates):
                     with cols[idx]:
@@ -5277,29 +5466,10 @@ elif st.session_state.current_page == "Awards":
             for award in coach_awards:
                 st.markdown(f"### {award['award_name']}")
                 
+                # Use helper for more inclusive tie detection
+                ties_list.extend(collect_award_ties(award['candidates'], award['award_name'], is_coach=True))
+                
                 top_candidates = award['candidates'][:5]
-                
-                # Check for ties in top 5 for coaches
-                odds_map = {}
-                for cand in top_candidates:
-                    o = cand['odds']
-                    if o in odds_map:
-                        odds_map[o].append(cand['player'])
-                    else:
-                        odds_map[o] = [cand['player']]
-                
-                for o, hitters in odds_map.items():
-                    if len(hitters) > 1:
-                        p1 = hitters[0]
-                        for p2 in hitters[1:]:
-                            ties_list.append({
-                                "award": award['award_name'],
-                                "p1": p1,
-                                "p2": p2,
-                                "odds": o,
-                                "is_coach": True
-                            })
-
                 cols = st.columns(5)
                 for idx, cand in enumerate(top_candidates):
                     with cols[idx]:
@@ -5315,19 +5485,20 @@ elif st.session_state.current_page == "Awards":
                     p1 = tie['p1']
                     p2 = tie['p2']
                     
-                    # Get team for p2
+                    # Get teams for both players/coaches
+                    p1_team_info = ""
                     p2_team_info = ""
+                    
                     if tie.get('is_coach'):
-                        t_info = coach_team_map.get(p2)
-                        p2_team_info = f" ({t_info['abbrev']})" if t_info else ""
+                        t_info1 = coach_team_map.get(p1)
+                        p1_team_info = f" ({t_info1['abbrev']})" if t_info1 else ""
+                        t_info2 = coach_team_map.get(p2)
+                        p2_team_info = f" ({t_info2['abbrev']})" if t_info2 else ""
                     else:
-                        # For players, we could fetch bio, but to keep it fast let's just 
-                        # try to get team from game log or just skip if too slow.
-                        # User said "insert player (other player's team)".
-                        # Let's try a quick lookup.
                         try:
-                            # We can use a cache or just skip team for now if it's too heavy
-                            # but let's try to get it from bio cache
+                            # Use cached bio fetch for quick lookup
+                            p1_bio = fetch_player_bio(p1)
+                            p1_team_info = f" ({p1_bio.get('team_abbrev', 'N/A')})" if p1_bio else ""
                             p2_bio = fetch_player_bio(p2)
                             p2_team_info = f" ({p2_bio.get('team_abbrev', 'N/A')})" if p2_bio else ""
                         except:
@@ -5335,21 +5506,15 @@ elif st.session_state.current_page == "Awards":
                     
                     col_text, col_btn = st.columns([4, 1])
                     with col_text:
-                        st.markdown(f"**{p1}** is tied with **{p2}**{p2_team_info} for {tie['award']} at **{tie['odds']}**")
+                        st.markdown(f"**{p1}**{p1_team_info} is tied with **{p2}**{p2_team_info} for {tie['award']} at **{tie['odds']}**")
                     with col_btn:
                         # Use unique key for button
                         btn_key = f"compare_{p1}_{p2}_{tie['award']}".replace(" ", "_")
-                        if st.button(f"Compare Players", key=btn_key, type="secondary", use_container_width=True):
-                            st.session_state.current_page = "Compare Players"
-                            st.session_state.compare_player1_search = p1
-                            st.session_state.compare_player2_search = p2
-                            # Setting these should trigger the selectbox to filter in the next run
-                            # and the user might have to select them, OR we can set the selection directly
-                            # let's try setting the selection key too if it matches exactly
-                            st.rerun()
+                        st.button(f"Compare Players", key=btn_key, type="secondary", use_container_width=True,
+                                  on_click=nav_to_compare, args=(p1, p2))
             
             st.markdown("---")
-            st.info("💡 To update odds, run `python scripts/update_awards_odds.py`")
+            # st.info("💡 To update odds, run `python scripts/update_awards_odds.py`")
             
         except Exception as e:
             st.error(f"Error loading awards data: {e}")
