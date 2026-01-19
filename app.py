@@ -2423,7 +2423,7 @@ elif page == "Player Stats":
                 total_fta = player_df['FTA'].sum() if 'FTA' in player_df.columns else 0
                 ft_pct_display = (total_ftm / total_fta * 100) if total_fta > 0 else 0
                 
-                shooting_line = f"{format_pct(fg_pct_display)} FG • {format_pct(three_pct_display)} 3P • {format_pct(ft_pct_display)} FT"
+                shooting_line = f"{format_pct(fg_pct_display)} FG% • {format_pct(three_pct_display)} 3P% • {format_pct(ft_pct_display)} FT%"
                 
                 # Calculate individual record using correct column name
                 wins = (player_df['W/L'] == 'W').sum() if 'W/L' in player_df.columns else 0
@@ -4031,7 +4031,7 @@ elif page == "Compare Players":
                         total_ftm1 = player1_df['FTM'].sum() if 'FTM' in player1_df.columns else 0
                         total_fta1 = player1_df['FTA'].sum() if 'FTA' in player1_df.columns else 0
                         ft_pct1 = (total_ftm1 / total_fta1 * 100) if total_fta1 > 0 else 0
-                        shooting1 = f"{format_pct(fg_pct1)} FG • {format_pct(three_pct1)} 3P • {format_pct(ft_pct1)} FT"
+                        shooting1 = f"{format_pct(fg_pct1)} FG% • {format_pct(three_pct1)} 3P% • {format_pct(ft_pct1)} FT%"
                         
                         # Team record, rank, and full name
                         team_record1 = "N/A"
@@ -4117,7 +4117,7 @@ elif page == "Compare Players":
                         total_ftm2 = player2_df['FTM'].sum() if 'FTM' in player2_df.columns else 0
                         total_fta2 = player2_df['FTA'].sum() if 'FTA' in player2_df.columns else 0
                         ft_pct2 = (total_ftm2 / total_fta2 * 100) if total_fta2 > 0 else 0
-                        shooting2 = f"{format_pct(fg_pct2)} FG • {format_pct(three_pct2)} 3P • {format_pct(ft_pct2)} FT"
+                        shooting2 = f"{format_pct(fg_pct2)} FG% • {format_pct(three_pct2)} 3P% • {format_pct(ft_pct2)} FT%"
                         
                         # Team record, rank, and full name
                         team_record2 = "N/A"
@@ -5380,7 +5380,7 @@ elif st.session_state.current_page == "Awards":
                         three_pct = found_stats['FG3_PCT'] * 100
                         ft_pct = found_stats['FT_PCT'] * 100
                         
-                        shooting_stats = f"{format_pct(fg_pct)} FG • {format_pct(three_pct)} 3P • {format_pct(ft_pct)} FT"
+                        shooting_stats = f"{format_pct(fg_pct)} FG% • {format_pct(three_pct)} 3P% • {format_pct(ft_pct)} FT%"
                         player_stats = f"{ppg:.1f} PPG · {rpg:.1f} RPG · {apg:.1f} APG"
                     else:
                          # Fallback to slow API
@@ -5539,7 +5539,7 @@ elif st.session_state.current_page == "Awards":
                         three_pct = found_stats['FG3_PCT'] * 100
                         ft_pct = found_stats['FT_PCT'] * 100
                         
-                        shooting_stats = f"{format_pct(fg_pct)} FG • {format_pct(three_pct)} 3P • {format_pct(ft_pct)} FT"
+                        shooting_stats = f"{format_pct(fg_pct)} FG% • {format_pct(three_pct)} 3P% • {format_pct(ft_pct)} FT%"
                         
                         # Team info
                         team_abbrev = found_stats['TEAM_ABBREVIATION']

@@ -32,7 +32,20 @@ class AuthManager:
         self.credentials_path = credentials_path
         self.cookie_name = cookie_name
         self.cookie_key = cookie_key or os.environ.get("OAUTH_COOKIE_KEY", "default-secret-key-change-me")
-        self.redirect_uri = redirect_uri
+        
+        # Priority for redirect_uri:
+        # 1. Passed argument
+        # 2. st.secrets["OAUTH_REDIRECT_URI"]
+        # 3. Environment variable
+        # 4. Default localhost
+        if redirect_uri == "http://localhost:8501":
+            if "OAUTH_REDIRECT_URI" in st.secrets:
+                self.redirect_uri = st.secrets["OAUTH_REDIRECT_URI"]
+            else:
+                self.redirect_uri = os.environ.get("OAUTH_REDIRECT_URI", redirect_uri)
+        else:
+            self.redirect_uri = redirect_uri
+            
         self.cookie_expiry_days = cookie_expiry_days
         self._authenticator = None
         self._db: SQLiteBackend = get_database()
@@ -43,17 +56,43 @@ class AuthManager:
             return None
         
         if self._authenticator is None:
-            # Check if credentials file exists
-            if not os.path.exists(self.credentials_path):
-                return None
+            config_path = self.credentials_path
             
-            self._authenticator = Authenticate(
-                secret_credentials_path=self.credentials_path,
-                cookie_name=self.cookie_name,
-                cookie_key=self.cookie_key,
-                redirect_uri=self.redirect_uri,
-                cookie_expiry_days=self.cookie_expiry_days,
-            )
+            # Check if credentials file exists
+            if not os.path.exists(config_path):
+                # Try to load from st.secrets if on Streamlit Cloud
+                if "google_auth" in st.secrets:
+                   try:
+                       # Write secrets to a temporary file because Authenticate requires a path
+                       import json
+                       import tempfile
+                       
+                       # We need to preserve the dict structure if it's already a dict in secrets
+                       auth_config = st.secrets["google_auth"]
+                       if hasattr(auth_config, "to_dict"):
+                           auth_config = auth_config.to_dict()
+                       
+                       tmp_file = tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.json')
+                       json.dump(dict(auth_config), tmp_file)
+                       tmp_file.close()
+                       config_path = tmp_file.name
+                   except Exception as e:
+                       st.error(f"Error loading auth secrets: {e}")
+                       return None
+                else:
+                    return None
+            
+            try:
+                self._authenticator = Authenticate(
+                    secret_credentials_path=config_path,
+                    cookie_name=self.cookie_name,
+                    cookie_key=self.cookie_key,
+                    redirect_uri=self.redirect_uri,
+                    cookie_expiry_days=self.cookie_expiry_days,
+                )
+            except Exception as e:
+                st.error(f"Failed to initialize Authenticate: {e}")
+                return None
         
         return self._authenticator
     
