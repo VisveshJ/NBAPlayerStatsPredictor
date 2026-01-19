@@ -165,24 +165,29 @@ class AuthManager:
             return
 
         try:
-            auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline")
+            # We explicitly ask for 'consent' and 'offline' to ensure the refresh token is generated
+            # which sometimes helps bypass strict proxy rules on Streamlit Cloud.
+            auth_url, _ = flow.authorization_url(
+                prompt="consent", 
+                access_type="offline",
+                include_granted_scopes='true'
+            )
             
             st.markdown("### 🏀 NBA Sign In")
             st.write("Join to save your favorite players and get personalized AI predictions.")
             
-            # Use native link button for better header handling (fixes some 403 issues)
+            # Sign in button
             st.link_button("🚀 Sign in with Google", auth_url, type="primary", use_container_width=True)
             
-            # Expert Diagnostic Info
-            with st.expander("🔍 Cloud Troubleshooting (If 403 Forbidden/Access Denied)"):
-                st.warning("⚠️ **Common Fix for 403 Errors:**")
+            # Published App Troubleshooting
+            with st.expander("🔍 Why is this is a 403 Forbidden?"):
+                st.info("**For Published Apps:**")
                 st.markdown("""
-                1. **Add Test User:** In Google Cloud Console -> 'OAuth Consent Screen' -> 'Test Users', you **MUST** add your Gmail address.
-                2. **Enable API:** Search for 'Google People API' in Google Cloud and click **ENABLE**.
-                3. **Redirect URI:** Ensure this matches exactly:
+                1. **People API:** Search Google Cloud for 'Google People API' and click **ENABLE**. This is the #1 cause of 403s on published apps.
+                2. **Authorized Domain:** In the 'OAuth Consent Screen' tab, ensure `streamlit.app` is added to **Authorized domains**.
+                3. **Redirect URI:** Google Cloud Console must have exactly: 
                 """)
                 st.code(self.redirect_uri)
-                st.write(f"🔑 **Client ID:** `{flow.client_id[:20]}...`")
                     
         except Exception as e:
             st.error(f"UI Error: {e}")
