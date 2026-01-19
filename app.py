@@ -264,7 +264,7 @@ def get_league_standings(season="2025-26"):
             # Fix Clippers name to ensure unique abbreviation mapping
             if team_data['TeamCity'] == 'LA' and team_data['TeamName'] == 'Clippers':
                 team_data['TeamCity'] = 'Los Angeles Clippers'
-                team_data['TeamName'] = '' # Prevent "Los Angeles Clippers Clippers"
+                team_data['TeamName'] = 'Clippers'
 
             
             # Update derived fields after fix
@@ -1743,7 +1743,7 @@ elif page == "Predictions":
                     team_rank = row['PlayoffRank']
                     team_conf = row['Conference']
                     team_seed_suffix = f" (#{int(team_rank)})"
-                    team_full_name = f"{row['TeamCity']} {row['TeamName']}".strip()
+                    team_full_name = row['TeamCity'] if row['TeamName'] in row['TeamCity'] else f"{row['TeamCity']} {row['TeamName']}".strip()
                     team_display = f"{team_full_name} <span style='color: #9CA3AF; font-size: 1.1rem;'>({team_rec} | #{team_rank} in {team_conf})</span>"
                     break
         
@@ -2410,7 +2410,7 @@ elif page == "Player Stats":
                             team_record = row['Record']
                             team_rank = row['PlayoffRank']
                             team_conf = row['Conference']
-                            team_full_name = f"{row['TeamCity']} {row['TeamName']}".strip()
+                            team_full_name = row['TeamCity'] if row['TeamName'] in row['TeamCity'] else f"{row['TeamCity']} {row['TeamName']}".strip()
                             break
                 # Calculate stats
                 ppg = player_df['Points'].mean() if 'Points' in player_df.columns else 0
@@ -4052,7 +4052,7 @@ elif page == "Compare Players":
                                     team_record1 = row['Record']
                                     team_rank1 = row['PlayoffRank']
                                     team_conf1 = row['Conference']
-                                    team_full_name1 = f"{row['TeamCity']} {row['TeamName']}".strip()
+                                    team_full_name1 = row['TeamCity'] if row['TeamName'] in row['TeamCity'] else f"{row['TeamCity']} {row['TeamName']}".strip()
                                     break
                         
                         # Photo and logo (Centered standardized layout) - Slightly shifted right
@@ -4138,7 +4138,7 @@ elif page == "Compare Players":
                                     team_record2 = row['Record']
                                     team_rank2 = row['PlayoffRank']
                                     team_conf2 = row['Conference']
-                                    team_full_name2 = f"{row['TeamCity']} {row['TeamName']}".strip()
+                                    team_full_name2 = row['TeamCity'] if row['TeamName'] in row['TeamCity'] else f"{row['TeamCity']} {row['TeamName']}".strip()
                                     break
                         
                         # Photo and logo (Centered standardized layout) - Slightly shifted right
@@ -4865,7 +4865,7 @@ elif page == "Standings":
                 is_favorite = team_abbrev in favorite_teams
                 
                 rank = int(row['PlayoffRank'])
-                team_name = f"{row['TeamCity']} {row['TeamName']}".strip()
+                team_name = row['TeamCity'] if row['TeamName'] in row['TeamCity'] else f"{row['TeamCity']} {row['TeamName']}".strip()
                 record = row['Record']
                 win_pct = f"{row['WinPct']*100:.1f}" if isinstance(row['WinPct'], (int, float)) else row['WinPct']
                 l10 = row.get('L10', 'N/A')
@@ -5011,7 +5011,7 @@ elif page == "Standings":
                 if not team_row.empty:
                     row = team_row.iloc[0]
                     abbrev = get_team_abbrev(row['TeamCity'])
-                    name = f"{row['TeamCity']} {row['TeamName']}".strip()
+                    name = row['TeamCity'] if row['TeamName'] in row['TeamCity'] else f"{row['TeamCity']} {row['TeamName']}".strip()
                     record = row['Record']
                     streak = row.get('strCurrentStreak', '')
                     return {'abbrev': abbrev, 'name': name, 'record': record, 'seed': seed, 'streak': streak}
@@ -5161,7 +5161,7 @@ elif page == "Standings":
                     team_abbrev = get_team_abbrev(row['TeamCity'])
                     is_favorite = team_abbrev in favorite_teams
                     
-                    team_name = f"{row['TeamCity']} {row['TeamName']}".strip()
+                    team_name = row['TeamCity'] if row['TeamName'] in row['TeamCity'] else f"{row['TeamCity']} {row['TeamName']}".strip()
                     record = row['Record']
                     div_rec = row.get('DivisionRecord', 'N/A')
                     win_pct = f"{row['WinPct']*100:.1f}" if isinstance(row['WinPct'], (int, float)) else row['WinPct']
