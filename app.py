@@ -66,6 +66,18 @@ TEAM_ABBREV_MAP = {
     'Orlando': 'ORL', 'Charlotte': 'CHA', 'Detroit': 'DET'
 }
 
+# Mapping of abbreviations to full team names for UI display
+TEAM_NAME_MAP = {
+    "ATL": "Atlanta Hawks", "BOS": "Boston Celtics", "BKN": "Brooklyn Nets", "CHA": "Charlotte Hornets",
+    "CHI": "Chicago Bulls", "CLE": "Cleveland Cavaliers", "DAL": "Dallas Mavericks", "DEN": "Denver Nuggets",
+    "DET": "Detroit Pistons", "GSW": "Golden State Warriors", "HOU": "Houston Rockets", "IND": "Indiana Pacers",
+    "LAC": "LA Clippers", "LAL": "Los Angeles Lakers", "MEM": "Memphis Grizzlies", "MIA": "Miami Heat",
+    "MIL": "Milwaukee Bucks", "MIN": "Minnesota Timberwolves", "NOP": "New Orleans Pelicans", "NYK": "New York Knicks",
+    "OKC": "Oklahoma City Thunder", "ORL": "Orlando Magic", "PHI": "Philadelphia 76ers", "PHX": "Phoenix Suns",
+    "POR": "Portland Trail Blazers", "SAC": "Sacramento Kings", "SAS": "San Antonio Spurs", "TOR": "Toronto Raptors",
+    "UTA": "Utah Jazz", "WAS": "Washington Wizards"
+}
+
 def get_team_abbrev(city):
     """Get team abbreviation from city name."""
     for key in TEAM_ABBREV_MAP:
@@ -2071,7 +2083,8 @@ elif page == "Predictions":
                     "Opponent Team:",
                     available_teams,
                     key="opponent_selectbox",
-                    help=f"{selected_player} currently plays for {player_team} (excluded from list)"
+                    format_func=lambda x: TEAM_NAME_MAP.get(x, x),
+                    help=f"{selected_player} currently plays for {TEAM_NAME_MAP.get(player_team, player_team)} (excluded from list)"
                 )
             
             with opp_col2:
@@ -2237,7 +2250,8 @@ elif page == "Predictions":
                 )
             
             else:
-                st.info(f"**{selected_player}** has not played against **{selected_opponent}** yet this season.")
+                opp_full = TEAM_NAME_MAP.get(selected_opponent, selected_opponent)
+                st.info(f"**{selected_player}** has not played against **{opp_full}** yet this season.")
         
             st.markdown("---")
             
@@ -2268,7 +2282,8 @@ elif page == "Predictions":
                     
                     if prediction:
                         st.success("Prediction Complete!")
-                        st.markdown(f"### Predicted Stats: {selected_player} vs {selected_opponent}")
+                        opp_full = TEAM_NAME_MAP.get(selected_opponent, selected_opponent)
+                        st.markdown(f"### Predicted Stats: {selected_player} vs {opp_full}")
                         
                         # Display metrics
                         metric_col1, metric_col2, metric_col3 = st.columns(3)
@@ -2998,7 +3013,12 @@ elif page == "Player Stats":
                 
                 opp_col1, opp_col2 = st.columns([0.9, 0.1])
                 with opp_col1:
-                    selected_opp = st.selectbox("Select Team:", available_opponents, key="stats_vs_team_select")
+                    selected_opp = st.selectbox(
+                        "Select Team:", 
+                        available_opponents, 
+                        key="stats_vs_team_select",
+                        format_func=lambda x: TEAM_NAME_MAP.get(x, x)
+                    )
                 with opp_col2:
                     opp_logo = get_team_logo_url(selected_opp)
                     if opp_logo:
@@ -3030,8 +3050,9 @@ elif page == "Player Stats":
                                 opp_conf_str = row['Conference']
                                 break
                     
-                    # Calculate player's averages against this opponent this season
-                    st.markdown(f"### Games vs {selected_opp} <span style='color: #6B7280; font-size: 1.5rem;'> (#{opp_rank_str} {opp_conf_str}, {opp_record_str})</span>", unsafe_allow_html=True)
+                    if not games_vs_opp.empty:
+                        opp_full = TEAM_NAME_MAP.get(selected_opp, selected_opp)
+                        st.markdown(f"### Games vs {opp_full} <span style='color: #6B7280; font-size: 1.5rem;'> (#{opp_rank_str} {opp_conf_str}, {opp_record_str})</span>", unsafe_allow_html=True)
 
                     
                     if len(opp_games) > 0:
@@ -3183,7 +3204,8 @@ elif page == "Player Stats":
                         )
                     
                     else:
-                        st.info(f"**{selected_player}** has not played against **{selected_opp}** yet this season.")
+                        opp_full = TEAM_NAME_MAP.get(selected_opp, selected_opp)
+                        st.info(f"**{selected_player}** has not played against **{opp_full}** yet this season.")
 
 
 # ==================== FAVORITES PAGE ====================
@@ -3568,7 +3590,12 @@ elif page == "Favorites":
                     # Filter out teams already in favorites
                     available_teams = [t for t in all_team_abbrevs if t not in favorite_teams]
                     if available_teams:
-                        new_team = st.selectbox("Select team to add:", available_teams, key="new_team_select")
+                        new_team = st.selectbox(
+                            "Select team to add:", 
+                            available_teams, 
+                            key="new_team_select",
+                            format_func=lambda x: TEAM_NAME_MAP.get(x, x)
+                        )
                         add_col1, add_col2 = st.columns(2)
                         with add_col1:
                             if st.button("Add Team", use_container_width=True, type="primary", key="confirm_add_team"):
