@@ -209,6 +209,19 @@ class AuthManager:
     def get_user_info(self) -> Optional[Dict[str, Any]]:
         return st.session_state.get("user_info", {})
 
+    def get_current_user(self):
+        """Compatibility method for app.py that expects attribute access."""
+        info = self.get_user_info()
+        if not info:
+            return None
+        # Return a simple object that allows .email access
+        class User:
+            def __init__(self, d):
+                self.email = d.get("email")
+                self.name = d.get("name")
+                self.picture = d.get("picture")
+        return User(info)
+
     def get_favorite_players(self) -> list:
         oid = st.session_state.get("oauth_id")
         return self._db.get_favorite_players(oid) if oid else []
