@@ -127,6 +127,18 @@ class AuthManager:
     def _show_demo_login(self) -> None:
         """Show demo login for development."""
         st.markdown("### 🔐 Login")
+        
+        # --- DIAGNOSTICS SECTION ---
+        with st.expander("🔍 Auth Diagnostics (Troubleshooting)"):
+            st.write(f"✅ **Library Installed:** {GOOGLE_AUTH_AVAILABLE}")
+            st.write(f"✅ **Client ID Detected:** {bool(self.client_id)}")
+            st.write(f"✅ **Client Secret Detected:** {bool(self.client_secret)}")
+            if not GOOGLE_AUTH_AVAILABLE:
+                st.error("The `st-google-auth` library is missing. Please ensure your `requirements.txt` contains it and the app has been rebooted.")
+            if not self.client_id:
+                st.error("The `client_id` is missing from your Streamlit Secrets.")
+        # ---------------------------
+
         if not GOOGLE_AUTH_AVAILABLE or not self.client_id:
             st.info("⚠️ Google OAuth not configured. Using demo login.")
         
