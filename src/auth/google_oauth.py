@@ -87,6 +87,19 @@ class AuthManager:
                                st.error("Invalid 'google_auth' secrets. Missing 'web' or 'client_id' key.")
                                return None
                        
+                       # FIX: The Google library requires 'redirect_uris' to be a LIST.
+                       # If it's a string in the TOML, convert it.
+                       key = "web" if "web" in auth_config else "installed"
+                       if "redirect_uris" in auth_config[key]:
+                           if isinstance(auth_config[key]["redirect_uris"], str):
+                               auth_config[key]["redirect_uris"] = [auth_config[key]["redirect_uris"]]
+                       else:
+                           auth_config[key]["redirect_uris"] = []
+                       
+                       # Ensure the current redirect_uri is in the list
+                       if self.redirect_uri not in auth_config[key]["redirect_uris"]:
+                           auth_config[key]["redirect_uris"].append(self.redirect_uri)
+                       
                        tmp_file = tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.json')
                        json.dump(auth_config, tmp_file)
                        tmp_file.close()
