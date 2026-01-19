@@ -3290,29 +3290,26 @@ elif page == "Favorites":
                         """, unsafe_allow_html=True)
                         
                         # Top Row: Info + Actions
-                        col_img, col_info, col_actions = st.columns([0.8, 2.5, 1])
+                        col_logo, col_img, col_info, col_actions = st.columns([0.5, 0.8, 2.0, 1])
+                        
+                        with col_logo:
+                            team_abbrev = bio.get('team_abbrev') if bio else None
+                            if team_abbrev:
+                                logo = get_team_logo_url(team_abbrev)
+                                if logo:
+                                    st.image(logo, width=80)
+                                else:
+                                    st.write(team_abbrev)
                         
                         with col_img:
                             if bio and bio.get('player_id'):
                                 headshot_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{bio['player_id']}.png"
-                                st.image(headshot_url, width=150)
+                                st.image(headshot_url, width=120)  # Slightly smaller to fit
                             else:
                                 st.write("👤")
                         
                         with col_info:
-                            # Team Logo + Name
-                            team_abbrev = bio.get('team_abbrev') if bio else None
-                            
-                            title_col1, title_col2 = st.columns([0.2, 0.8])
-                            with title_col1:
-                                if team_abbrev:
-                                    logo = get_team_logo_url(team_abbrev)
-                                    if logo:
-                                        st.image(logo, width=80)
-                                    else:
-                                        st.write(team_abbrev)
-                            with title_col2:
-                                st.markdown(f"### {player}")
+                            st.markdown(f"### {player}")
                             
                             # Bio Stats
                             if bio:
