@@ -94,13 +94,20 @@ class AuthManager:
                     
                     key = "web" if "web" in auth_payload else "installed"
                     
-                    # FORCE project_id to lowercase to match Google's internal requirements
+                    # Normalize project_id if it exists
                     if "project_id" in auth_payload[key]:
+                        # Some Google libraries fail if this isn't strictly lowercase
                         auth_payload[key]["project_id"] = str(auth_payload[key]["project_id"]).lower()
                     
-                    # CLEAN and SYNC redirect_uris
-                    # The library requires a list, and it must contain our current redirect_uri
-                    auth_payload[key]["redirect_uris"] = [self.redirect_uri]
+                    # SYNC redirect_uris: Append the current one if missing, but keep others
+                    current_uris = auth_payload[key].get("redirect_uris", [])
+                    if isinstance(current_uris, str):
+                        current_uris = [current_uris]
+                    
+                    if self.redirect_uri not in current_uris:
+                        current_uris.append(self.redirect_uri)
+                    
+                    auth_payload[key]["redirect_uris"] = current_uris
 
                     # Persistence: Save to /tmp
                     persistent_path = "/tmp/google_credentials_st.json"
