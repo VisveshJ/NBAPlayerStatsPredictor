@@ -3745,7 +3745,7 @@ elif page == "Favorites":
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                                 <div>
                                     <div style="font-weight: 700; font-size: 1.3rem; color: #FF6B35;">{team} - {team_city} {team_name}</div>
-                                    <div style="color: #9CA3AF; font-size: 0.9rem;">Record: <strong style="color: #FAFAFA;">{record}</strong> | {conf}ern Conference #{rank}</div>
+                                    <div style="color: #9CA3AF; font-size: 0.9rem;">Record: <strong style="color: #FAFAFA;">{record}</strong> | {conf}{'ern' if conf != 'N/A' else ''} Conference #{rank}</div>
                                 </div>
                             </div>
                             <div style="display: flex; gap: 20px; flex-wrap: wrap;">
