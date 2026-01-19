@@ -3617,7 +3617,7 @@ elif page == "Favorites":
                     "MIA": {"name": "Heat", "city": "Miami"},
                     "DEN": {"name": "Nuggets", "city": "Denver"},
                     "PHI": {"name": "76ers", "city": "Philadelphia"},
-                    "LAC": {"name": "Clippers", "city": "LA"},
+                    "LAC": {"name": "Clippers", "city": "Los Angeles"},
                     "DAL": {"name": "Mavericks", "city": "Dallas"},
                     "MEM": {"name": "Grizzlies", "city": "Memphis"},
                     "CLE": {"name": "Cavaliers", "city": "Cleveland"},
