@@ -2251,7 +2251,7 @@ elif page == "Predictions":
             
             else:
                 opp_full = TEAM_NAME_MAP.get(selected_opponent, selected_opponent)
-                st.info(f"**{selected_player}** has not played against **{opp_full}** yet this season.")
+                st.info(f"**{selected_player}** has not played against the **{opp_full}** yet this season.")
         
             st.markdown("---")
             
@@ -3050,7 +3050,7 @@ elif page == "Player Stats":
                                 opp_conf_str = row['Conference']
                                 break
                     
-                    if not games_vs_opp.empty:
+                    if not opp_games.empty:
                         opp_full = TEAM_NAME_MAP.get(selected_opp, selected_opp)
                         st.markdown(f"### Games vs {opp_full} <span style='color: #6B7280; font-size: 1.5rem;'> (#{opp_rank_str} {opp_conf_str}, {opp_record_str})</span>", unsafe_allow_html=True)
 
