@@ -256,22 +256,14 @@ def get_league_standings(season="2025-26"):
         for _, row in df.iterrows():
             team_data = {
                 'TeamID': row.get('TeamID'),
-                'TeamAbbrev': row.get('TeamCity', '')[:3].upper() if 'TeamCity' in row else '',
+                'TeamAbbrev': get_team_abbrev(row.get('TeamCity', '')),
                 'TeamName': row.get('TeamName', ''),
                 'TeamCity': row.get('TeamCity', ''),
-                'TeamCity': row.get('TeamCity', ''),
             }
-            # Fix Clippers name to ensure unique abbreviation mapping
+            # Fix Clippers name for display consistency
             if team_data['TeamCity'] == 'LA' and team_data['TeamName'] == 'Clippers':
                 team_data['TeamCity'] = 'Los Angeles Clippers'
                 team_data['TeamName'] = 'Clippers'
-
-            
-            # Update derived fields after fix
-            if team_data['TeamCity'] == 'Los Angeles Clippers':
-                 team_data['TeamAbbrev'] = 'LAC'
-            else:
-                 team_data['TeamAbbrev'] = team_data['TeamCity'][:3].upper() if team_data['TeamCity'] else ''
 
             team_data.update({
                 'Conference': row.get('Conference', ''),
@@ -4452,7 +4444,7 @@ elif page == "Compare Players":
                             avg_pts = p1_vs_p2_team['Points'].mean()
                             avg_reb = p1_vs_p2_team['Rebounds'].mean()
                             avg_ast = p1_vs_p2_team['Assists'].mean()
-                            st.markdown(f"<p style='color: #9CA3AF; font-size: 0.9rem;'>Avg vs {player2_team}: <strong>{avg_pts:.1f}</strong> PTS, <strong>{avg_reb:.1f}</strong> REB, <strong>{avg_ast:.1f}</strong> AST ({len(p1_vs_p2_team)} games)</p>", unsafe_allow_html=True)
+                            st.markdown(f"<p style='color: #9CA3AF; font-size: 0.9rem;'>Avg: <strong>{avg_pts:.1f}</strong> PTS, <strong>{avg_reb:.1f}</strong> REB, <strong>{avg_ast:.1f}</strong> AST ({len(p1_vs_p2_team)} games)</p>", unsafe_allow_html=True)
                         else:
                             st.info(f"No H2H games where both players played")
                         
@@ -4507,7 +4499,7 @@ elif page == "Compare Players":
                             avg_pts = p2_vs_p1_team['Points'].mean()
                             avg_reb = p2_vs_p1_team['Rebounds'].mean()
                             avg_ast = p2_vs_p1_team['Assists'].mean()
-                            st.markdown(f"<p style='color: #9CA3AF; font-size: 0.9rem;'>Avg vs {player1_team}: <strong>{avg_pts:.1f}</strong> PTS, <strong>{avg_reb:.1f}</strong> REB, <strong>{avg_ast:.1f}</strong> AST ({len(p2_vs_p1_team)} games)</p>", unsafe_allow_html=True)
+                            st.markdown(f"<p style='color: #9CA3AF; font-size: 0.9rem;'>Avg: <strong>{avg_pts:.1f}</strong> PTS, <strong>{avg_reb:.1f}</strong> REB, <strong>{avg_ast:.1f}</strong> AST ({len(p2_vs_p1_team)} games)</p>", unsafe_allow_html=True)
                         else:
                             st.info(f"No H2H games where both players played")
                     
