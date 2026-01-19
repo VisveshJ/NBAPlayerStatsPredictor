@@ -19,4 +19,5 @@ dependencies = [
     "google-api-python-client>=2.90.0",
     "beautifulsoup4>=4.12.0",
     "pytz>=2023.3",
+    "playwright>=1.40.0",
 ]
