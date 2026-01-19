@@ -102,7 +102,10 @@ class AuthManager:
                 
                 # Fetch identity from the fresh token
                 request = google_requests.Request()
-                id_info = id_token.verify_oauth2_token(creds.id_token, request, flow.client_id)
+                config = self._get_config()
+                client_id = config["web"]["client_id"] if config else None
+                
+                id_info = id_token.verify_oauth2_token(creds.id_token, request, client_id)
                 
                 # STRICT: Ensure we are writing to the session fresh
                 new_email = id_info.get("email")
