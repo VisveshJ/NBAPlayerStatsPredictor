@@ -100,12 +100,21 @@ class AuthManager:
                        if self.redirect_uri not in auth_config[key]["redirect_uris"]:
                            auth_config[key]["redirect_uris"].append(self.redirect_uri)
                        
+                       # Debug logging (masked)
+                       log_config = {k: "********" if "secret" in k.lower() or "id" in k.lower() else v 
+                                    for k, v in auth_config.get(key, {}).items()}
+                       st.sidebar.caption("🔐 Auth Diagnostics")
+                       with st.sidebar.expander("Show Auth Config (Masked)"):
+                           st.write({ "type": key, "config": log_config, "redirect_uri": self.redirect_uri })
+                       
                        tmp_file = tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.json')
                        json.dump(auth_config, tmp_file)
                        tmp_file.close()
                        config_path = tmp_file.name
                    except Exception as e:
                        st.error(f"Error loading auth secrets: {e}")
+                       import traceback
+                       st.sidebar.error(traceback.format_exc())
                        return None
                 else:
                     return None
@@ -120,6 +129,7 @@ class AuthManager:
                 )
             except Exception as e:
                 st.error(f"Failed to initialize Authenticate: {e}")
+                st.sidebar.error(f"Init Error: {str(e)}")
                 return None
         
         return self._authenticator
