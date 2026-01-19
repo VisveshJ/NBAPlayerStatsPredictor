@@ -55,54 +55,52 @@ class AuthManager:
         if self._authenticator is None:
             config_path = self.credentials_path
             
-            # Check if local file exists
-            if not os.path.exists(config_path):
-                # If not, try loading from Secrets and creating a persistent temp file
-                if "google_auth" in st.secrets:
-                    try:
-                        # Deep convert secrets to dict
-                        def deep_dict(obj):
-                            if hasattr(obj, "to_dict"):
-                                return deep_dict(obj.to_dict())
-                            if isinstance(obj, dict):
-                                return {k: deep_dict(v) for k, v in obj.items()}
-                            if isinstance(obj, list):
-                                return [deep_dict(v) for v in obj]
-                            return obj
+            # Use local file if it exists, otherwise use secrets
+            if not os.path.exists(config_path) and "google_auth" in st.secrets:
+                try:
+                    def deep_dict(obj):
+                        if hasattr(obj, "to_dict"):
+                            return deep_dict(obj.to_dict())
+                        if isinstance(obj, dict):
+                            return {k: deep_dict(v) for k, v in obj.items()}
+                        if isinstance(obj, list):
+                            return [deep_dict(v) for v in obj]
+                        return obj
 
-                        raw_secrets = deep_dict(st.secrets["google_auth"])
-                        
-                        # MANDATORY: Wrap in 'web' if missing
-                        if "web" not in raw_secrets and "installed" not in raw_secrets:
-                            auth_payload = {"web": raw_secrets}
-                        else:
-                            auth_payload = raw_secrets
-                        
-                        # Ensure redirect_uris is a list
-                        key = "web" if "web" in auth_payload else "installed"
-                        if "redirect_uris" in auth_payload[key]:
-                            if isinstance(auth_payload[key]["redirect_uris"], str):
-                                auth_payload[key]["redirect_uris"] = [auth_payload[key]["redirect_uris"]]
-                        else:
-                            auth_payload[key]["redirect_uris"] = []
-                            
-                        # Ensure current redirect_uri is included exactly as sent to Google
-                        if self.redirect_uri not in auth_payload[key]["redirect_uris"]:
-                            auth_payload[key]["redirect_uris"].append(self.redirect_uri)
+                    raw_secrets = deep_dict(st.secrets["google_auth"])
+                    
+                    # Normalize structure to the 'web' format required by the Google library
+                    if "web" in raw_secrets:
+                        auth_payload = {"web": raw_secrets["web"]}
+                    elif "installed" in raw_secrets:
+                        auth_payload = {"installed": raw_secrets["installed"]}
+                    else:
+                        auth_payload = {"web": raw_secrets}
+                    
+                    key = "web" if "web" in auth_payload else "installed"
+                    
+                    # FORCE project_id to lowercase to match Google's internal requirements
+                    if "project_id" in auth_payload[key]:
+                        auth_payload[key]["project_id"] = str(auth_payload[key]["project_id"]).lower()
+                    
+                    # CLEAN and SYNC redirect_uris
+                    # The library requires a list, and it must contain our current redirect_uri
+                    auth_payload[key]["redirect_uris"] = [self.redirect_uri]
 
-                        # Use a fixed path in /tmp for persistence across script reruns
-                        # This is important for the OAuth callback phase
-                        persistent_path = "/tmp/google_credentials_st.json"
-                        with open(persistent_path, 'w') as f:
-                            json.dump(auth_payload, f)
-                        config_path = persistent_path
-                        
-                    except Exception as e:
-                        st.sidebar.error(f"Error preparing secrets: {e}")
-                        return None
-                else:
+                    # Persistence: Save to /tmp
+                    persistent_path = "/tmp/google_credentials_st.json"
+                    with open(persistent_path, 'w') as f:
+                        json.dump(auth_payload, f)
+                    config_path = persistent_path
+                    
+                except Exception as e:
+                    st.sidebar.error(f"Error preparing secrets: {e}")
                     return None
             
+            # Fallback check if file still missing
+            if not os.path.exists(config_path):
+                return None
+                
             try:
                 self._authenticator = Authenticate(
                     secret_credentials_path=config_path,
@@ -124,15 +122,14 @@ class AuthManager:
             return st.session_state.get("demo_logged_in", False)
         
         try:
-            # Initialize library's required keys
+            # Ensure session keys exist
             for key in ["connected", "user_info", "oauth_id"]:
                 if key not in st.session_state:
                     st.session_state[key] = False if key == "connected" else None
 
-            # Run the library's check
             auth.check_authentification()
-        except Exception as e:
-            # Silently fail check (common during login flow)
+        except:
+            st.session_state["connected"] = False
             return False
         
         if st.session_state.get("connected", False):
@@ -145,7 +142,7 @@ class AuthManager:
         auth = self._get_authenticator()
         
         if not self.is_authenticated():
-            st.caption(f"🔧 **Redirect URI Path:** `{self.redirect_uri}`")
+            st.caption(f"🔧 **Handshake URI:** `{self.redirect_uri}`")
 
         if auth is None:
             self._show_demo_login()
@@ -154,8 +151,9 @@ class AuthManager:
         try:
             auth.login()
         except Exception as e:
-            st.error(f"📉 **Login Handshake Failed:** {e}")
-            if st.button("Try Demo Mode"):
+            st.error(f"📉 **OAuth Error:** {e}")
+            st.info("💡 **Quick Fix:** Ensure the Redirect URI above exactly matches your Google Cloud Console.")
+            if st.button("Use Demo Login"):
                 self._show_demo_login()
 
     def _sync_user_to_db(self) -> None:
@@ -177,18 +175,17 @@ class AuthManager:
             self._db.create_or_update_user(new_user)
 
     def _show_demo_login(self) -> None:
-        """Show demo login for development."""
+        """Show demo login window."""
         st.markdown("### 🔐 Login")
-        st.info("⚠️ Demo Mode / OAuth Loading...")
         
-        # Diagnostics
-        with st.expander("🔍 System Status"):
+        # Troubleshooter
+        with st.expander("🔍 Debugging"):
             st.write(f"Library: {GOOGLE_AUTH_AVAILABLE}")
-            st.write(f"Secrets: {'google_auth' in st.secrets}")
-            st.write(f"Redirect: {self.redirect_uri}")
+            st.write(f"Secrets Found: {'google_auth' in st.secrets}")
+            st.write(f"Active URI: {self.redirect_uri}")
         
-        demo_name = st.text_input("Enter your name:", key="demo_name_input")
-        demo_email = st.text_input("Enter your email:", key="demo_email_input")
+        demo_name = st.text_input("Name:", key="demo_name_input")
+        demo_email = st.text_input("Email:", key="demo_email_input")
         
         if st.button("🚀 Demo Login", type="primary"):
             if demo_name and demo_email:
