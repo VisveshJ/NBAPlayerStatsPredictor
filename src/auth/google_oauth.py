@@ -201,15 +201,30 @@ class AuthManager:
         st.markdown("### 🔐 Login")
         
         # Troubleshooter
-        with st.expander("🔍 Debugging"):
+        with st.expander("🔍 Debugging & OAuth Details"):
             auth_found = False
             try:
                 auth_found = 'google_auth' in st.secrets
             except Exception:
                 pass
-            st.write(f"Library: {GOOGLE_AUTH_AVAILABLE}")
-            st.write(f"Secrets Found: {auth_found}")
-            st.write(f"Active URI: {self.redirect_uri}")
+            st.write(f"✅ Library: {GOOGLE_AUTH_AVAILABLE}")
+            st.write(f"✅ Secrets Found: {auth_found}")
+            st.write(f"✅ Active URI: {self.redirect_uri}")
+            
+            # Show masked config for Cloud check
+            if auth_found:
+                try:
+                    raw = dict(st.secrets["google_auth"])
+                    masked = {}
+                    for k, v in raw.items():
+                        if isinstance(v, (str, int)):
+                            val = str(v)
+                            masked[k] = val[:5] + "..." + val[-5:] if len(val) > 10 else "***"
+                        else:
+                            masked[k] = v
+                    st.json(masked)
+                except:
+                    st.write("Could not parse secrets for display.")
         
         demo_name = st.text_input("Name:", key="demo_name_input")
         demo_email = st.text_input("Email:", key="demo_email_input")
