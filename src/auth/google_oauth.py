@@ -36,14 +36,17 @@ class AuthManager:
         self._db: SQLiteBackend = get_database()
         self.credentials_path = credentials_path
         
-        # 1. Determine Public Redirect URI
-        self.redirect_uri = redirect_uri
-        try:
-            # Prioritize Streamlit Secrets for Cloud
-            if "OAUTH_REDIRECT_URI" in st.secrets:
+        # 1. Determine Public Redirect URI with Production Fallback
+        self.redirect_uri = "https://nbaplayerpredictor.streamlit.app"
+        
+        # Override for local development
+        if "localhost" in str(redirect_uri) or "127.0.0.1" in str(redirect_uri):
+            self.redirect_uri = "http://localhost:8501"
+        elif "OAUTH_REDIRECT_URI" in st.secrets:
+            try:
                 self.redirect_uri = st.secrets["OAUTH_REDIRECT_URI"]
-        except:
-            pass
+            except:
+                pass
         
         # Ensure no trailing slash for the base lib config
         if self.redirect_uri.endswith("/"):
