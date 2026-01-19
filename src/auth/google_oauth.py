@@ -7,7 +7,6 @@ import streamlit as st
 from typing import Optional, Dict, Any
 import os
 import json
-import tempfile
 
 # Import the library
 try:
@@ -35,12 +34,12 @@ class AuthManager:
         self.cookie_name = cookie_name
         self.cookie_key = cookie_key or os.environ.get("OAUTH_COOKIE_KEY", "default-secret-key-change-me")
         
-        # Priority for redirect_uri
-        if redirect_uri == "http://localhost:8501":
-            if "OAUTH_REDIRECT_URI" in st.secrets:
-                self.redirect_uri = st.secrets["OAUTH_REDIRECT_URI"]
-            else:
-                self.redirect_uri = os.environ.get("OAUTH_REDIRECT_URI", redirect_uri)
+        # Priority for redirect_uri:
+        # 1. Force use of OAUTH_REDIRECT_URI from secrets if it exists (for Cloud)
+        # 2. Argument passed to constructor
+        # 3. Default localhost
+        if "OAUTH_REDIRECT_URI" in st.secrets:
+            self.redirect_uri = st.secrets["OAUTH_REDIRECT_URI"]
         else:
             self.redirect_uri = redirect_uri
             
@@ -56,9 +55,9 @@ class AuthManager:
         if self._authenticator is None:
             config_path = self.credentials_path
             
-            # 1. Check if local file exists
+            # Check if local file exists
             if not os.path.exists(config_path):
-                # 2. If not, try loading from Secrets and creating a temp file
+                # If not, try loading from Secrets and creating a persistent temp file
                 if "google_auth" in st.secrets:
                     try:
                         # Deep convert secrets to dict
@@ -87,16 +86,16 @@ class AuthManager:
                         else:
                             auth_payload[key]["redirect_uris"] = []
                             
-                        # Ensure current redirect_uri is included
+                        # Ensure current redirect_uri is included exactly as sent to Google
                         if self.redirect_uri not in auth_payload[key]["redirect_uris"]:
                             auth_payload[key]["redirect_uris"].append(self.redirect_uri)
 
-                        # Create temp file in a way that is readable by other processes/libs
-                        # We use a non-deleting temp file so the lib can read it multiple times
-                        fd, path = tempfile.mkstemp(suffix='.json')
-                        with os.fdopen(fd, 'w') as f:
+                        # Use a fixed path in /tmp for persistence across script reruns
+                        # This is important for the OAuth callback phase
+                        persistent_path = "/tmp/google_credentials_st.json"
+                        with open(persistent_path, 'w') as f:
                             json.dump(auth_payload, f)
-                        config_path = path
+                        config_path = persistent_path
                         
                     except Exception as e:
                         st.sidebar.error(f"Error preparing secrets: {e}")
@@ -132,8 +131,8 @@ class AuthManager:
 
             # Run the library's check
             auth.check_authentification()
-        except:
-            st.session_state["connected"] = False
+        except Exception as e:
+            # Silently fail check (common during login flow)
             return False
         
         if st.session_state.get("connected", False):
@@ -186,6 +185,7 @@ class AuthManager:
         with st.expander("🔍 System Status"):
             st.write(f"Library: {GOOGLE_AUTH_AVAILABLE}")
             st.write(f"Secrets: {'google_auth' in st.secrets}")
+            st.write(f"Redirect: {self.redirect_uri}")
         
         demo_name = st.text_input("Enter your name:", key="demo_name_input")
         demo_email = st.text_input("Enter your email:", key="demo_email_input")
