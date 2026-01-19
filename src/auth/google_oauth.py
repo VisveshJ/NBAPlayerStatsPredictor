@@ -63,17 +63,32 @@ class AuthManager:
                 # Try to load from st.secrets if on Streamlit Cloud
                 if "google_auth" in st.secrets:
                    try:
-                       # Write secrets to a temporary file because Authenticate requires a path
                        import json
                        import tempfile
                        
-                       # We need to preserve the dict structure if it's already a dict in secrets
-                       auth_config = st.secrets["google_auth"]
-                       if hasattr(auth_config, "to_dict"):
-                           auth_config = auth_config.to_dict()
+                       # Helper to deeply convert Streamlit secrets (AttrDict) to standard dict
+                       def deep_dict(obj):
+                           if hasattr(obj, "to_dict"):
+                               return deep_dict(obj.to_dict())
+                           if isinstance(obj, dict):
+                               return {k: deep_dict(v) for k, v in obj.items()}
+                           if isinstance(obj, list):
+                               return [deep_dict(v) for v in obj]
+                           return obj
+
+                       auth_config = deep_dict(st.secrets["google_auth"])
+                       
+                       # REQUIRED: If the user didn't wrap the config in 'web' or 'installed', 
+                       # wrap it for them so oauthlib doesn't complain.
+                       if "web" not in auth_config and "installed" not in auth_config:
+                           if "client_id" in auth_config:
+                               auth_config = {"web": auth_config}
+                           else:
+                               st.error("Invalid 'google_auth' secrets. Missing 'web' or 'client_id' key.")
+                               return None
                        
                        tmp_file = tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.json')
-                       json.dump(dict(auth_config), tmp_file)
+                       json.dump(auth_config, tmp_file)
                        tmp_file.close()
                        config_path = tmp_file.name
                    except Exception as e:
