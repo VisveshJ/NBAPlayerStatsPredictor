@@ -4440,11 +4440,28 @@ elif page == "Compare Players":
                             styled_df = h2h_display.style.apply(style_wl, axis=None)
                             st.dataframe(styled_df, use_container_width=True, hide_index=True)
                             
-                            # Show averages (using all games vs opponent, not just H2H)
-                            avg_pts = p1_vs_p2_team['Points'].mean()
-                            avg_reb = p1_vs_p2_team['Rebounds'].mean()
-                            avg_ast = p1_vs_p2_team['Assists'].mean()
-                            st.markdown(f"<p style='color: #9CA3AF; font-size: 0.9rem;'>Avg: <strong>{avg_pts:.1f}</strong> PTS, <strong>{avg_reb:.1f}</strong> REB, <strong>{avg_ast:.1f}</strong> AST ({len(p1_vs_p2_team)} games)</p>", unsafe_allow_html=True)
+                            # Show averages (using H2H games)
+                            avg_pts = p1_h2h['Points'].mean()
+                            avg_reb = p1_h2h['Rebounds'].mean()
+                            avg_ast = p1_h2h['Assists'].mean()
+                            
+                            # Shooting metrics
+                            sum_fgm = p1_h2h['FGM'].sum()
+                            sum_fga = p1_h2h['FGA'].sum()
+                            avg_fg_pct = (sum_fgm / sum_fga * 100) if sum_fga > 0 else 0
+                            
+                            sum_3pm = p1_h2h['3PM'].sum()
+                            sum_3pa = p1_h2h['3PA'].sum()
+                            avg_3p_pct = (sum_3pm / sum_3pa * 100) if sum_3pa > 0 else 0
+                            
+                            sum_ftm = p1_h2h['FTM'].sum()
+                            sum_fta = p1_h2h['FTA'].sum()
+                            avg_ft_pct = (sum_ftm / sum_fta * 100) if sum_fta > 0 else 0
+                            
+                            sum_pts = p1_h2h['Points'].sum()
+                            avg_ts_pct = (sum_pts / (2 * (sum_fga + 0.44 * sum_fta)) * 100) if (sum_fga + 0.44 * sum_fta) > 0 else 0
+                            
+                            st.markdown(f"<p style='color: #9CA3AF; font-size: 0.9rem;'>Avg: <strong>{avg_pts:.1f}</strong> PTS, <strong>{avg_reb:.1f}</strong> REB, <strong>{avg_ast:.1f}</strong> AST • <strong>{avg_fg_pct:.1f}%</strong> FG%, <strong>{avg_3p_pct:.1f}%</strong> 3P%, <strong>{avg_ft_pct:.1f}%</strong> FT%, <strong>{avg_ts_pct:.1f}%</strong> TS% ({len(p1_h2h)} games)</p>", unsafe_allow_html=True)
                         else:
                             st.info(f"No H2H games where both players played")
                         
@@ -4495,11 +4512,28 @@ elif page == "Compare Players":
                             styled_df = h2h_display.style.apply(style_wl, axis=None)
                             st.dataframe(styled_df, use_container_width=True, hide_index=True)
                             
-                            # Show averages (using all games vs opponent, not just H2H)
-                            avg_pts = p2_vs_p1_team['Points'].mean()
-                            avg_reb = p2_vs_p1_team['Rebounds'].mean()
-                            avg_ast = p2_vs_p1_team['Assists'].mean()
-                            st.markdown(f"<p style='color: #9CA3AF; font-size: 0.9rem;'>Avg: <strong>{avg_pts:.1f}</strong> PTS, <strong>{avg_reb:.1f}</strong> REB, <strong>{avg_ast:.1f}</strong> AST ({len(p2_vs_p1_team)} games)</p>", unsafe_allow_html=True)
+                            # Show averages (using H2H games)
+                            avg_pts = p2_h2h['Points'].mean()
+                            avg_reb = p2_h2h['Rebounds'].mean()
+                            avg_ast = p2_h2h['Assists'].mean()
+                            
+                            # Shooting metrics
+                            sum_fgm = p2_h2h['FGM'].sum()
+                            sum_fga = p2_h2h['FGA'].sum()
+                            avg_fg_pct = (sum_fgm / sum_fga * 100) if sum_fga > 0 else 0
+                            
+                            sum_3pm = p2_h2h['3PM'].sum()
+                            sum_3pa = p2_h2h['3PA'].sum()
+                            avg_3p_pct = (sum_3pm / sum_3pa * 100) if sum_3pa > 0 else 0
+                            
+                            sum_ftm = p2_h2h['FTM'].sum()
+                            sum_fta = p2_h2h['FTA'].sum()
+                            avg_ft_pct = (sum_ftm / sum_fta * 100) if sum_fta > 0 else 0
+                            
+                            sum_pts = p2_h2h['Points'].sum()
+                            avg_ts_pct = (sum_pts / (2 * (sum_fga + 0.44 * sum_fta)) * 100) if (sum_fga + 0.44 * sum_fta) > 0 else 0
+                            
+                            st.markdown(f"<p style='color: #9CA3AF; font-size: 0.9rem;'>Avg: <strong>{avg_pts:.1f}</strong> PTS, <strong>{avg_reb:.1f}</strong> REB, <strong>{avg_ast:.1f}</strong> AST • <strong>{avg_fg_pct:.1f}%</strong> FG%, <strong>{avg_3p_pct:.1f}%</strong> 3P%, <strong>{avg_ft_pct:.1f}%</strong> FT%, <strong>{avg_ts_pct:.1f}%</strong> TS% ({len(p2_h2h)} games)</p>", unsafe_allow_html=True)
                         else:
                             st.info(f"No H2H games where both players played")
                     
