@@ -1473,7 +1473,7 @@ if page == "Home":
         
         # ===== FAVORITE TEAMS SECTION =====
         with col2:
-            render_section_header("Your Watched Teams", "")
+            render_section_header("Your Favorite Teams", "")
             
             favorite_teams = auth.get_favorite_teams()
             team_def_ratings = get_current_defensive_ratings(season)
@@ -1492,11 +1492,11 @@ if page == "Home":
                     with b_col:
                         if st.button("Stats", key=f"home_team_stats_{team_abbrev}", type="secondary", use_container_width=True):
                             st.session_state['pending_nav_target'] = "Favorites"
-                            st.session_state['favorites_requested_tab'] = "Watched Teams"
+                            st.session_state['favorites_requested_tab'] = "Favorite Teams"
                             st.rerun()
             else:
                 render_empty_state(
-                    "No watched teams yet! Add teams from the Live Predictions page.",
+                    "No favorite teams yet! Add teams from the Live Predictions page.",
                     ""
                 )
         
@@ -1794,9 +1794,9 @@ elif page == "Predictions":
                         st.toast(f"{selected_player} is already in favorites!")
             
             with c2:
-                if st.button(f"👀 Watch {player_team}{team_seed_suffix}", use_container_width=True):
+                if st.button(f"⭐ Favorite {player_team}{team_seed_suffix}", use_container_width=True):
                     if auth.add_favorite_team(player_team):
-                        st.toast(f"Added {player_team} to watched teams!")
+                        st.toast(f"Added {player_team} to favorite teams!")
                     else:
                         st.toast(f"{player_team} is already being watched!")
 
@@ -3215,14 +3215,14 @@ elif page == "Favorites":
         
         # Tab selection logic
         requested_tab = st.session_state.get('favorites_requested_tab', "Favorite Players")
-        if requested_tab == "Watched Teams":
-            tab_teams, tab_players = st.tabs(["Watched Teams", "Favorite Players"])
+        if requested_tab == "Favorite Teams":
+            tab_teams, tab_players = st.tabs(["Favorite Teams", "Favorite Players"])
             # Clear the override after the first render so it doesn't stick
             # But wait, if we clear it here, it might reset on next interactive element?
             # Actually, let's clear it ONLY when navigating AWAY or if we want it to persist during this visit.
             # User said "redirect me", implying a one-time preference.
         else:
-            tab_players, tab_teams = st.tabs(["Favorite Players", "Watched Teams"])
+            tab_players, tab_teams = st.tabs(["Favorite Players", "Favorite Teams"])
         
         with tab_players:
             # Header with add button
@@ -3560,7 +3560,7 @@ elif page == "Favorites":
             # Header with add button
             header_col, add_col = st.columns([4, 1])
             with header_col:
-                st.markdown("### Your Watched Teams")
+                st.markdown("### Your Favorite Teams")
             with add_col:
                 add_team_expanded = st.button("➕ Add", key="add_team_btn", use_container_width=True)
             
@@ -3586,7 +3586,7 @@ elif page == "Favorites":
                         with add_col1:
                             if st.button("Add Team", use_container_width=True, type="primary", key="confirm_add_team"):
                                 if auth.add_favorite_team(new_team):
-                                    st.toast(f"Added {new_team} to watched teams!")
+                                    st.toast(f"Added {new_team} to favorite teams!")
                                     st.session_state['show_add_team'] = False
                                     st.rerun()
                         with add_col2:
@@ -3604,7 +3604,7 @@ elif page == "Favorites":
             standings_df = get_league_standings(season)
             
             if favorite_teams:
-                st.write(f"You have **{len(favorite_teams)}** watched team(s):")
+                st.write(f"You have **{len(favorite_teams)}** favorite team(s):")
                 st.markdown("---")
                 
                 # Team names and city mapping
@@ -3668,8 +3668,8 @@ elif page == "Favorites":
                     # Find team in standings
                     team_standing = None
                     if not standings_df.empty:
-                        # Match by city name
-                        matching = standings_df[standings_df['TeamCity'].str.contains(team_city, case=False, na=False)]
+                        # Match by abbreviation directly
+                        matching = standings_df[standings_df['TeamAbbrev'] == team]
                         if not matching.empty:
                             team_standing = matching.iloc[0]
                     
@@ -3941,12 +3941,12 @@ elif page == "Favorites":
                     with rem_col:
                         if st.button("❌ Remove", key=f"team_remove_{team}", use_container_width=True):
                             auth.remove_favorite_team(team)
-                            st.toast(f"Removed {team} from watched teams")
+                            st.toast(f"Removed {team} from favorite teams")
                             st.rerun()
                     
                     st.markdown("---")
             else:
-                render_empty_state("No watched teams yet! Add teams from the Live Predictions page.", "")
+                render_empty_state("No favorite teams yet! Add teams from the Live Predictions page.", "")
 
 # ==================== COMPARE PLAYERS PAGE ====================
 elif page == "Compare Players":
