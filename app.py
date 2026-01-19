@@ -15,6 +15,8 @@ from nba_api.stats.endpoints import playergamelog, leaguedashteamstats, leaguest
 import matplotlib.pyplot as plt
 import json
 import os
+import pytz
+from datetime import datetime, timezone, timedelta
 
 # Import our custom modules
 from src.auth.google_oauth import get_auth_manager
@@ -98,6 +100,15 @@ def format_pct(val):
         return f"{val_f:.1f}%"
     except (ValueError, TypeError):
         return str(val)
+
+
+def get_local_now():
+    """Get the current time in the user's selected timezone."""
+    tz_name = st.session_state.get('user_timezone', 'US/Pacific')
+    try:
+        return datetime.now(pytz.timezone(tz_name))
+    except:
+        return datetime.now(pytz.timezone('US/Pacific'))
 
 
 # ==================== NAVIGATION HELPERS ====================
@@ -381,7 +392,7 @@ def get_team_upcoming_games(team_abbrev, schedule, standings_df, num_games=5):
     if not schedule:
         return []
     
-    today = datetime.now().date()
+    today = get_local_now().date()
     
     # Build playoff rank lookup from standings
     team_ranks = {}
@@ -437,14 +448,14 @@ def get_team_upcoming_games(team_abbrev, schedule, standings_df, num_games=5):
     return upcoming
 
 
-def get_todays_games(schedule, standings_df):
+def get_todays_games(schedule, standings_df, tz=None):
     """Get games scheduled for today with team seeds."""
     from datetime import datetime
     
     if not schedule:
         return []
     
-    today = datetime.now().date()
+    today = get_local_now().date()
     
     # Build playoff rank lookup from standings
     team_ranks = {}
@@ -482,7 +493,8 @@ def get_todays_games(schedule, standings_df):
                     from datetime import timezone
                     utc_dt = datetime.strptime(game_time_utc, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
                     # Convert to local timezone
-                    local_dt = utc_dt.astimezone()
+                    target_tz = tz if tz else pytz.timezone(st.session_state.get('user_timezone', 'US/Pacific'))
+                    local_dt = utc_dt.astimezone(target_tz)
                     game_time_local = local_dt.strftime('%I:%M %p').lstrip('0')
             except:
                 pass
@@ -790,7 +802,7 @@ def fetch_player_bio(player_name):
                 from datetime import datetime
                 import pandas as pd
                 birthdate = pd.to_datetime(row['BIRTHDATE'])
-                today = datetime.now()
+                today = get_local_now()
                 age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
             except:
                 age = "N/A"
@@ -1116,7 +1128,7 @@ def get_mvp_ladder():
     try:
         # Dynamically calculate URL based on current date
         # Articles are published weekly on Thursdays (day 3)
-        today = datetime.now()
+        today = get_local_now()
         # Find most recent Thursday (or today if Thursday)
         days_since_thursday = (today.weekday() - 3) % 7
         recent_thursday = today - timedelta(days=days_since_thursday)
@@ -1332,6 +1344,26 @@ if st.session_state.current_page != page:
         st.session_state['favorites_requested_tab'] = "Favorite Players"
     st.session_state.current_page = page
 
+# Timezone Settings
+st.sidebar.markdown("---")
+st.sidebar.markdown("### ⚙️ Settings")
+timezone_options = [
+    "US/Pacific", "US/Mountain", "US/Central", "US/Eastern", 
+    "US/Alaska", "US/Hawaii", "UTC"
+]
+selected_tz_name = st.sidebar.selectbox(
+    "Your Timezone",
+    timezone_options,
+    index=timezone_options.index(st.session_state.get('user_timezone', 'US/Pacific')),
+    key="user_timezone_select",
+    help="Adjusts game times and dates to your local area"
+)
+if selected_tz_name != st.session_state.get('user_timezone'):
+    st.session_state['user_timezone'] = selected_tz_name
+    st.rerun()
+
+user_tz = pytz.timezone(st.session_state.get('user_timezone', 'US/Pacific'))
+
 # Show user profile and logout in sidebar
 if is_authenticated:
     st.sidebar.markdown("---")
@@ -1546,14 +1578,16 @@ elif page == "Predictions":
     
     # Today's Games Section
     st.markdown("### Today's Games")
-    todays_games = get_todays_games(nba_schedule, standings_df)
+    # Pass the user_tz defined in sidebar
+    todays_games = get_todays_games(nba_schedule, standings_df, tz=user_tz)
     
     # Fetch live/final scores
     scoreboard = get_todays_scoreboard()
     
     if todays_games:
         from datetime import datetime
-        st.caption(f"**{datetime.now().strftime('%A, %B %d, %Y')}** • {len(todays_games)} game(s) • _All times in PST_")
+        tz_label = st.session_state.get('user_timezone', 'US/Pacific').split('/')[-1].replace('_', ' ')
+        st.caption(f"**{get_local_now().strftime('%A, %B %d, %Y')}** • {len(todays_games)} game(s) • _All times in {tz_label}_")
         
         # Display games in a grid
         cols_per_row = 3
@@ -4344,7 +4378,7 @@ elif page == "Compare Players":
                     
                     # Find the next matchup between these two teams
                     from datetime import datetime
-                    today = datetime.now().date()
+                    today = get_local_now().date()
                     next_matchup = None
                     
                     if nba_schedule:
@@ -4609,14 +4643,16 @@ white-space: nowrap; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
     st.markdown("## Today's Games")
     
     # Get today's games using the same function as Predictions page
-    todays_games = get_todays_games(nba_schedule, standings_df)
+    # Pass the user_tz defined in sidebar
+    todays_games = get_todays_games(nba_schedule, standings_df, tz=user_tz)
     
     # Fetch live/final scores
     scoreboard = get_todays_scoreboard()
     
     if todays_games:
         from datetime import datetime
-        st.caption(f"**{datetime.now().strftime('%A, %B %d, %Y')}** • {len(todays_games)} game(s) • _All times in PST_")
+        tz_label = st.session_state.get('user_timezone', 'US/Pacific').split('/')[-1].replace('_', ' ')
+        st.caption(f"**{get_local_now().strftime('%A, %B %d, %Y')}** • {len(todays_games)} game(s) • _All times in {tz_label}_")
         
         # Display games in a grid
         cols_per_row = 3
@@ -4800,7 +4836,7 @@ elif page == "Standings":
     st.title("NBA Standings")
     
     # Display current date
-    current_date = datetime.now().strftime("%B %d, %Y")
+    current_date = get_local_now().strftime("%B %d, %Y")
     st.markdown(f"**As of: {current_date}**")
     st.markdown("---")
     
