@@ -44,42 +44,61 @@ class AuthManager:
             else:
                 self.client_id = auth_secrets.get("client_id")
                 self.client_secret = auth_secrets.get("client_secret")
+        
+        # Initialize session state keys
+        if "connected" not in st.session_state:
+            st.session_state["connected"] = False
+        if "user_info" not in st.session_state:
+            st.session_state["user_info"] = {}
+        if "oauth_id" not in st.session_state:
+            st.session_state["oauth_id"] = None
                 
     def check_authentication(self) -> bool:
         """
         Check if user is authenticated.
-        This handles the OAuth handshake seamlessly.
+        Returns True if already connected or if we can seamlessly reconnect.
         """
-        if not GOOGLE_AUTH_AVAILABLE:
-            return st.session_state.get("demo_logged_in", False)
-            
-        if not self.client_id or not self.client_secret:
-            # Fallback to demo if secrets are missing
-            return st.session_state.get("demo_logged_in", False)
-            
-        # Use st-google-auth to handle login
-        # This will automatically render the button if needed and handle the callback
-        user_info = st_google_auth(
-            client_id=self.client_id,
-            client_secret=self.client_secret,
-        )
-        
-        if user_info:
-            st.session_state["connected"] = True
-            st.session_state["user_info"] = user_info
-            # Use email as oauth_id for consistency
-            st.session_state["oauth_id"] = user_info.get("email")
-            self._sync_user_to_db()
+        if st.session_state.get("connected", False):
             return True
             
+        # If we have the library, try a "silent" check (this handles the redirect callback)
+        if GOOGLE_AUTH_AVAILABLE and self.client_id and self.client_secret:
+            # We call it here BUT we might need to handle the rendering carefully.
+            # st-google-auth renders the button immediately if not authenticated.
+            # To avoid rendering at the top of the page, we only call it if there's a 'code' in the URL
+            # (indicating we just came back from Google) OR if we are explicitly on the login page.
+            
+            if "code" in st.query_params:
+                user_info = st_google_auth(
+                    client_id=self.client_id,
+                    client_secret=self.client_secret,
+                )
+                if user_info:
+                    st.session_state["connected"] = True
+                    st.session_state["user_info"] = user_info
+                    st.session_state["oauth_id"] = user_info.get("email")
+                    self._sync_user_to_db()
+                    return True
+        
         return st.session_state.get("demo_logged_in", False)
 
     def show_login_button(self) -> None:
         """
-        No-op in st-google-auth because check_authentication handles rendering.
-        We provide a fallback demo login if secrets are missing.
+        Render the actual Google Login button or Demo login.
         """
-        if not self.client_id or not self.client_secret:
+        if GOOGLE_AUTH_AVAILABLE and self.client_id and self.client_secret:
+            # Render the Google button exactly here
+            user_info = st_google_auth(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+            )
+            if user_info:
+                st.session_state["connected"] = True
+                st.session_state["user_info"] = user_info
+                st.session_state["oauth_id"] = user_info.get("email")
+                self._sync_user_to_db()
+                st.rerun()
+        else:
             self._show_demo_login()
             
     def _sync_user_to_db(self) -> None:
@@ -108,7 +127,8 @@ class AuthManager:
     def _show_demo_login(self) -> None:
         """Show demo login for development."""
         st.markdown("### 🔐 Login")
-        st.info("⚠️ Demo Mode: Google OAuth not configured.")
+        if not GOOGLE_AUTH_AVAILABLE or not self.client_id:
+            st.info("⚠️ Google OAuth not configured. Using demo login.")
         
         demo_name = st.text_input("Enter your name:", key="demo_name_input")
         demo_email = st.text_input("Enter your email:", key="demo_email_input")
@@ -128,7 +148,6 @@ class AuthManager:
 
     def logout(self) -> None:
         """Log out the current user."""
-        # Simple session clear for st-google-auth
         for key in ["demo_logged_in", "connected", "oauth_id", "user_info"]:
             if key in st.session_state:
                 del st.session_state[key]
@@ -148,7 +167,6 @@ class AuthManager:
         oauth_id = st.session_state.get("oauth_id")
         return self._db.get_favorite_teams(oauth_id) if oauth_id else []
     
-    # ... Wrapper methods for DB interactions ...
     def add_favorite_player(self, player_name: str) -> bool:
         oid = st.session_state.get("oauth_id")
         return self._db.add_favorite_player(oid, player_name) if oid else False
