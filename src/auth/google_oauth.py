@@ -1,12 +1,11 @@
 """
-Expert-level Google OAuth Manager.
-Handles Streamlit Cloud proxy mismatches, state persistence, and strict token exchange.
+Final Precision Google OAuth Manager for NBA Stats Predictor.
+Forced production matching and sanitized state handling for Streamlit Cloud.
 """
 
 import streamlit as st
 import os
 import json
-import requests
 from typing import Optional, Dict, Any
 from google_auth_oauthlib.flow import Flow
 from google.oauth2 import id_token
@@ -15,7 +14,7 @@ from google.auth.transport import requests as google_requests
 from src.database.sqlite_backend import get_database, SQLiteBackend
 from src.database.base import UserPreferences
 
-# Core OAuth Scopes
+# Use only the essential scopes to avoid 'Unverified App' blocks in production
 SCOPES = [
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
@@ -23,144 +22,114 @@ SCOPES = [
 ]
 
 class AuthManager:
-    """Production-grade OAuth handler for Streamlit Cloud."""
+    """Minimized, high-precision OAuth handler."""
     
     def __init__(
         self,
         credentials_path: str = "google_credentials.json",
-        cookie_name: str = "nba_predictor_auth",
-        cookie_key: str = None,
         redirect_uri: str = "http://localhost:8501",
         **kwargs
     ):
         self._db: SQLiteBackend = get_database()
         self.credentials_path = credentials_path
         
-        # 1. Determine Public Redirect URI with Production Fallback
+        # Determine URI: Strictly prioritize Production URL on Cloud
         self.redirect_uri = "https://nbaplayerpredictor.streamlit.app"
         
-        # Override for local development
+        # Fallback to local only if explicitly passed
         if "localhost" in str(redirect_uri) or "127.0.0.1" in str(redirect_uri):
             self.redirect_uri = "http://localhost:8501"
-        elif "OAUTH_REDIRECT_URI" in st.secrets:
-            try:
-                self.redirect_uri = st.secrets["OAUTH_REDIRECT_URI"]
-            except:
-                pass
-        
-        # Ensure no trailing slash for the base lib config
-        if self.redirect_uri.endswith("/"):
-            self.redirect_uri = self.redirect_uri[:-1]
+            
+        # Ensure NO trailing slash for the base config
+        self.redirect_uri = self.redirect_uri.rstrip("/")
 
     def _get_config(self) -> Optional[Dict[str, Any]]:
-        """Safely load and sanitize client configuration."""
-        config = None
-        
-        # Try Secrets first
+        """Sanitize secrets with strict matching."""
         try:
             if "google_auth" in st.secrets:
                 raw = dict(st.secrets["google_auth"])
                 inner = raw.get("web", raw)
-                
-                # SANITIZE: Strip hidden spaces/newlines from IDs and Secrets
-                config = {
+                return {
                     "web": {
                         "client_id": str(inner.get("client_id", "")).strip(),
                         "client_secret": str(inner.get("client_secret", "")).strip(),
-                        "project_id": str(inner.get("project_id", "")).strip().lower(),
+                        "project_id": str(inner.get("project_id", "nbaappproject")).lower(),
                         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                         "token_uri": "https://oauth2.googleapis.com/token",
-                        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
                     }
                 }
-        except:
-            pass
-            
-        # Fallback to local file
-        if not config and os.path.exists(self.credentials_path):
+        except: pass
+        
+        if os.path.exists(self.credentials_path):
             with open(self.credentials_path, 'r') as f:
-                config = json.load(f)
-                
-        return config
+                return json.load(f)
+        return None
 
-    def _get_flow(self, current_url: str = None) -> Optional[Flow]:
-        """Initialize the OAuth flow with strict URI matching."""
+    def _get_flow(self) -> Optional[Flow]:
         config = self._get_config()
-        if not config:
-            return None
-            
+        if not config: return None
         try:
-            # Use the detected current URL or the configured redirect URI
-            target_uri = current_url or self.redirect_uri
-            
-            return Flow.from_client_config(
-                config,
-                scopes=SCOPES,
-                redirect_uri=target_uri
-            )
-        except Exception as e:
-            st.error(f"Failed to initialize OAuth Flow: {e}")
-            return None
+            return Flow.from_client_config(config, scopes=SCOPES, redirect_uri=self.redirect_uri)
+        except: return None
 
     def check_authentication(self) -> bool:
         """Passive and active check for authentication."""
+        # Check for logout trigger
+        if st.session_state.get("logout_now", False):
+            self.logout()
+            return False
+
+        # Existing session check
         if st.session_state.get("connected", False):
             return True
 
-        # Handle Redirect Callback
+        # Handle Query Params (Callback)
         try:
-            # Streamlit 1.30+ query_params handling
             params = st.query_params
         except:
             params = st.experimental_get_query_params()
 
         if "code" in params:
-            # We strictly use the base URL for the exchange to match the proxy
             flow = self._get_flow()
-            if not flow:
-                return False
-                
+            if not flow: return False
             try:
-                # Exchange code for tokens
                 code = params["code"]
                 if isinstance(code, list): code = code[0]
                 
+                # Exchange code for tokens
                 flow.fetch_token(code=code)
                 creds = flow.credentials
                 
-                # Validate user identity
+                # Fetch identity from the fresh token
                 request = google_requests.Request()
-                id_info = id_token.verify_oauth2_token(
-                    creds.id_token, request, flow.client_id
-                )
+                id_info = id_token.verify_oauth2_token(creds.id_token, request, flow.client_id)
                 
-                # Populate session
+                # STRICT: Ensure we are writing to the session fresh
+                new_email = id_info.get("email")
+                
                 st.session_state["connected"] = True
                 st.session_state["user_info"] = {
                     "name": id_info.get("name"),
-                    "email": id_info.get("email"),
+                    "email": new_email,
                     "picture": id_info.get("picture"),
                 }
-                st.session_state["oauth_id"] = id_info.get("email")
+                st.session_state["oauth_id"] = new_email
                 
+                # Sync fresh user data to DB
                 self._sync_user_to_db()
                 
-                # Cleanup URL
+                # Clear handshake data from URL
                 st.query_params.clear()
                 st.rerun()
                 return True
             except Exception as e:
-                st.error("📉 **OAuth Handshake Failed**")
-                st.code(f"Technical Reason: {str(e)}")
-                st.info("💡 Tip: If this is a redirect_uri_mismatch, ensure your Google Console has the HTTPS protocol enabled.")
+                st.error(f"Authentication Sync Failed: {e}")
                 return False
                 
         return st.session_state.get("demo_logged_in", False)
 
     def show_login_button(self) -> None:
-        """Render the login UI."""
-        if self.is_authenticated():
-            return
+        if self.is_authenticated(): return
 
         flow = self._get_flow()
         if not flow:
@@ -168,61 +137,40 @@ class AuthManager:
             return
 
         try:
-            # Simplified for Production stability
-            auth_url, _ = flow.authorization_url(
-                prompt="select_account", 
-                access_type="online"
-            )
+            # FORCE account selection to prevent "sticky" profile issues
+            auth_url, _ = flow.authorization_url(prompt="select_account")
             
-            st.markdown("### 🏀 NBA Sign In")
-            st.write("Join to save your favorite players and get personalized AI predictions.")
+            st.markdown("### 🏀 NBA Predictor Login")
+            st.write("Join to save your favorites and get AI insights.")
             
-            # Sign in button
             st.link_button("🚀 Sign in with Google", auth_url, type="primary", use_container_width=True)
             
-            # Published App Troubleshooting
-            with st.expander("🔍 Why is this is a 403 Forbidden?"):
-                st.info("**For Published Apps:**")
-                st.markdown("""
-                1. **People API:** Search Google Cloud for 'Google People API' and click **ENABLE**. This is the #1 cause of 403s on published apps.
-                2. **Authorized Domain:** In the 'OAuth Consent Screen' tab, ensure `streamlit.app` is added to **Authorized domains**.
-                3. **Redirect URI:** Google Cloud Console must have exactly: 
-                """)
-                st.code(self.redirect_uri)
-                    
-        except Exception as e:
-            st.error(f"UI Error: {e}")
-            self._show_demo_login()
-                    
-        except Exception as e:
-            st.error(f"UI Error: {e}")
+            with st.expander("🛠️ Connection Status"):
+                st.write(f"📡 **Redirect URI:** `{self.redirect_uri}`")
+                if st.button("Use Demo Login"):
+                    self._show_demo_login()
+        except:
             self._show_demo_login()
 
     def _sync_user_to_db(self) -> None:
-        """Sync authenticated user info to database."""
         user_info = st.session_state.get("user_info", {})
-        oauth_id = st.session_state.get("oauth_id")
-        
-        if not oauth_id:
-            return
-        
-        existing_user = self._db.get_user(oauth_id)
-        if existing_user is None:
-            new_user = UserPreferences(
-                user_id=oauth_id,
-                email=user_info.get("email", ""),
-                name=user_info.get("name", "Unknown"),
-                picture_url=user_info.get("picture"),
-            )
-            self._db.create_or_update_user(new_user)
+        oid = st.session_state.get("oauth_id")
+        if oid:
+            existing = self._db.get_user(oid)
+            if not existing:
+                new_user = UserPreferences(
+                    user_id=oid,
+                    email=user_info.get("email", ""),
+                    name=user_info.get("name", "Unknown"),
+                    picture_url=user_info.get("picture")
+                )
+                self._db.create_or_update_user(new_user)
 
     def _show_demo_login(self) -> None:
-        """Demo login for bypass."""
-        st.markdown("---")
-        st.subheader("🚀 Demo Access")
-        name = st.text_input("Username:", key="demo_u")
-        email = st.text_input("Email:", key="demo_e")
-        if st.button("Enter as Guest"):
+        st.subheader("Guest Login")
+        name = st.text_input("Name:", key="d_n")
+        email = st.text_input("Email:", key="d_e")
+        if st.button("Log in as Guest"):
             st.session_state["demo_logged_in"] = True
             st.session_state["connected"] = True
             st.session_state["oauth_id"] = f"demo_{email}"
@@ -231,10 +179,17 @@ class AuthManager:
             st.rerun()
 
     def logout(self) -> None:
-        """Reset session."""
-        keys = ["demo_logged_in", "connected", "oauth_id", "user_info"]
-        for k in keys:
-            if k in st.session_state: del st.session_state[k]
+        """Total wipe of all session and authentication data."""
+        keys_to_clear = [
+            "demo_logged_in", "connected", "oauth_id", "user_info", 
+            "logout_now"
+        ]
+        for k in keys_to_clear:
+            if k in st.session_state: 
+                del st.session_state[k]
+        
+        # Also clear query params just in case
+        st.query_params.clear()
         st.rerun()
 
     def is_authenticated(self) -> bool:
@@ -267,11 +222,8 @@ class AuthManager:
         oid = st.session_state.get("oauth_id")
         return self._db.remove_favorite_team(oid, team_abbrev) if oid else False
 
-# Singleton
-_auth_manager: Optional[AuthManager] = None
-
-def get_auth_manager(**kwargs) -> AuthManager:
-    global _auth_manager
-    if _auth_manager is None:
-        _auth_manager = AuthManager(**kwargs)
-    return _auth_manager
+# In Streamlit, singleton managers should be cached per session to avoid data leaks
+def get_auth_manager(**kwargs):
+    if "auth_manager_instance" not in st.session_state:
+        st.session_state["auth_manager_instance"] = AuthManager(**kwargs)
+    return st.session_state["auth_manager_instance"]
