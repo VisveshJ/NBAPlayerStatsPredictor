@@ -120,6 +120,7 @@ class AuthManager:
                 id_info = id_token.verify_oauth2_token(creds.id_token, request, client_id)
                 
                 # STRICT: Ensure we are writing to the session fresh
+                new_id = id_info.get("sub") # Use unique Google ID
                 new_email = id_info.get("email")
                 
                 st.session_state["connected"] = True
@@ -128,7 +129,8 @@ class AuthManager:
                     "email": new_email,
                     "picture": id_info.get("picture"),
                 }
-                st.session_state["oauth_id"] = new_email
+                # Fallback to email if sub is missing, but prioritize unique ID
+                st.session_state["oauth_id"] = new_id if new_id else new_email
                 
                 # Sync fresh user data to DB
                 self._sync_user_to_db()
