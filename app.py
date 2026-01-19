@@ -1404,7 +1404,7 @@ if page == "Home":
             
             if favorite_players:
                 for player_name in favorite_players[:6]:
-                    col_logo, col_img, col_info, col_actions = st.columns([0.4, 0.7, 3.4, 1.5])
+                    col_img, col_logo, col_info, col_actions = st.columns([0.7, 0.7, 3.4, 1.5])
                     
                     # Fetch bio if not in cache
                     if 'player_bio_cache' not in st.session_state:
@@ -1415,22 +1415,22 @@ if page == "Home":
                     
                     bio = st.session_state['player_bio_cache'][player_name]
                     
+                    with col_img:
+                        if bio and bio.get('player_id'):
+                            headshot_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{bio['player_id']}.png"
+                            st.image(headshot_url, width=65)
+                        else:
+                            st.markdown("<div style='font-size: 2.5rem; text-align: center; margin-top: 10px;'>👤</div>", unsafe_allow_html=True)
+
                     with col_logo:
                         # Team Logo
                         team_abbrev = bio.get('team_abbrev') if bio else None
                         if team_abbrev:
                             logo = get_team_logo_url(team_abbrev)
                             if logo:
-                                st.image(logo, width=45)
+                                st.image(logo, width=65)
                             else:
                                 st.write(team_abbrev)
-
-                    with col_img:
-                        if bio and bio.get('player_id'):
-                            headshot_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{bio['player_id']}.png"
-                            st.image(headshot_url, width=90)
-                        else:
-                            st.markdown("<div style='font-size: 2.5rem; text-align: center; margin-top: 10px;'>👤</div>", unsafe_allow_html=True)
                     
                     with col_info:
                         # Name + Position
@@ -3288,23 +3288,23 @@ elif page == "Favorites":
                         """, unsafe_allow_html=True)
                         
                         # Top Row: Info + Actions
-                        col_logo, col_img, col_info, col_actions = st.columns([0.5, 0.8, 2.0, 1])
+                        col_img, col_logo, col_info, col_actions = st.columns([1.0, 1.0, 2.5, 1])
                         
+                        with col_img:
+                            if bio and bio.get('player_id'):
+                                headshot_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{bio['player_id']}.png"
+                                st.image(headshot_url, width=110)
+                            else:
+                                st.write("👤")
+
                         with col_logo:
                             team_abbrev = bio.get('team_abbrev') if bio else None
                             if team_abbrev:
                                 logo = get_team_logo_url(team_abbrev)
                                 if logo:
-                                    st.image(logo, width=80)
+                                    st.image(logo, width=110)
                                 else:
                                     st.write(team_abbrev)
-                        
-                        with col_img:
-                            if bio and bio.get('player_id'):
-                                headshot_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{bio['player_id']}.png"
-                                st.image(headshot_url, width=120)  # Slightly smaller to fit
-                            else:
-                                st.write("👤")
                         
                         with col_info:
                             st.markdown(f"### {player}")
