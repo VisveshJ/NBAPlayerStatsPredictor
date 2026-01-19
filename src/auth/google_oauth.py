@@ -165,12 +165,10 @@ class AuthManager:
             return
 
         try:
-            # We explicitly ask for 'consent' and 'offline' to ensure the refresh token is generated
-            # which sometimes helps bypass strict proxy rules on Streamlit Cloud.
+            # Simplified for Production stability
             auth_url, _ = flow.authorization_url(
-                prompt="consent", 
-                access_type="offline",
-                include_granted_scopes='true'
+                prompt="select_account", 
+                access_type="online"
             )
             
             st.markdown("### 🏀 NBA Sign In")
