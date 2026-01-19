@@ -3205,7 +3205,7 @@ elif page == "Player Stats":
                     
                     else:
                         opp_full = TEAM_NAME_MAP.get(selected_opp, selected_opp)
-                        st.info(f"**{selected_player}** has not played against **{opp_full}** yet this season.")
+                        st.info(f"**{selected_player}** has not played against the **{opp_full}** yet this season.")
 
 
 # ==================== FAVORITES PAGE ====================
