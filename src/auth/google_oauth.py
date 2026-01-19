@@ -152,34 +152,14 @@ class AuthManager:
             return
 
         try:
-            # FORCE account selection to prevent "sticky" profile issues
+            # Reverting to st.link_button which handles security headers correctly (fixes 403)
             auth_url, _ = flow.authorization_url(prompt="select_account")
             
             st.markdown("### 🏀 NBA Predictor Login")
             st.write("Join to save your favorites and get AI insights.")
             
-            # Use HTML to force target="_self" which keeps the login in the same window
-            st.markdown(f"""
-                <a href="{auth_url}" target="_self" style="text-decoration: none;">
-                    <button style="
-                        width: 100%;
-                        background-color: #FF4B2B;
-                        color: white;
-                        border: none;
-                        padding: 12px 24px;
-                        border-radius: 8px;
-                        font-weight: bold;
-                        cursor: pointer;
-                        display: flex;
-                        justify-content: center;
-                        align-items: center;
-                        gap: 10px;
-                        font-size: 1rem;
-                    ">
-                        🚀 Sign in with Google
-                    </button>
-                </a>
-            """, unsafe_allow_html=True)
+            # Use native link button
+            st.link_button("🚀 Sign in with Google", auth_url, type="primary", use_container_width=True)
         except:
             self._show_demo_login()
 
