@@ -176,6 +176,10 @@ class AuthManager:
         """Display the Google login button."""
         auth = self._get_authenticator()
         
+        # Display debug info to help match URIs in Google Console
+        if "oauth_id" not in st.session_state or not st.session_state["oauth_id"]:
+            st.caption(f"🔧 **Configured Redirect URI:** `{self.redirect_uri}`")
+
         if auth is None:
             # Show demo login for development
             self._show_demo_login()
@@ -187,6 +191,9 @@ class AuthManager:
         """Show demo login for development without Google OAuth."""
         st.markdown("### 🔐 Login")
         st.info("⚠️ Demo Mode: Google OAuth not configured. Using demo login.")
+        
+        # Add debug info to help user configure Google Console
+        st.caption(f"🔧 **Debug Info:** Redirect URI configured as: `{self.redirect_uri}`")
         
         demo_name = st.text_input("Enter your name:", key="demo_name_input")
         demo_email = st.text_input("Enter your email:", key="demo_email_input")
