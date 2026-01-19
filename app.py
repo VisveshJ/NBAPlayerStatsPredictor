@@ -384,21 +384,7 @@ def get_team_upcoming_games(team_abbrev, schedule, standings_df, num_games=5):
     for _, row in standings_df.iterrows():
         # Map city to abbreviation
         city = row.get('TeamCity', '')
-        abbrev = None
-        abbrev_map = {
-            'Los Angeles': 'LAL', 'Golden State': 'GSW', 'Phoenix': 'PHX', 'Denver': 'DEN',
-            'Memphis': 'MEM', 'Sacramento': 'SAC', 'Dallas': 'DAL', 'New Orleans': 'NOP',
-            'LA': 'LAC', 'Minnesota': 'MIN', 'Oklahoma City': 'OKC', 'Portland': 'POR',
-            'Utah': 'UTA', 'San Antonio': 'SAS', 'Houston': 'HOU',
-            'Boston': 'BOS', 'Milwaukee': 'MIL', 'Philadelphia': 'PHI', 'Cleveland': 'CLE',
-            'New York': 'NYK', 'Brooklyn': 'BKN', 'Miami': 'MIA', 'Atlanta': 'ATL',
-            'Chicago': 'CHI', 'Toronto': 'TOR', 'Indiana': 'IND', 'Washington': 'WAS',
-            'Orlando': 'ORL', 'Charlotte': 'CHA', 'Detroit': 'DET'
-        }
-        for key in abbrev_map:
-            if key in city:
-                abbrev = abbrev_map[key]
-                break
+        abbrev = get_team_abbrev(city)
         if abbrev:
             team_ranks[abbrev] = {
                 'rank': int(row.get('PlayoffRank', 0)),
@@ -483,17 +469,17 @@ def get_todays_games(schedule, standings_df):
             home_info = team_ranks.get(home_team, {'rank': 0, 'name': home_team, 'conference': '', 'streak': ''})
             away_info = team_ranks.get(away_team, {'rank': 0, 'name': away_team, 'conference': '', 'streak': ''})
             
-            # Parse game time and convert to PST
-            game_time_pst = ""
+            # Parse game time and convert to local timezone
+            game_time_local = ""
             try:
                 game_time_utc = game.get('game_time_utc', '')
                 if game_time_utc:
-                    # Parse UTC time (format: 2026-01-15T00:30:00Z)
-                    utc_dt = datetime.strptime(game_time_utc, '%Y-%m-%dT%H:%M:%SZ')
-                    # PST is UTC-8
-                    from datetime import timedelta
-                    pst_dt = utc_dt - timedelta(hours=8)
-                    game_time_pst = pst_dt.strftime('%I:%M %p').lstrip('0')
+                    # Parse UTC time
+                    from datetime import timezone
+                    utc_dt = datetime.strptime(game_time_utc, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+                    # Convert to local timezone
+                    local_dt = utc_dt.astimezone()
+                    game_time_local = local_dt.strftime('%I:%M %p').lstrip('0')
             except:
                 pass
             
@@ -528,7 +514,7 @@ def get_todays_games(schedule, standings_df):
                 'home_streak': home_info.get('streak', ''),
                 'away_streak': away_info.get('streak', ''),
                 'game_status': game.get('game_status', 1),
-                'game_time': game_time_pst,
+                'game_time': game_time_local,
                 'game_time_sort': game.get('game_time_utc', ''),  # For sorting
                 'channel': channel
             })
@@ -1149,7 +1135,7 @@ def get_mvp_ladder():
                 continue
         
         if not article_url:
-            return fallback_players
+            return fallback_players, "January 16, 2026"
             
         # Scrape the article
         art_resp = requests.get(article_url, headers=headers, timeout=10)
@@ -1244,14 +1230,17 @@ def get_mvp_ladder():
         # Sort by rank and ensure we have 10
         players.sort(key=lambda x: int(x['rank']))
         
+        # Use the date from the successful article
+        as_of_date = check_date.strftime("%B %d, %Y") if check_date else "January 16, 2026"
+
         if len(players) >= 10:
-            return players[:10]
+            return players[:10], as_of_date
         else:
-            return fallback_players
+            return fallback_players, "January 16, 2026"
             
     except Exception as e:
         print(f"Error fetching MVP ladder: {e}")
-        return fallback_players
+        return fallback_players, "January 16, 2026"
 
 
 def get_today_game_slate():
@@ -1379,6 +1368,14 @@ if 'last_search' not in st.session_state:
     st.session_state.last_search = ""
 if 'auto_load_player' not in st.session_state:
     st.session_state.auto_load_player = None
+if 'stats_player_data' not in st.session_state:
+    st.session_state.stats_player_data = None
+if 'stats_player_team' not in st.session_state:
+    st.session_state.stats_player_team = None
+if 'stats_selected_player' not in st.session_state:
+    st.session_state.stats_selected_player = None
+if 'stats_last_search' not in st.session_state:
+    st.session_state.stats_last_search = ""
 
 
 # ==================== HOME PAGE ====================
@@ -1629,7 +1626,7 @@ elif page == "Predictions":
                                     <img src="{away_logo}" width="35" height="35" style="vertical-align: middle;" onerror="this.style.display='none'"/>
                                     <div style="text-align: left;">
                                         <div style="font-weight: bold; color: #FAFAFA;">{game['away_team']}</div>
-                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{away_record} {away_seed} {away_conf}</div>
+                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{away_record}, {away_seed} {away_conf}</div>
                                     </div>
                                 </div>
                                 <div>{away_score_display}</div>
@@ -1639,7 +1636,7 @@ elif page == "Predictions":
                                     <img src="{home_logo}" width="35" height="35" style="vertical-align: middle;" onerror="this.style.display='none'"/>
                                     <div style="text-align: left;">
                                         <div style="font-weight: bold; color: #FAFAFA;">{game['home_team']}</div>
-                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{home_record} {home_seed} {home_conf}</div>
+                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{home_record}, {home_seed} {home_conf}</div>
                                     </div>
                                 </div>
                                 <div>{home_score_display}</div>
@@ -1747,14 +1744,14 @@ elif page == "Predictions":
                     team_conf = row['Conference']
                     team_seed_suffix = f" (#{int(team_rank)})"
                     team_full_name = f"{row['TeamCity']} {row['TeamName']}".strip()
-                    team_display = f"{team_full_name} <span style='color: #6B7280; font-size: 0.9rem;'>({team_rec} | #{team_rank} in {team_conf})</span>"
+                    team_display = f"{team_full_name} <span style='color: #9CA3AF; font-size: 1.1rem;'>({team_rec} | #{team_rank} in {team_conf})</span>"
                     break
         
         # Player name, position and team centered
         pos_label = ""
         if bio and bio.get('position'):
             abbrev_pos = abbreviate_position(bio['position'], selected_player)
-            pos_label = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 1.1rem;'>({abbrev_pos})</span>"
+            pos_label = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 1.5rem;'>({abbrev_pos})</span>"
             
         st.markdown(f"""
             <div style='text-align: center;'>
@@ -2017,11 +2014,12 @@ elif page == "Predictions":
             for i, game in enumerate(upcoming_games):
                 with cols[i]:
                     home_away = "vs" if game['is_home'] else "@"
-                    opp_rank = game['opponent_rank']
+                    opp_rank = game.get('opponent_rank', 0)
+                    opp_conf = game.get('opponent_conference', '')
                     if opp_rank:
-                        label = f"{game['date']}\n{home_away} #{opp_rank} {game['opponent']}"
+                        label = f"{game['date']} {home_away} {game['opponent']} (#{opp_rank} {opp_conf})"
                     else:
-                        label = f"{game['date']}\n{home_away} {game['opponent']}"
+                        label = f"{game['date']} {home_away} {game['opponent']}"
                     
                     if st.button(label, key=f"upcoming_{i}_{game['opponent']}", use_container_width=True):
                         st.session_state['selected_upcoming_opponent'] = game['opponent']
@@ -2349,6 +2347,16 @@ elif page == "Player Stats":
     
     player_search = st.text_input("Search player:", placeholder="e.g., Anthony Edwards", key="stats_search", value=initial_player_search)
     
+    # Track search changes for Stats page
+    current_stats_search = player_search.strip()
+    if current_stats_search != st.session_state.get('stats_last_search', ''):
+        if (st.session_state.get('stats_last_search', '') != "" and current_stats_search != st.session_state.get('stats_last_search', '')) or \
+           (st.session_state.stats_player_data is not None and current_stats_search == ""):
+            st.session_state.stats_player_data = None
+            st.session_state.stats_player_team = None
+            st.session_state.stats_selected_player = None
+        st.session_state.stats_last_search = current_stats_search
+
     if player_search:
         matching_players = search_players(player_search, season)
         if matching_players:
@@ -2356,98 +2364,110 @@ elif page == "Player Stats":
             
             if st.button("Load Stats", type="primary"):
                 with st.spinner(f"Loading {selected_player}'s stats..."):
-                    player_df, player_team = get_player_game_log(selected_player, season)
+                    p_df, p_team = get_player_game_log(selected_player, season)
                 
-                if player_df is None or len(player_df) == 0:
+                if p_df is None or len(p_df) == 0:
                     st.error(f"No data found for {selected_player} in {season}")
                 else:
                     # Get player bio first for better branding
-                    bio = fetch_player_bio(selected_player)
-                    if bio and bio.get('team_abbrev'):
-                        player_team = bio['team_abbrev']
+                    p_bio = fetch_player_bio(selected_player)
+                    if p_bio and p_bio.get('team_abbrev'):
+                        p_team = p_bio['team_abbrev']
+                    
+                    st.session_state.stats_player_data = p_df
+                    st.session_state.stats_player_team = p_team
+                    st.session_state.stats_selected_player = selected_player
+                    st.session_state.stats_player_bio = p_bio
+                    st.rerun()
+            
+            # Show player data if loaded and matches selection
+            if st.session_state.stats_player_data is not None and st.session_state.stats_selected_player == selected_player:
+                player_df = st.session_state.stats_player_data
+                player_team = st.session_state.stats_player_team
+                bio = st.session_state.get('stats_player_bio')
 
 
-                    # Show player photo and team logo centered (Standardized layout) - Slightly shifted right for better balance
-                    spacer1, photo_col, logo_col, spacer2 = st.columns([1.35, 0.8, 0.8, 1.05])
-                    with photo_col:
-                        player_photo = get_player_photo_url(selected_player)
-                        if player_photo:
-                            st.image(player_photo, width=150)
-                    with logo_col:
-                        team_logo = get_team_logo_url(player_team)
-                        if team_logo:
-                            st.image(team_logo, width=120)
-                    
-                    # Get team record, rank, and full name
-                    standings_df = get_league_standings(season)
-                    team_record = "N/A"
-                    team_rank = "N/A"
-                    team_conf = "N/A"
-                    team_full_name = player_team
-                    if not standings_df.empty:
-                        for _, row in standings_df.iterrows():
-                            if get_team_abbrev(row['TeamCity']) == player_team:
-                                team_record = row['Record']
-                                team_rank = row['PlayoffRank']
-                                team_conf = row['Conference']
-                                team_full_name = f"{row['TeamCity']} {row['TeamName']}".strip()
-                                break
-                    # Calculate stats
-                    ppg = player_df['Points'].mean() if 'Points' in player_df.columns else 0
-                    rpg = player_df['Rebounds'].mean() if 'Rebounds' in player_df.columns else 0
-                    apg = player_df['Assists'].mean() if 'Assists' in player_df.columns else 0
-                    player_stats_line = f"{ppg:.1f} PPG, {rpg:.1f} RPG, {apg:.1f} APG"
-                    
-                    # Calculate shooting splits
-                    total_fgm = player_df['FGM'].sum() if 'FGM' in player_df.columns else 0
-                    total_fga = player_df['FGA'].sum() if 'FGA' in player_df.columns else 0
-                    fg_pct_display = (total_fgm / total_fga * 100) if total_fga > 0 else 0
-                    
-                    total_3pm = player_df['3PM'].sum() if '3PM' in player_df.columns else 0
-                    total_3pa = player_df['3PA'].sum() if '3PA' in player_df.columns else 0
-                    three_pct_display = (total_3pm / total_3pa * 100) if total_3pa > 0 else 0
-                    
-                    total_ftm = player_df['FTM'].sum() if 'FTM' in player_df.columns else 0
-                    total_fta = player_df['FTA'].sum() if 'FTA' in player_df.columns else 0
-                    ft_pct_display = (total_ftm / total_fta * 100) if total_fta > 0 else 0
-                    
-                    shooting_line = f"{format_pct(fg_pct_display)} FG • {format_pct(three_pct_display)} 3P • {format_pct(ft_pct_display)} FT"
-                    
-                    # Calculate individual record using correct column name
-                    wins = (player_df['W/L'] == 'W').sum() if 'W/L' in player_df.columns else 0
-                    losses = (player_df['W/L'] == 'L').sum() if 'W/L' in player_df.columns else 0
-                    ind_record = f"{wins}-{losses}"
-                    
-                    # Player name and position centered
-                    pos_label = ""
-                    if bio and bio.get('position'):
-                        abbrev_pos = abbreviate_position(bio['position'], selected_player)
-                        pos_label = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 1.1rem;'>({abbrev_pos})</span>"
+                # Show player photo and team logo centered (Standardized layout) - Slightly shifted right for better balance
+                spacer1, photo_col, logo_col, spacer2 = st.columns([1.35, 0.8, 0.8, 1.05])
+                with photo_col:
+                    player_photo = get_player_photo_url(selected_player)
+                    if player_photo:
+                        st.image(player_photo, width=150)
+                with logo_col:
+                    team_logo = get_team_logo_url(player_team)
+                    if team_logo:
+                        st.image(team_logo, width=120)
+                
+                # Get team record, rank, and full name
+                standings_df = get_league_standings(season)
+                team_record = "N/A"
+                team_rank = "N/A"
+                team_conf = "N/A"
+                team_full_name = player_team
+                if not standings_df.empty:
+                    for _, row in standings_df.iterrows():
+                        if get_team_abbrev(row['TeamCity']) == player_team:
+                            team_record = row['Record']
+                            team_rank = row['PlayoffRank']
+                            team_conf = row['Conference']
+                            team_full_name = f"{row['TeamCity']} {row['TeamName']}".strip()
+                            break
+                # Calculate stats
+                ppg = player_df['Points'].mean() if 'Points' in player_df.columns else 0
+                rpg = player_df['Rebounds'].mean() if 'Rebounds' in player_df.columns else 0
+                apg = player_df['Assists'].mean() if 'Assists' in player_df.columns else 0
+                player_stats_line = f"{ppg:.1f} PPG, {rpg:.1f} RPG, {apg:.1f} APG"
+                
+                # Calculate shooting splits (for display in shooting_line)
+                total_fgm = player_df['FGM'].sum() if 'FGM' in player_df.columns else 0
+                total_fga = player_df['FGA'].sum() if 'FGA' in player_df.columns else 0
+                fg_pct_display = (total_fgm / total_fga * 100) if total_fga > 0 else 0
+                
+                total_3pm = player_df['3PM'].sum() if '3PM' in player_df.columns else 0
+                total_3pa = player_df['3PA'].sum() if '3PA' in player_df.columns else 0
+                three_pct_display = (total_3pm / total_3pa * 100) if total_3pa > 0 else 0
+                
+                total_ftm = player_df['FTM'].sum() if 'FTM' in player_df.columns else 0
+                total_fta = player_df['FTA'].sum() if 'FTA' in player_df.columns else 0
+                ft_pct_display = (total_ftm / total_fta * 100) if total_fta > 0 else 0
+                
+                shooting_line = f"{format_pct(fg_pct_display)} FG • {format_pct(three_pct_display)} 3P • {format_pct(ft_pct_display)} FT"
+                
+                # Calculate individual record using correct column name
+                wins = (player_df['W/L'] == 'W').sum() if 'W/L' in player_df.columns else 0
+                losses = (player_df['W/L'] == 'L').sum() if 'W/L' in player_df.columns else 0
+                ind_record = f"{wins}-{losses}"
+                
+                # Player name and position centered
+                pos_label = ""
+                if bio and bio.get('position'):
+                    abbrev_pos = abbreviate_position(bio['position'], selected_player)
+                    pos_label = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 1.5rem;'>({abbrev_pos})</span>"
 
-                    # Format Bio Info with muted labels and bold values (Awards card style)
-                    if bio:
-                        height = bio.get('height', '-')
-                        weight = bio.get('weight', '-')
-                        age = bio.get('age', '-')
-                        draft_year = bio.get('draft_year', '-')
-                        draft_round = bio.get('draft_round', '')
-                        draft_num = bio.get('draft_number', '')
-                        draft_display = draft_year
-                        if draft_round and draft_num and draft_year != 'Undrafted':
-                            draft_display = f"{draft_year} R{draft_round}, #{draft_num}"
+                # Format Bio Info with muted labels and bold values (Awards card style)
+                if bio:
+                    height = bio.get('height', '-')
+                    weight = bio.get('weight', '-')
+                    age = bio.get('age', '-')
+                    draft_year = bio.get('draft_year', '-')
+                    draft_round = bio.get('draft_round', '')
+                    draft_num = bio.get('draft_number', '')
+                    draft_display = draft_year
+                    if draft_round and draft_num and draft_year != 'Undrafted':
+                        draft_display = f"{draft_year} R{draft_round}, #{draft_num}"
 
-                        bio_html = f"""<div style="text-align: center; color: #9CA3AF; font-size: 0.85rem; margin-bottom: 12px;">
+                    bio_html = f"""<div style="text-align: center; color: #9CA3AF; font-size: 0.85rem; margin-bottom: 12px;">
 <span style="color: #9CA3AF;">HT:</span> <span style="color: #FAFAFA; font-weight: bold;">{height}</span> • 
 <span style="color: #9CA3AF;">WT:</span> <span style="color: #FAFAFA; font-weight: bold;">{weight} lbs</span> • 
 <span style="color: #9CA3AF;">Age:</span> <span style="color: #FAFAFA; font-weight: bold;">{age}</span> • 
 <span style="color: #9CA3AF;">Draft:</span> <span style="color: #FAFAFA; font-weight: bold;">{draft_display}</span>
 </div>"""
-                    else:
-                        bio_html = f"<div style='text-align: center; color: #9CA3AF; font-size: 0.85rem; margin-bottom: 12px;'>Team: {player_team}</div>"
+                else:
+                    bio_html = f"<div style='text-align: center; color: #9CA3AF; font-size: 0.85rem; margin-bottom: 12px;'>Team: {player_team}</div>"
 
-                    st.markdown(f"""<div style="text-align: center; margin-top: 15px;">
+                st.markdown(f"""<div style="text-align: center; margin-top: 15px;">
 <div style="color: #FAFAFA; font-weight: bold; font-size: 1.5rem; margin-bottom: 0px;">{selected_player}{pos_label}</div>
-<div style="color: #9CA3AF; font-size: 1.1rem; margin-bottom: 10px;">{team_full_name} <span style="color: #6B7280; font-size: 0.9rem;">({team_record} | #{team_rank} in {team_conf})</span></div>
+<div style="color: #9CA3AF; font-size: 1.1rem; margin-bottom: 10px;">{team_full_name} <span style="color: #9CA3AF; font-size: 1.1rem;">({team_record} | #{team_rank} in {team_conf})</span></div>
 {bio_html}
 <div style="display: flex; justify-content: center; gap: 12px; font-size: 0.9rem;">
 <div style="background: #374151; padding: 4px 12px; border-radius: 5px;">
@@ -2458,521 +2478,723 @@ elif page == "Player Stats":
 </div>
 </div>
 </div>""", unsafe_allow_html=True)
-                    
-                    # Calculate shooting stats
-                    if 'FGM' in player_df.columns and 'FGA' in player_df.columns:
-                        total_fgm = player_df['FGM'].sum()
-                        total_fga = player_df['FGA'].sum()
-                        fg_pct = (total_fgm / total_fga * 100) if total_fga > 0 else 0
-                    else:
-                        fg_pct = 0
-                    
-                    if '3PM' in player_df.columns and '3PA' in player_df.columns:
-                        total_3pm = player_df['3PM'].sum()
-                        total_3pa = player_df['3PA'].sum()
-                        three_pct = (total_3pm / total_3pa * 100) if total_3pa > 0 else 0
-                    else:
-                        three_pct = 0
-                    
-                    if 'FTM' in player_df.columns and 'FTA' in player_df.columns:
-                        total_ftm = player_df['FTM'].sum()
-                        total_fta = player_df['FTA'].sum()
-                        ft_pct = (total_ftm / total_fta * 100) if total_fta > 0 else 0
-                    else:
-                        ft_pct = 0
-                    
-                    # Summary stats
-                    st.markdown("### Season Averages")
-                    col1, col2, col3, col4, col5, col6 = st.columns(6)
-                    
-                    with col1:
-                        st.metric("PPG", f"{player_df['Points'].mean():.1f}")
-                        st.metric("SPG", f"{player_df['Steals'].mean():.1f}")
-                    
-                    with col2:
-                        st.metric("RPG", f"{player_df['Rebounds'].mean():.1f}")
-                        st.metric("BPG", f"{player_df['Blocks'].mean():.1f}")
-                    
-                    with col3:
-                        st.metric("APG", f"{player_df['Assists'].mean():.1f}")
-                        st.metric("TO", f"{player_df['Turnovers'].mean():.1f}")
-                    
-                    with col4:
-                        st.metric("FG%", format_pct(fg_pct))
-                        st.metric("3P%", format_pct(three_pct))
-                    
-                    with col5:
-                        st.metric("FT%", format_pct(ft_pct))
-                        st.metric("Games", len(player_df))
-                    
-                    with col6:
-                        # Calculate TS%
-                        total_pts = player_df['Points'].sum()
-                        ts_pct = (total_pts / (2 * (total_fga + 0.44 * total_fta)) * 100) if (total_fga + 0.44 * total_fta) > 0 else 0
-                        st.metric("TS%", format_pct(ts_pct))
-                        st.metric("MPG", f"{player_df['MIN'].mean():.1f}")
-                    
-                    st.markdown("---")
-                    
-                    # Game log
-                    st.markdown("### Game Log")
-                    
-                    # Calculate Score column if not present
-                    if 'Score' not in player_df.columns:
-                        # Find all unique teams the player has played for this season explicitly from their matchups
-                        unique_teams = set()
-                        if 'MATCHUP' in player_df.columns:
-                            for match in player_df['MATCHUP']:
-                                if len(match) >= 3:
-                                    unique_teams.add(match[:3])
-                        
-                        # Fallback to current team
-                        if not unique_teams:
-                            unique_teams.add(player_team)
-                        
-                        score_lookup = {}
-                        
-                        # Fetch game data for ALL teams
-                        for team_abbrev in unique_teams:
-                            team_game_data = get_team_game_log(team_abbrev, season, num_games=82)
-                            
-                            if team_game_data is not None and len(team_game_data) > 0:
-                                for _, trow in team_game_data.iterrows():
-                                    game_id = str(trow.get('GAME_ID', ''))
-                                    if 'PTS' in trow and 'PLUS_MINUS' in trow:
-                                        team_pts = int(trow['PTS'])
-                                        opp_pts = int(trow['PTS'] - trow['PLUS_MINUS'])
-                                        score_lookup[game_id] = f"{team_pts} - {opp_pts}"
-                        
-                        if score_lookup:
-                            player_df['Score'] = player_df.apply(
-                                lambda row: score_lookup.get(str(row.get('Game_ID', row.get('GAME_ID', ''))), 'N/A'),
-                                axis=1
-                            )
-                        else:
-                            player_df['Score'] = 'N/A'
-                    
-                    display_cols = ['GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN', 'Points', 'Rebounds', 'Assists', 
-                                   'FG', 'FG%', '3P', '3P%', 'FT', 'FT%', 'TS%',
-                                   'Steals', 'Blocks', 'Turnovers', 'PF']
-                    available_cols = [col for col in display_cols if col in player_df.columns]
-                    
-                    display_df = player_df[available_cols].iloc[::-1].copy()
-                    
-                    # Format percentage columns (FG%, 3P%, FT% come as decimals from NBA API, TS% is already calculated as percentage)
-                    for pct_col in ['FG%', '3P%', 'FT%']:
-                        if pct_col in display_df.columns:
-                            display_df[pct_col] = display_df[pct_col].apply(lambda x: f"{x*100:.1f}%" if pd.notnull(x) and x != 0 else "-")
-                    if 'TS%' in display_df.columns:
-                        display_df['TS%'] = display_df['TS%'].apply(lambda x: f"{x:.1f}%" if pd.notnull(x) and x != 0 else "-")
-                    
-                    # Calculate averages for the whole log
-                    if not player_df.empty:
-                        last_all_df = player_df.copy()
-                        
-                        # Calculate numeric averages
-                        avg_pts = last_all_df['Points'].mean() if 'Points' in last_all_df.columns else 0
-                        avg_reb = last_all_df['Rebounds'].mean() if 'Rebounds' in last_all_df.columns else 0
-                        avg_ast = last_all_df['Assists'].mean() if 'Assists' in last_all_df.columns else 0
-                        avg_stl = last_all_df['Steals'].mean() if 'Steals' in last_all_df.columns else 0
-                        avg_blk = last_all_df['Blocks'].mean() if 'Blocks' in last_all_df.columns else 0
-                        avg_to = last_all_df['Turnovers'].mean() if 'Turnovers' in last_all_df.columns else 0
-                        avg_pf = last_all_df['PF'].mean() if 'PF' in last_all_df.columns else 0
-                        
-                        # Handle MIN
-                        def parse_minutes(m):
-                            try:
-                                if isinstance(m, str) and ':' in m:
-                                    return float(m.split(':')[0]) + float(m.split(':')[1])/60
-                                return float(m)
-                            except: return 0
-                        avg_min = last_all_df['MIN'].apply(parse_minutes).mean() if 'MIN' in last_all_df.columns else 0
-                        
-                        # Calculate shooting % (weighted)
-                        def calc_pct(num_col, den_col):
-                            num = last_all_df[num_col].sum() if num_col in last_all_df.columns else 0
-                            den = last_all_df[den_col].sum() if den_col in last_all_df.columns else 0
-                            return (num / den * 100) if den > 0 else 0
-                        
-                        avg_fg_pct = calc_pct('FGM', 'FGA')
-                        avg_3p_pct = calc_pct('3PM', '3PA')
-                        avg_ft_pct = calc_pct('FTM', 'FTA')
-                        
-                        # Calculate TS%
-                        total_pts = last_all_df['Points'].sum()
-                        total_fga = last_all_df['FGA'].sum() if 'FGA' in last_all_df.columns else 0
-                        total_fta = last_all_df['FTA'].sum() if 'FTA' in last_all_df.columns else 0
-                        avg_ts_pct = (total_pts / (2 * (total_fga + 0.44 * total_fta)) * 100) if (total_fga + 0.44 * total_fta) > 0 else 0
-                        
-                        # Create average row
-                        avg_row = {
-                            'GAME_DATE': 'AVERAGE',
-                            'MATCHUP': '',
-                            'W/L': '',
-                            'Score': '',
-                            'MIN': f"{avg_min:.1f}",
-                            'Points': f"{avg_pts:.1f}",
-                            'Rebounds': f"{avg_reb:.1f}",
-                            'Assists': f"{avg_ast:.1f}",
-                            'Steals': f"{avg_stl:.1f}",
-                            'Blocks': f"{avg_blk:.1f}",
-                            'Turnovers': f"{avg_to:.1f}",
-                            'PF': f"{avg_pf:.1f}",
-                            'FG': f"{last_all_df['FGM'].mean():.1f}/{last_all_df['FGA'].mean():.1f}" if 'FGM' in last_all_df.columns else '',
-                            'FG%': f"{avg_fg_pct:.1f}%",
-                            '3P': f"{last_all_df['3PM'].mean():.1f}/{last_all_df['3PA'].mean():.1f}" if '3PM' in last_all_df.columns else '',
-                            '3P%': f"{avg_3p_pct:.1f}%",
-                            'FT': f"{last_all_df['FTM'].mean():.1f}/{last_all_df['FTA'].mean():.1f}" if 'FTM' in last_all_df.columns else '',
-                            'FT%': f"{avg_ft_pct:.1f}%",
-                            'TS%': f"{avg_ts_pct:.1f}%"
-                        }
-                        
-                        # Filter avg_row to only available columns
-                        avg_row_filtered = {k: v for k, v in avg_row.items() if k in display_df.columns}
-                        avg_df = pd.DataFrame([avg_row_filtered])
-                        display_df = pd.concat([display_df, avg_df], ignore_index=True)
-
-                    def highlight_avg(row):
-                        if row.iloc[0] == 'AVERAGE':
-                            return ['background-color: #374151; font-weight: bold'] * len(row)
-                        return [''] * len(row)
-                    
-                    def style_wl(val):
-                        if val == 'W':
-                            return 'color: #10B981; font-weight: bold'
-                        elif val == 'L':
-                            return 'color: #EF4444; font-weight: bold'
-                        return ''
-                    
-                    styled_display_df = display_df.style.apply(highlight_avg, axis=1)
-                    if 'W/L' in display_df.columns:
-                        styled_display_df = styled_display_df.applymap(style_wl, subset=['W/L'])
-                    
-                    st.dataframe(
-                        styled_display_df, 
-                        use_container_width=True, 
-                        hide_index=True,
-                        column_config={
-                            "Score": st.column_config.TextColumn("Score", width="small"),
-                            "FG": st.column_config.TextColumn("FG", width="small"),
-                            "FG%": st.column_config.TextColumn("FG%", width="small"),
-                            "3P": st.column_config.TextColumn("3P", width="small"),
-                            "3P%": st.column_config.TextColumn("3P%", width="small"),
-                            "FT": st.column_config.TextColumn("FT", width="small"),
-                            "FT%": st.column_config.TextColumn("FT%", width="small"),
-                            "TS%": st.column_config.TextColumn("TS%", width="small"),
-                        }
-                    )
-                    
-                    # Last 5 Games Stats
-                    st.markdown("---")
-                    st.markdown("### Last 5 Games Averages")
-                    
-                    # Get last 5 games (most recent)
-                    last_5 = player_df.tail(5)
-                    
-                    if len(last_5) > 0:
-                        # Calculate averages for last 5 games
-                        l5_ppg = f"{last_5['Points'].mean():.1f}"
-                        l5_rpg = f"{last_5['Rebounds'].mean():.1f}"
-                        l5_apg = f"{last_5['Assists'].mean():.1f}"
-                        l5_spg = f"{last_5['Steals'].mean():.1f}"
-                        l5_bpg = f"{last_5['Blocks'].mean():.1f}"
-                        l5_tpg = f"{last_5['Turnovers'].mean():.1f}"
-                        
-                        # Shooting percentages for last 5
-                        l5_fgp = "N/A"
-                        l5_3pp = "N/A"
-                        l5_ftp = "N/A"
-                        
-                        if 'FGM' in last_5.columns and 'FGA' in last_5.columns:
-                            total_fgm = last_5['FGM'].sum()
-                            total_fga = last_5['FGA'].sum()
-                            l5_fgp = format_pct(total_fgm / total_fga * 100) if total_fga > 0 else "N/A"
-                        
-                        if '3PM' in last_5.columns and '3PA' in last_5.columns:
-                            total_3pm = last_5['3PM'].sum()
-                            total_3pa = last_5['3PA'].sum()
-                            l5_3pp = format_pct(total_3pm / total_3pa * 100) if total_3pa > 0 else "N/A"
-                        
-                        if 'FTM' in last_5.columns and 'FTA' in last_5.columns:
-                            total_ftm = last_5['FTM'].sum()
-                            total_fta = last_5['FTA'].sum()
-                            l5_ftp = format_pct(total_ftm / total_fta * 100) if total_fta > 0 else "N/A"
-                        
-                        # Display as a compact row
-                        l5_cols = st.columns(9)
-                        stat_names = ['PPG', 'RPG', 'APG', 'SPG', 'BPG', 'TPG', 'FG%', '3P%', 'FT%']
-                        stat_values = [l5_ppg, l5_rpg, l5_apg, l5_spg, l5_bpg, l5_tpg, l5_fgp, l5_3pp, l5_ftp]
-                        
-                        for i, (name, val) in enumerate(zip(stat_names, stat_values)):
-                            with l5_cols[i]:
-                                st.metric(name, val)
-                    else:
-                        st.info("Not enough games to show last 5 averages.")
-                    
-                    # Home vs Away Splits
-                    st.markdown("---")
-                    st.markdown("### Home vs Away Splits")
-                    
-                    # Determine home/away from MATCHUP column (@ = away, vs. = home)
-                    home_games = player_df[player_df['MATCHUP'].str.contains(' vs. ', na=False)]
-                    away_games = player_df[player_df['MATCHUP'].str.contains(' @ ', na=False)]
-                    
-                    def calc_split_stats(games_df, split_name):
-                        """Calculate stats for a split."""
-                        if len(games_df) == 0:
-                            return None
-                        
-                        # Calculate MPG
-                        if 'MIN' in games_df.columns:
-                            def parse_min_val(min_str):
-                                if pd.isna(min_str): return 0
-                                try:
-                                    if ':' in str(min_str):
-                                        parts = str(min_str).split(':')
-                                        return int(parts[0]) + (int(parts[1])/60)
-                                    else:
-                                        return float(min_str)
-                                except: return 0
-                            
-                            avg_min = games_df['MIN'].apply(parse_min_val).mean()
-                            mpg_str = f"{avg_min:.1f}"
-                        else:
-                            mpg_str = "N/A"
-                        
-                        # Calculate Record (W-L)
-                        if 'W/L' in games_df.columns:
-                            wins = len(games_df[games_df['W/L'] == 'W'])
-                            losses = len(games_df[games_df['W/L'] == 'L'])
-                            record_str = f"{wins}-{losses}"
-                        else:
-                            record_str = "N/A"
-                        
-                        stats = {
-                            'Split': split_name,
-                            'Record': record_str,
-                            'GP': str(len(games_df)),
-                            'MPG': mpg_str,
-                            'PPG': f"{games_df['Points'].mean():.1f}",
-                            'RPG': f"{games_df['Rebounds'].mean():.1f}",
-                            'APG': f"{games_df['Assists'].mean():.1f}",
-                            'SPG': f"{games_df['Steals'].mean():.1f}",
-                            'BPG': f"{games_df['Blocks'].mean():.1f}",
-                            'TPG': f"{games_df['Turnovers'].mean():.1f}",
-                        }
-                        
-                        # FG%
-                        if 'FGM' in games_df.columns and 'FGA' in games_df.columns:
-                            total_fgm = games_df['FGM'].sum()
-                            total_fga = games_df['FGA'].sum()
-                            stats['FG%'] = f"{round((total_fgm / total_fga * 100), 1)}%" if total_fga > 0 else "N/A"
-                        else:
-                            stats['FG%'] = "N/A"
-                        
-                        # 3P%
-                        if '3PM' in games_df.columns and '3PA' in games_df.columns:
-                            total_3pm = games_df['3PM'].sum()
-                            total_3pa = games_df['3PA'].sum()
-                            stats['3P%'] = f"{round((total_3pm / total_3pa * 100), 1)}%" if total_3pa > 0 else "N/A"
-                        else:
-                            stats['3P%'] = "N/A"
-                        
-                        # FT%
-                        if 'FTM' in games_df.columns and 'FTA' in games_df.columns:
-                            total_ftm = games_df['FTM'].sum()
-                            total_fta = games_df['FTA'].sum()
-                            stats['FT%'] = f"{round((total_ftm / total_fta * 100), 1)}%" if total_fta > 0 else "N/A"
-                        else:
-                            stats['FT%'] = "N/A"
-                        
-                        # TS%
-                        if 'FGA' in games_df.columns and 'FTA' in games_df.columns:
-                            total_pts = games_df['Points'].sum()
-                            total_fga = games_df['FGA'].sum()
-                            total_fta = games_df['FTA'].sum()
-                            ts = (total_pts / (2 * (total_fga + 0.44 * total_fta)) * 100) if (total_fga + 0.44 * total_fta) > 0 else 0
-                            stats['TS%'] = f"{round(ts, 1)}%"
-                        else:
-                            stats['TS%'] = "N/A"
-                        
-                        return stats
-                    
-                    home_stats = calc_split_stats(home_games, "Home")
-                    away_stats = calc_split_stats(away_games, "Away")
-                    
-                    splits_data = []
-                    if home_stats:
-                        splits_data.append(home_stats)
-                    if away_stats:
-                        splits_data.append(away_stats)
-                    
-                    if splits_data:
-                        splits_df = pd.DataFrame(splits_data)
-                        
-                        # Style the splits table
-                        def highlight_splits(row):
-                            if "Home" in str(row['Split']):
-                                return ['background-color: #1E3A5F; text-align: left'] * len(row)
-                            else:
-                                return ['background-color: #3D1E3F; text-align: left'] * len(row)
-                        
-                        styled_splits = splits_df.style.apply(highlight_splits, axis=1).set_properties(**{'text-align': 'left'})
-                        st.dataframe(styled_splits, use_container_width=True, hide_index=True)
-                    else:
-                        st.info("Not enough data to calculate home/away splits.")
-                    
-                    # Win vs Loss Splits
-                    st.markdown("---")
-                    st.markdown("### Win vs Loss Splits")
-                    
-                    # Filter by W/L column
-                    if 'W/L' in player_df.columns:
-                        win_games = player_df[player_df['W/L'] == 'W']
-                        loss_games = player_df[player_df['W/L'] == 'L']
-                        
-                        win_stats = calc_split_stats(win_games, "Wins")
-                        loss_stats = calc_split_stats(loss_games, "Losses")
-                        
-                        wl_splits_data = []
-                        if win_stats:
-                            wl_splits_data.append(win_stats)
-                        if loss_stats:
-                            wl_splits_data.append(loss_stats)
-                        
-                        if wl_splits_data:
-                            wl_splits_df = pd.DataFrame(wl_splits_data)
-                            
-                            # Style the splits table with Win/Loss colors
-                            def highlight_wl_splits(row):
-                                if "Win" in str(row['Split']):
-                                    return ['background-color: #134e37; text-align: left'] * len(row)  # Green tint
-                                else:
-                                    return ['background-color: #4e1313; text-align: left'] * len(row)  # Red tint
-                            
-                            styled_wl_splits = wl_splits_df.style.apply(highlight_wl_splits, axis=1).set_properties(**{'text-align': 'left'})
-                            st.dataframe(styled_wl_splits, use_container_width=True, hide_index=True)
-                        else:
-                            st.info("Not enough data to calculate win/loss splits.")
-                    else:
-                        st.info("Win/Loss data not available.")
-                    
-                    # Conference Splits (East vs West)
-                    st.markdown("---")
-                    st.markdown("### Conference Splits")
-                    
-                    # Define conference teams
-                    EAST_TEAMS = {'ATL', 'BOS', 'BKN', 'CHA', 'CHI', 'CLE', 'DET', 'IND', 'MIA', 'MIL', 'NYK', 'ORL', 'PHI', 'TOR', 'WAS'}
-                    WEST_TEAMS = {'DAL', 'DEN', 'GSW', 'HOU', 'LAC', 'LAL', 'MEM', 'MIN', 'NOP', 'OKC', 'PHX', 'POR', 'SAC', 'SAS', 'UTA'}
-                    
+                
+                # Calculate shooting stats
+                if 'FGM' in player_df.columns and 'FGA' in player_df.columns:
+                    total_fgm = player_df['FGM'].sum()
+                    total_fga = player_df['FGA'].sum()
+                    fg_pct = (total_fgm / total_fga * 100) if total_fga > 0 else 0
+                else:
+                    fg_pct = 0
+                
+                if '3PM' in player_df.columns and '3PA' in player_df.columns:
+                    total_3pm = player_df['3PM'].sum()
+                    total_3pa = player_df['3PA'].sum()
+                    three_pct = (total_3pm / total_3pa * 100) if total_3pa > 0 else 0
+                else:
+                    three_pct = 0
+                
+                if 'FTM' in player_df.columns and 'FTA' in player_df.columns:
+                    total_ftm = player_df['FTM'].sum()
+                    total_fta = player_df['FTA'].sum()
+                    ft_pct = (total_ftm / total_fta * 100) if total_fta > 0 else 0
+                else:
+                    ft_pct = 0
+                
+                # Summary stats
+                st.markdown("### Season Averages")
+                col1, col2, col3, col4, col5, col6 = st.columns(6)
+                
+                with col1:
+                    st.metric("PPG", f"{player_df['Points'].mean():.1f}")
+                    st.metric("SPG", f"{player_df['Steals'].mean():.1f}")
+                
+                with col2:
+                    st.metric("RPG", f"{player_df['Rebounds'].mean():.1f}")
+                    st.metric("BPG", f"{player_df['Blocks'].mean():.1f}")
+                
+                with col3:
+                    st.metric("APG", f"{player_df['Assists'].mean():.1f}")
+                    st.metric("TO", f"{player_df['Turnovers'].mean():.1f}")
+                
+                with col4:
+                    st.metric("FG%", format_pct(fg_pct))
+                    st.metric("3P%", format_pct(three_pct))
+                
+                with col5:
+                    st.metric("FT%", format_pct(ft_pct))
+                    st.metric("Games", len(player_df))
+                
+                with col6:
+                    # Calculate TS%
+                    total_pts = player_df['Points'].sum()
+                    ts_pct = (total_pts / (2 * (total_fga + 0.44 * total_fta)) * 100) if (total_fga + 0.44 * total_fta) > 0 else 0
+                    st.metric("TS%", format_pct(ts_pct))
+                    st.metric("MPG", f"{player_df['MIN'].mean():.1f}")
+                
+                st.markdown("---")
+                
+                # Game log
+                st.markdown("### Game Log")
+                
+                # Calculate Score column if not present
+                if 'Score' not in player_df.columns:
+                    # Find all unique teams the player has played for this season explicitly from their matchups
+                    unique_teams = set()
                     if 'MATCHUP' in player_df.columns:
-                        # Extract opponent from matchup (e.g., "BOS vs. LAL" or "BOS @ LAL")
-                        def get_opponent(matchup):
+                        for match in player_df['MATCHUP']:
+                            if len(match) >= 3:
+                                unique_teams.add(match[:3])
+                    
+                    # Fallback to current team
+                    if not unique_teams:
+                        unique_teams.add(player_team)
+                    
+                    score_lookup = {}
+                    
+                    # Fetch game data for ALL teams
+                    for team_abbrev in unique_teams:
+                        team_game_data = get_team_game_log(team_abbrev, season, num_games=82)
+                        
+                        if team_game_data is not None and len(team_game_data) > 0:
+                            for _, trow in team_game_data.iterrows():
+                                game_id = str(trow.get('GAME_ID', ''))
+                                if 'PTS' in trow and 'PLUS_MINUS' in trow:
+                                    team_pts = int(trow['PTS'])
+                                    opp_pts = int(trow['PTS'] - trow['PLUS_MINUS'])
+                                    score_lookup[game_id] = f"{team_pts} - {opp_pts}"
+                    
+                    if score_lookup:
+                        player_df['Score'] = player_df.apply(
+                            lambda row: score_lookup.get(str(row.get('Game_ID', row.get('GAME_ID', ''))), 'N/A'),
+                            axis=1
+                        )
+                    else:
+                        player_df['Score'] = 'N/A'
+                
+                display_cols = ['GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN', 'Points', 'Rebounds', 'Assists', 
+                               'FG', 'FG%', '3P', '3P%', 'FT', 'FT%', 'TS%',
+                               'Steals', 'Blocks', 'Turnovers', 'PF']
+                available_cols = [col for col in display_cols if col in player_df.columns]
+                
+                display_df = player_df[available_cols].iloc[::-1].copy()
+                
+                # Format percentage columns (FG%, 3P%, FT% come as decimals from NBA API, TS% is already calculated as percentage)
+                for pct_col in ['FG%', '3P%', 'FT%']:
+                    if pct_col in display_df.columns:
+                        display_df[pct_col] = display_df[pct_col].apply(lambda x: f"{x*100:.1f}%" if pd.notnull(x) and x != 0 else "-")
+                if 'TS%' in display_df.columns:
+                    display_df['TS%'] = display_df['TS%'].apply(lambda x: f"{x:.1f}%" if pd.notnull(x) and x != 0 else "-")
+                
+                # Calculate averages for the whole log
+                if not player_df.empty:
+                    last_all_df = player_df.copy()
+                    
+                    # Calculate numeric averages
+                    avg_pts = last_all_df['Points'].mean() if 'Points' in last_all_df.columns else 0
+                    avg_reb = last_all_df['Rebounds'].mean() if 'Rebounds' in last_all_df.columns else 0
+                    avg_ast = last_all_df['Assists'].mean() if 'Assists' in last_all_df.columns else 0
+                    avg_stl = last_all_df['Steals'].mean() if 'Steals' in last_all_df.columns else 0
+                    avg_blk = last_all_df['Blocks'].mean() if 'Blocks' in last_all_df.columns else 0
+                    avg_to = last_all_df['Turnovers'].mean() if 'Turnovers' in last_all_df.columns else 0
+                    avg_pf = last_all_df['PF'].mean() if 'PF' in last_all_df.columns else 0
+                    
+                    # Handle MIN
+                    def parse_minutes(m):
+                        try:
+                            if isinstance(m, str) and ':' in m:
+                                return float(m.split(':')[0]) + float(m.split(':')[1])/60
+                            return float(m)
+                        except: return 0
+                    avg_min = last_all_df['MIN'].apply(parse_minutes).mean() if 'MIN' in last_all_df.columns else 0
+                    
+                    # Calculate shooting % (weighted)
+                    def calc_pct(num_col, den_col):
+                        num = last_all_df[num_col].sum() if num_col in last_all_df.columns else 0
+                        den = last_all_df[den_col].sum() if den_col in last_all_df.columns else 0
+                        return (num / den * 100) if den > 0 else 0
+                    
+                    avg_fg_pct = calc_pct('FGM', 'FGA')
+                    avg_3p_pct = calc_pct('3PM', '3PA')
+                    avg_ft_pct = calc_pct('FTM', 'FTA')
+                    
+                    # Calculate TS%
+                    total_pts = last_all_df['Points'].sum()
+                    total_fga = last_all_df['FGA'].sum() if 'FGA' in last_all_df.columns else 0
+                    total_fta = last_all_df['FTA'].sum() if 'FTA' in last_all_df.columns else 0
+                    avg_ts_pct = (total_pts / (2 * (total_fga + 0.44 * total_fta)) * 100) if (total_fga + 0.44 * total_fta) > 0 else 0
+                    
+                    # Create average row
+                    avg_row = {
+                        'GAME_DATE': 'AVERAGE',
+                        'MATCHUP': '',
+                        'W/L': '',
+                        'Score': '',
+                        'MIN': f"{avg_min:.1f}",
+                        'Points': f"{avg_pts:.1f}",
+                        'Rebounds': f"{avg_reb:.1f}",
+                        'Assists': f"{avg_ast:.1f}",
+                        'Steals': f"{avg_stl:.1f}",
+                        'Blocks': f"{avg_blk:.1f}",
+                        'Turnovers': f"{avg_to:.1f}",
+                        'PF': f"{avg_pf:.1f}",
+                        'FG': f"{last_all_df['FGM'].mean():.1f}/{last_all_df['FGA'].mean():.1f}" if 'FGM' in last_all_df.columns else '',
+                        'FG%': f"{avg_fg_pct:.1f}%",
+                        '3P': f"{last_all_df['3PM'].mean():.1f}/{last_all_df['3PA'].mean():.1f}" if '3PM' in last_all_df.columns else '',
+                        '3P%': f"{avg_3p_pct:.1f}%",
+                        'FT': f"{last_all_df['FTM'].mean():.1f}/{last_all_df['FTA'].mean():.1f}" if 'FTM' in last_all_df.columns else '',
+                        'FT%': f"{avg_ft_pct:.1f}%",
+                        'TS%': f"{avg_ts_pct:.1f}%"
+                    }
+                    
+                    # Filter avg_row to only available columns
+                    avg_row_filtered = {k: v for k, v in avg_row.items() if k in display_df.columns}
+                    avg_df = pd.DataFrame([avg_row_filtered])
+                    display_df = pd.concat([display_df, avg_df], ignore_index=True)
+
+                def highlight_avg(row):
+                    if row.iloc[0] == 'AVERAGE':
+                        return ['background-color: #374151; font-weight: bold'] * len(row)
+                    return [''] * len(row)
+                
+                def style_wl(val):
+                    if val == 'W':
+                        return 'color: #10B981; font-weight: bold'
+                    elif val == 'L':
+                        return 'color: #EF4444; font-weight: bold'
+                    return ''
+                
+                styled_display_df = display_df.style.apply(highlight_avg, axis=1)
+                if 'W/L' in display_df.columns:
+                    styled_display_df = styled_display_df.applymap(style_wl, subset=['W/L'])
+                
+                st.dataframe(
+                    styled_display_df, 
+                    use_container_width=True, 
+                    hide_index=True,
+                    column_config={
+                        "Score": st.column_config.TextColumn("Score", width="small"),
+                        "FG": st.column_config.TextColumn("FG", width="small"),
+                        "FG%": st.column_config.TextColumn("FG%", width="small"),
+                        "3P": st.column_config.TextColumn("3P", width="small"),
+                        "3P%": st.column_config.TextColumn("3P%", width="small"),
+                        "FT": st.column_config.TextColumn("FT", width="small"),
+                        "FT%": st.column_config.TextColumn("FT%", width="small"),
+                        "TS%": st.column_config.TextColumn("TS%", width="small"),
+                    }
+                )
+                
+                # Last 5 Games Stats
+                st.markdown("---")
+                st.markdown("### Last 5 Games Averages")
+                
+                # Get last 5 games (most recent)
+                last_5 = player_df.tail(5)
+                
+                if len(last_5) > 0:
+                    # Calculate averages for last 5 games
+                    l5_ppg = f"{last_5['Points'].mean():.1f}"
+                    l5_rpg = f"{last_5['Rebounds'].mean():.1f}"
+                    l5_apg = f"{last_5['Assists'].mean():.1f}"
+                    l5_spg = f"{last_5['Steals'].mean():.1f}"
+                    l5_bpg = f"{last_5['Blocks'].mean():.1f}"
+                    l5_tpg = f"{last_5['Turnovers'].mean():.1f}"
+                    
+                    # Shooting percentages for last 5
+                    l5_fgp = "N/A"
+                    l5_3pp = "N/A"
+                    l5_ftp = "N/A"
+                    
+                    if 'FGM' in last_5.columns and 'FGA' in last_5.columns:
+                        total_fgm = last_5['FGM'].sum()
+                        total_fga = last_5['FGA'].sum()
+                        l5_fgp = format_pct(total_fgm / total_fga * 100) if total_fga > 0 else "N/A"
+                    
+                    if '3PM' in last_5.columns and '3PA' in last_5.columns:
+                        total_3pm = last_5['3PM'].sum()
+                        total_3pa = last_5['3PA'].sum()
+                        l5_3pp = format_pct(total_3pm / total_3pa * 100) if total_3pa > 0 else "N/A"
+                    
+                    if 'FTM' in last_5.columns and 'FTA' in last_5.columns:
+                        total_ftm = last_5['FTM'].sum()
+                        total_fta = last_5['FTA'].sum()
+                        l5_ftp = format_pct(total_ftm / total_fta * 100) if total_fta > 0 else "N/A"
+                    
+                    # Display as a compact row
+                    l5_cols = st.columns(9)
+                    stat_names = ['PPG', 'RPG', 'APG', 'SPG', 'BPG', 'TPG', 'FG%', '3P%', 'FT%']
+                    stat_values = [l5_ppg, l5_rpg, l5_apg, l5_spg, l5_bpg, l5_tpg, l5_fgp, l5_3pp, l5_ftp]
+                    
+                    for i, (name, val) in enumerate(zip(stat_names, stat_values)):
+                        with l5_cols[i]:
+                            st.metric(name, val)
+                else:
+                    st.info("Not enough games to show last 5 averages.")
+                
+                # Home vs Away Splits
+                st.markdown("---")
+                st.markdown("### Home vs Away Splits")
+                
+                # Determine home/away from MATCHUP column (@ = away, vs. = home)
+                home_games = player_df[player_df['MATCHUP'].str.contains(' vs. ', na=False)]
+                away_games = player_df[player_df['MATCHUP'].str.contains(' @ ', na=False)]
+                
+                def calc_split_stats(games_df, split_name):
+                    """Calculate stats for a split."""
+                    if len(games_df) == 0:
+                        return None
+                    
+                    # Calculate MPG
+                    if 'MIN' in games_df.columns:
+                        def parse_min_val(min_str):
+                            if pd.isna(min_str): return 0
+                            try:
+                                if ':' in str(min_str):
+                                    parts = str(min_str).split(':')
+                                    return int(parts[0]) + (int(parts[1])/60)
+                                else:
+                                    return float(min_str)
+                            except: return 0
+                        
+                        avg_min = games_df['MIN'].apply(parse_min_val).mean()
+                        mpg_str = f"{avg_min:.1f}"
+                    else:
+                        mpg_str = "N/A"
+                    
+                    # Calculate Record (W-L)
+                    if 'W/L' in games_df.columns:
+                        wins = len(games_df[games_df['W/L'] == 'W'])
+                        losses = len(games_df[games_df['W/L'] == 'L'])
+                        record_str = f"{wins}-{losses}"
+                    else:
+                        record_str = "N/A"
+                    
+                    stats = {
+                        'Split': split_name,
+                        'Record': record_str,
+                        'GP': str(len(games_df)),
+                        'MPG': mpg_str,
+                        'PPG': f"{games_df['Points'].mean():.1f}",
+                        'RPG': f"{games_df['Rebounds'].mean():.1f}",
+                        'APG': f"{games_df['Assists'].mean():.1f}",
+                        'SPG': f"{games_df['Steals'].mean():.1f}",
+                        'BPG': f"{games_df['Blocks'].mean():.1f}",
+                        'TPG': f"{games_df['Turnovers'].mean():.1f}",
+                    }
+                    
+                    # FG%
+                    if 'FGM' in games_df.columns and 'FGA' in games_df.columns:
+                        total_fgm = games_df['FGM'].sum()
+                        total_fga = games_df['FGA'].sum()
+                        stats['FG%'] = f"{round((total_fgm / total_fga * 100), 1)}%" if total_fga > 0 else "N/A"
+                    else:
+                        stats['FG%'] = "N/A"
+                    
+                    # 3P%
+                    if '3PM' in games_df.columns and '3PA' in games_df.columns:
+                        total_3pm = games_df['3PM'].sum()
+                        total_3pa = games_df['3PA'].sum()
+                        stats['3P%'] = f"{round((total_3pm / total_3pa * 100), 1)}%" if total_3pa > 0 else "N/A"
+                    else:
+                        stats['3P%'] = "N/A"
+                    
+                    # FT%
+                    if 'FTM' in games_df.columns and 'FTA' in games_df.columns:
+                        total_ftm = games_df['FTM'].sum()
+                        total_fta = games_df['FTA'].sum()
+                        stats['FT%'] = f"{round((total_ftm / total_fta * 100), 1)}%" if total_fta > 0 else "N/A"
+                    else:
+                        stats['FT%'] = "N/A"
+                    
+                    # TS%
+                    if 'FGA' in games_df.columns and 'FTA' in games_df.columns:
+                        total_pts = games_df['Points'].sum()
+                        total_fga = games_df['FGA'].sum()
+                        total_fta = games_df['FTA'].sum()
+                        ts = (total_pts / (2 * (total_fga + 0.44 * total_fta)) * 100) if (total_fga + 0.44 * total_fta) > 0 else 0
+                        stats['TS%'] = f"{round(ts, 1)}%"
+                    else:
+                        stats['TS%'] = "N/A"
+                    
+                    return stats
+                
+                home_stats = calc_split_stats(home_games, "Home")
+                away_stats = calc_split_stats(away_games, "Away")
+                
+                splits_data = []
+                if home_stats:
+                    splits_data.append(home_stats)
+                if away_stats:
+                    splits_data.append(away_stats)
+                
+                if splits_data:
+                    splits_df = pd.DataFrame(splits_data)
+                    
+                    # Style the splits table
+                    def highlight_splits(row):
+                        if "Home" in str(row['Split']):
+                            return ['background-color: #1E3A5F; text-align: left'] * len(row)
+                        else:
+                            return ['background-color: #3D1E3F; text-align: left'] * len(row)
+                    
+                    styled_splits = splits_df.style.apply(highlight_splits, axis=1).set_properties(**{'text-align': 'left'})
+                    st.dataframe(styled_splits, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Not enough data to calculate home/away splits.")
+                
+                # Win vs Loss Splits
+                st.markdown("---")
+                st.markdown("### Win vs Loss Splits")
+                
+                # Filter by W/L column
+                if 'W/L' in player_df.columns:
+                    win_games = player_df[player_df['W/L'] == 'W']
+                    loss_games = player_df[player_df['W/L'] == 'L']
+                    
+                    win_stats = calc_split_stats(win_games, "Wins")
+                    loss_stats = calc_split_stats(loss_games, "Losses")
+                    
+                    wl_splits_data = []
+                    if win_stats:
+                        wl_splits_data.append(win_stats)
+                    if loss_stats:
+                        wl_splits_data.append(loss_stats)
+                    
+                    if wl_splits_data:
+                        wl_splits_df = pd.DataFrame(wl_splits_data)
+                        
+                        # Style the splits table with Win/Loss colors
+                        def highlight_wl_splits(row):
+                            if "Win" in str(row['Split']):
+                                return ['background-color: #134e37; text-align: left'] * len(row)  # Green tint
+                            else:
+                                return ['background-color: #4e1313; text-align: left'] * len(row)  # Red tint
+                        
+                        styled_wl_splits = wl_splits_df.style.apply(highlight_wl_splits, axis=1).set_properties(**{'text-align': 'left'})
+                        st.dataframe(styled_wl_splits, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Not enough data to calculate win/loss splits.")
+                else:
+                    st.info("Win/Loss data not available.")
+                
+                # Conference Splits (East vs West)
+                st.markdown("---")
+                st.markdown("### Conference Splits")
+                
+                # Define conference teams
+                EAST_TEAMS = {'ATL', 'BOS', 'BKN', 'CHA', 'CHI', 'CLE', 'DET', 'IND', 'MIA', 'MIL', 'NYK', 'ORL', 'PHI', 'TOR', 'WAS'}
+                WEST_TEAMS = {'DAL', 'DEN', 'GSW', 'HOU', 'LAC', 'LAL', 'MEM', 'MIN', 'NOP', 'OKC', 'PHX', 'POR', 'SAC', 'SAS', 'UTA'}
+                
+                if 'MATCHUP' in player_df.columns:
+                    # Extract opponent from matchup (e.g., "BOS vs. LAL" or "BOS @ LAL")
+                    def get_opponent(matchup):
+                        if '@' in matchup:
+                            return matchup.split('@')[-1].strip()
+                        elif 'vs.' in matchup:
+                            return matchup.split('vs.')[-1].strip()
+                        return None
+                    
+                    player_df['Opponent'] = player_df['MATCHUP'].apply(get_opponent)
+                    
+                    # Classify games by opponent conference
+                    east_games = player_df[player_df['Opponent'].isin(EAST_TEAMS)]
+                    west_games = player_df[player_df['Opponent'].isin(WEST_TEAMS)]
+                    
+                    east_stats = calc_split_stats(east_games, f"vs East ({len(east_games)} G)")
+                    west_stats = calc_split_stats(west_games, f"vs West ({len(west_games)} G)")
+                    
+                    conf_splits_data = []
+                    if east_stats:
+                        conf_splits_data.append(east_stats)
+                    if west_stats:
+                        conf_splits_data.append(west_stats)
+                    
+                    if conf_splits_data:
+                        conf_splits_df = pd.DataFrame(conf_splits_data)
+                        
+                        # Style the splits table with conference colors
+                        def highlight_conf_splits(row):
+                            if "East" in str(row['Split']):
+                                return ['background-color: #1E3A5F; text-align: left'] * len(row)  # Blue tint
+                            else:
+                                return ['background-color: #5F1E1E; text-align: left'] * len(row)  # Red tint
+                        
+                        styled_conf_splits = conf_splits_df.style.apply(highlight_conf_splits, axis=1).set_properties(**{'text-align': 'left'})
+                        st.dataframe(styled_conf_splits, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Not enough data to calculate conference splits.")
+                else:
+                    st.info("Matchup data not available for conference splits.")
+                
+                # Splits vs Winning Teams (≥ .500 win percentage)
+                st.markdown("---")
+                st.markdown("### Splits vs Winning Teams")
+                
+                # Fetch standings to get team win percentages
+                standings_data = get_league_standings(season)
+                
+                if not standings_data.empty and 'MATCHUP' in player_df.columns:
+                    # Build win percentage lookup by team abbreviation
+                    team_win_pcts = {}
+                    for _, row in standings_data.iterrows():
+                        city = row.get('TeamCity', '')
+                        team_abbrev = get_team_abbrev(city)
+                        if team_abbrev:
+                            win_pct = row.get('WinPct', 0)
+                            # Handle string format if needed
+                            if isinstance(win_pct, str):
+                                try:
+                                    win_pct = float(win_pct)
+                                except:
+                                    win_pct = 0
+                            team_win_pcts[team_abbrev] = win_pct
+                    
+                    if team_win_pcts:
+                        # Extract opponent from matchup column
+                        def get_opponent_abbrev(matchup):
                             if '@' in matchup:
                                 return matchup.split('@')[-1].strip()
                             elif 'vs.' in matchup:
                                 return matchup.split('vs.')[-1].strip()
                             return None
                         
-                        player_df['Opponent'] = player_df['MATCHUP'].apply(get_opponent)
+                        player_df['OppAbbrev'] = player_df['MATCHUP'].apply(get_opponent_abbrev)
+                        player_df['OppWinPct'] = player_df['OppAbbrev'].map(team_win_pcts)
                         
-                        # Classify games by opponent conference
-                        east_games = player_df[player_df['Opponent'].isin(EAST_TEAMS)]
-                        west_games = player_df[player_df['Opponent'].isin(WEST_TEAMS)]
+                        # Split games by opponent win percentage
+                        # Winning teams: >= 0.500
+                        winning_opp_games = player_df[player_df['OppWinPct'] >= 0.500]
+                        losing_opp_games = player_df[player_df['OppWinPct'] < 0.500]
                         
-                        east_stats = calc_split_stats(east_games, f"vs East ({len(east_games)} G)")
-                        west_stats = calc_split_stats(west_games, f"vs West ({len(west_games)} G)")
+                        winning_opp_stats = calc_split_stats(winning_opp_games, f"vs ≥.500 ({len(winning_opp_games)} G)")
+                        losing_opp_stats = calc_split_stats(losing_opp_games, f"vs <.500 ({len(losing_opp_games)} G)")
                         
-                        conf_splits_data = []
-                        if east_stats:
-                            conf_splits_data.append(east_stats)
-                        if west_stats:
-                            conf_splits_data.append(west_stats)
+                        record_splits_data = []
+                        if winning_opp_stats:
+                            record_splits_data.append(winning_opp_stats)
+                        if losing_opp_stats:
+                            record_splits_data.append(losing_opp_stats)
                         
-                        if conf_splits_data:
-                            conf_splits_df = pd.DataFrame(conf_splits_data)
+                        if record_splits_data:
+                            record_splits_df = pd.DataFrame(record_splits_data)
                             
-                            # Style the splits table with conference colors
-                            def highlight_conf_splits(row):
-                                if "East" in str(row['Split']):
-                                    return ['background-color: #1E3A5F; text-align: left'] * len(row)  # Blue tint
+                            # Style the splits table - winning teams in orange/gold, losing in lighter shade
+                            def highlight_record_splits(row):
+                                if "≥.500" in str(row['Split']):
+                                    return ['background-color: #5F4B1E; text-align: left'] * len(row)  # Gold/bronze tint
                                 else:
-                                    return ['background-color: #5F1E1E; text-align: left'] * len(row)  # Red tint
+                                    return ['background-color: #2E3D4E; text-align: left'] * len(row)  # Slate/gray tint
                             
-                            styled_conf_splits = conf_splits_df.style.apply(highlight_conf_splits, axis=1).set_properties(**{'text-align': 'left'})
-                            st.dataframe(styled_conf_splits, use_container_width=True, hide_index=True)
+                            styled_record_splits = record_splits_df.style.apply(highlight_record_splits, axis=1).set_properties(**{'text-align': 'left'})
+                            st.dataframe(styled_record_splits, use_container_width=True, hide_index=True)
                         else:
-                            st.info("Not enough data to calculate conference splits.")
+                            st.info("Not enough data to calculate winning team splits.")
                     else:
-                        st.info("Matchup data not available for conference splits.")
+                        st.info("Could not determine team win percentages.")
+                else:
+                    st.info("Standings data not available for winning team splits.")
+                
+                # Stats vs Specific Team
+                st.markdown("---")
+                st.markdown("### Stats vs Specific Teams")
+                
+                # Fetch def ratings for consistency with Predictions page
+                with st.spinner("Fetching team ratings..."):
+                    team_def_ratings = get_current_defensive_ratings(season)
+                
+                all_teams_list = sorted(list(team_def_ratings.keys())) if team_def_ratings else ["ATL", "BOS", "BKN", "CHA", "CHI", "CLE", "DAL", "DEN", "DET", "GSW", "HOU", "IND", "LAC", "LAL", "MEM", "MIA", "MIL", "MIN", "NOP", "NYK", "OKC", "ORL", "PHI", "PHX", "POR", "SAC", "SAS", "TOR", "UTA", "WAS"]
+                
+                available_opponents = [t for t in all_teams_list if t != player_team]
+                
+                opp_col1, opp_col2 = st.columns([0.9, 0.1])
+                with opp_col1:
+                    selected_opp = st.selectbox("Select Team:", available_opponents, key="stats_vs_team_select")
+                with opp_col2:
+                    opp_logo = get_team_logo_url(selected_opp)
+                    if opp_logo:
+                        st.image(opp_logo, width=50)
+                
+                if selected_opp:
+                    opp_rating = team_def_ratings.get(selected_opp, "N/A")
+                    st.caption(f"Defensive Rating: **{opp_rating}** (Lower is better defense)")
                     
-                    # Splits vs Winning Teams (≥ .500 win percentage)
-                    st.markdown("---")
-                    st.markdown("### Splits vs Winning Teams")
+                    # Ensure opponent column exists (it should from conference splits logic above)
+                    if 'Opponent' not in player_df.columns and 'MATCHUP' in player_df.columns:
+                        def get_opp_abbrev(matchup):
+                            if '@' in matchup: return matchup.split('@')[-1].strip()
+                            elif 'vs.' in matchup: return matchup.split('vs.')[-1].strip()
+                            return None
+                        player_df['Opponent'] = player_df['MATCHUP'].apply(get_opp_abbrev)
                     
-                    # Fetch standings to get team win percentages
-                    standings_data = get_league_standings(season)
+                    opp_games = player_df[player_df['Opponent'] == selected_opp]
                     
-                    if not standings_data.empty and 'MATCHUP' in player_df.columns:
-                        # Build win percentage lookup by team abbreviation
-                        team_win_pcts = {}
-                        for _, row in standings_data.iterrows():
-                            city = row.get('TeamCity', '')
-                            team_abbrev = get_team_abbrev(city)
-                            if team_abbrev:
-                                win_pct = row.get('WinPct', 0)
-                                # Handle string format if needed
-                                if isinstance(win_pct, str):
-                                    try:
-                                        win_pct = float(win_pct)
-                                    except:
-                                        win_pct = 0
-                                team_win_pcts[team_abbrev] = win_pct
+                    # Get opponent record and rank
+                    opp_record_str = "N/A"
+                    opp_rank_str = "N/A"
+                    opp_conf_str = "N/A"
+                    if not standings_df.empty:
+                        for _, row in standings_df.iterrows():
+                            if get_team_abbrev(row['TeamCity']) == selected_opp:
+                                opp_record_str = row['Record']
+                                opp_rank_str = row['PlayoffRank']
+                                opp_conf_str = row['Conference']
+                                break
+                    
+                    # Calculate player's averages against this opponent this season
+                    st.markdown(f"### Games vs {selected_opp} <span style='color: #6B7280; font-size: 1.5rem;'> (#{opp_rank_str} {opp_conf_str}, {opp_record_str})</span>", unsafe_allow_html=True)
+
+                    
+                    if len(opp_games) > 0:
+                        # Calculate averages against this opponent
+                        num_games = len(opp_games)
                         
-                        if team_win_pcts:
-                            # Extract opponent from matchup column
-                            def get_opponent_abbrev(matchup):
-                                if '@' in matchup:
-                                    return matchup.split('@')[-1].strip()
-                                elif 'vs.' in matchup:
-                                    return matchup.split('vs.')[-1].strip()
-                                return None
-                            
-                            player_df['OppAbbrev'] = player_df['MATCHUP'].apply(get_opponent_abbrev)
-                            player_df['OppWinPct'] = player_df['OppAbbrev'].map(team_win_pcts)
-                            
-                            # Split games by opponent win percentage
-                            # Winning teams: >= 0.500
-                            winning_opp_games = player_df[player_df['OppWinPct'] >= 0.500]
-                            losing_opp_games = player_df[player_df['OppWinPct'] < 0.500]
-                            
-                            winning_opp_stats = calc_split_stats(winning_opp_games, f"vs ≥.500 ({len(winning_opp_games)} G)")
-                            losing_opp_stats = calc_split_stats(losing_opp_games, f"vs <.500 ({len(losing_opp_games)} G)")
-                            
-                            record_splits_data = []
-                            if winning_opp_stats:
-                                record_splits_data.append(winning_opp_stats)
-                            if losing_opp_stats:
-                                record_splits_data.append(losing_opp_stats)
-                            
-                            if record_splits_data:
-                                record_splits_df = pd.DataFrame(record_splits_data)
-                                
-                                # Style the splits table - winning teams in orange/gold, losing in lighter shade
-                                def highlight_record_splits(row):
-                                    if "≥.500" in str(row['Split']):
-                                        return ['background-color: #5F4B1E; text-align: left'] * len(row)  # Gold/bronze tint
-                                    else:
-                                        return ['background-color: #2E3D4E; text-align: left'] * len(row)  # Slate/gray tint
-                                
-                                styled_record_splits = record_splits_df.style.apply(highlight_record_splits, axis=1).set_properties(**{'text-align': 'left'})
-                                st.dataframe(styled_record_splits, use_container_width=True, hide_index=True)
-                            else:
-                                st.info("Not enough data to calculate winning team splits.")
+                        # Calculate W-L record against this opponent
+                        if 'W/L' in opp_games.columns:
+                            wins_vs = len(opp_games[opp_games['W/L'] == 'W'])
+                            losses_vs = len(opp_games[opp_games['W/L'] == 'L'])
+                            WL_record = f"{wins_vs}-{losses_vs}"
                         else:
-                            st.info("Could not determine team win percentages.")
+                            WL_record = "N/A"
+                        
+                        # Calculate basic stats
+                        avg_points_vs = round(opp_games['Points'].mean(), 1)
+                        avg_rebounds_vs = round(opp_games['Rebounds'].mean(), 1)
+                        avg_assists_vs = round(opp_games['Assists'].mean(), 1)
+                        avg_steals_vs = round(opp_games['Steals'].mean(), 1)
+                        avg_blocks_vs = round(opp_games['Blocks'].mean(), 1)
+                        avg_turnovers_vs = round(opp_games['Turnovers'].mean(), 1)
+                        
+                        # Calculate shooting stats
+                        if 'FGM' in opp_games.columns and 'FGA' in opp_games.columns:
+                            total_fgm_vs = opp_games['FGM'].sum()
+                            total_fga_vs = opp_games['FGA'].sum()
+                            fg_pct_vs = round((total_fgm_vs / total_fga_vs * 100), 1) if total_fga_vs > 0 else 0
+                            avg_fgm_vs = round(opp_games['FGM'].mean(), 1)
+                            avg_fga_vs = round(opp_games['FGA'].mean(), 1)
+                            avg_fg_vs = f"{avg_fgm_vs:.1f}/{avg_fga_vs:.1f}"
+                        else:
+                            avg_fg_vs = "N/A"
+                            fg_pct_vs = "N/A"
+                        
+                        if '3PM' in opp_games.columns and '3PA' in opp_games.columns:
+                            total_3pm_vs = opp_games['3PM'].sum()
+                            total_3pa_vs = opp_games['3PA'].sum()
+                            three_pct_vs = round((total_3pm_vs / total_3pa_vs * 100), 1) if total_3pa_vs > 0 else 0
+                            avg_3pm_vs = round(opp_games['3PM'].mean(), 1)
+                            avg_3pa_vs = round(opp_games['3PA'].mean(), 1)
+                            avg_3p_vs = f"{avg_3pm_vs:.1f}/{avg_3pa_vs:.1f}"
+                        else:
+                            avg_3p_vs = "N/A"
+                            three_pct_vs = "N/A"
+                        
+                        if 'FTM' in opp_games.columns and 'FTA' in opp_games.columns:
+                            total_ftm_vs = opp_games['FTM'].sum()
+                            total_fta_vs = opp_games['FTA'].sum()
+                            ft_pct_vs = round((total_ftm_vs / total_fta_vs * 100), 1) if total_fta_vs > 0 else 0
+                            avg_ftm_vs = round(opp_games['FTM'].mean(), 1)
+                            avg_fta_vs = round(opp_games['FTA'].mean(), 1)
+                            avg_ft_vs = f"{avg_ftm_vs:.1f}/{avg_fta_vs:.1f}"
+                        else:
+                            avg_ft_vs = "N/A"
+                            ft_pct_vs = "N/A"
+                        
+                        # Calculate minutes
+                        if 'MIN' in opp_games.columns:
+                            def parse_minutes_simple(min_str):
+                                if pd.isna(min_str):
+                                    return 0
+                                try:
+                                    if ':' in str(min_str):
+                                        parts = str(min_str).split(':')
+                                        return int(parts[0])  # Just take minutes
+                                    else:
+                                        return float(min_str)
+                                except:
+                                    return 0
+                            
+                            opp_games_copy = opp_games.copy()
+                            opp_games_copy['MIN_NUM'] = opp_games_copy['MIN'].apply(parse_minutes_simple)
+                            avg_minutes_vs = round(opp_games_copy['MIN_NUM'].mean(), 1)
+                        else:
+                            avg_minutes_vs = "N/A"
+                        
+                        # Calculate TS%
+                        if 'FGA' in opp_games.columns and 'FTA' in opp_games.columns:
+                            total_points_vs = opp_games['Points'].sum()
+                            total_fga_vs_ts = opp_games['FGA'].sum()
+                            total_fta_vs_ts = opp_games['FTA'].sum()
+                            ts_pct_vs = round((total_points_vs / (2 * (total_fga_vs_ts + 0.44 * total_fta_vs_ts)) * 100), 1) if (total_fga_vs_ts + 0.44 * total_fta_vs_ts) > 0 else 0
+                        else:
+                            ts_pct_vs = "N/A"
+                        
+                        # Show individual game results against this opponent with averages row
+                        st.markdown(f"**Games Played: {num_games}** | **Record: {WL_record}**")
+                        
+                        # Get individual games - include W/L and Score
+                        vs_cols = ['GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN', 'Points', 'Rebounds', 'Assists', 
+                                  'Steals', 'Blocks', 'Turnovers', 'FG', '3P', 'FT', 'TS%']
+                        vs_opponent_display = opp_games[[c for c in vs_cols if c in opp_games.columns]].iloc[::-1].copy()
+                        
+                        # Format TS% for individual games
+                        if 'TS%' in vs_opponent_display.columns:
+                            vs_opponent_display['TS%'] = vs_opponent_display['TS%'].apply(lambda x: f"{x:.1f}%" if pd.notnull(x) else "N/A")
+                        
+                        # Create averages row
+                        averages_row_vs = {
+                            'GAME_DATE': 'AVG vs ' + selected_opp,
+                            'MATCHUP': f'({num_games} games)',
+                            'W/L': '',
+                            'Score': '',
+                            'MIN': f"{avg_minutes_vs:.1f}" if avg_minutes_vs != "N/A" else "N/A",
+                            'Points': f"{avg_points_vs:.1f}",
+                            'Rebounds': f"{avg_rebounds_vs:.1f}",
+                            'Assists': f"{avg_assists_vs:.1f}",
+                            'Steals': f"{avg_steals_vs:.1f}",
+                            'Blocks': f"{avg_blocks_vs:.1f}",
+                            'Turnovers': f"{avg_turnovers_vs:.1f}",
+                            'FG': f"{fg_pct_vs:.1f}%" if fg_pct_vs != "N/A" else "N/A",
+                            '3P': f"{three_pct_vs:.1f}%" if three_pct_vs != "N/A" else "N/A",
+                            'FT': f"{ft_pct_vs:.1f}%" if ft_pct_vs != "N/A" else "N/A",
+                            'TS%': f"{ts_pct_vs:.1f}%" if isinstance(ts_pct_vs, (int, float)) else ts_pct_vs
+                        }
+                        
+                        # Add the averages row to the dataframe
+                        averages_df_row_vs = pd.DataFrame([averages_row_vs])
+                        
+                        # Combine with individual games
+                        combined_display = pd.concat([vs_opponent_display, averages_df_row_vs], ignore_index=True)
+                        
+                        # Highlight the averages row and W/L column
+                        def highlight_vs_average_row(row):
+                            if 'AVG vs ' in str(row['GAME_DATE']):
+                                return ['background-color: #2D3748; font-weight: bold; color: #FF6B35'] * len(row)
+                            else:
+                                return [''] * len(row)
+                        
+                        def style_opponent_wl(val):
+                            if val == 'W':
+                                return 'color: #10B981; font-weight: bold'
+                            elif val == 'L':
+                                return 'color: #EF4444; font-weight: bold'
+                            return ''
+                        
+                        # Apply row styling
+                        styled_df = combined_display.style.apply(highlight_vs_average_row, axis=1)
+                        
+                        # Apply W/L column styling if present
+                        if 'W/L' in combined_display.columns:
+                            styled_df = styled_df.applymap(style_opponent_wl, subset=['W/L'])
+                        
+                        # Display the table with styling
+                        st.dataframe(
+                            styled_df,
+                            use_container_width=True,
+                            hide_index=True
+                        )
+                    
                     else:
-                        st.info("Standings data not available for winning team splits.")
+                        st.info(f"**{selected_player}** has not played against **{selected_opp}** yet this season.")
+
 
 # ==================== FAVORITES PAGE ====================
 elif page == "Favorites":
@@ -3312,15 +3534,12 @@ elif page == "Favorites":
                                     for i, game in enumerate(upcoming):
                                         with cols[i]:
                                             home_away = "vs" if game['is_home'] else "@"
-                                            opp_rank = game['opponent_rank']
-                                            opp_record = game.get('opponent_record', '')
+                                            opp_rank = game.get('opponent_rank', 0)
+                                            opp_conf = game.get('opponent_conference', '')
                                             if opp_rank:
-                                                label = f"{game['date']}\n{home_away} #{opp_rank} {game['opponent']}"
+                                                label = f"{game['date']} {home_away} {game['opponent']} (#{opp_rank} {opp_conf})"
                                             else:
-                                                label = f"{game['date']}\n{home_away} {game['opponent']}"
-                                            # Add opponent record if available
-                                            if opp_record:
-                                                label += f"\n({opp_record})"
+                                                label = f"{game['date']} {home_away} {game['opponent']}"
                                             
                                             if st.button(label, key=f"fav_upcoming_{player}_{i}_{game['opponent']}", use_container_width=True):
                                                 st.session_state["auto_load_player"] = player
@@ -3848,7 +4067,7 @@ elif page == "Compare Players":
                         p1_pos = ""
                         if bio1 and bio1.get('position'):
                             abbrev_p1 = abbreviate_position(bio1['position'], player1_name)
-                            p1_pos = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 0.85rem;'>({abbrev_p1})</span>"
+                            p1_pos = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 1.1rem;'>({abbrev_p1})</span>"
                         
                         # Bio for player 1 (Muted labels, bold values)
                         p1_height = bio1.get('height', '-') if bio1 else '-'
@@ -3868,7 +4087,7 @@ elif page == "Compare Players":
 
                         st.markdown(f"""<div style="text-align: center; margin-top: 10px;">
 <div style="color: #FAFAFA; font-weight: bold; font-size: 1.1rem; margin-bottom: 0px;">{player1_name}{p1_pos}</div>
-<div style="color: #9CA3AF; font-size: 0.85rem; margin-bottom: 5px;">{team_full_name1} <span style="color: #6B7280; font-size: 0.75rem;">({team_record1} | #{team_rank1} in {team_conf1})</span></div>
+<div style="color: #9CA3AF; font-size: 0.85rem; margin-bottom: 5px;">{team_full_name1} <span style="color: #9CA3AF; font-size: 0.85rem;">({team_record1} | #{team_rank1} in {team_conf1})</span></div>
 <div style="color: #9CA3AF; font-size: 0.8rem; margin-bottom: 10px;">
 <span style="color: #9CA3AF;">HT:</span> <span style="color: #FAFAFA; font-weight: bold;">{p1_height}</span> • 
 <span style="color: #9CA3AF;">WT:</span> <span style="color: #FAFAFA; font-weight: bold;">{p1_weight} lbs</span> • 
@@ -3934,7 +4153,7 @@ elif page == "Compare Players":
                         p2_pos = ""
                         if bio2 and bio2.get('position'):
                             abbrev_p2 = abbreviate_position(bio2['position'], player2_name)
-                            p2_pos = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 0.85rem;'>({abbrev_p2})</span>"
+                            p2_pos = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 1.1rem;'>({abbrev_p2})</span>"
                             
                         # Bio for player 2 (Muted labels, bold values)
                         p2_height = bio2.get('height', '-') if bio2 else '-'
@@ -3954,7 +4173,7 @@ elif page == "Compare Players":
 
                         st.markdown(f"""<div style="text-align: center; margin-top: 10px;">
 <div style="color: #FAFAFA; font-weight: bold; font-size: 1.1rem; margin-bottom: 0px;">{player2_name}{p2_pos}</div>
-<div style="color: #9CA3AF; font-size: 0.85rem; margin-bottom: 5px;">{team_full_name2} <span style="color: #6B7280; font-size: 0.75rem;">({team_record2} | #{team_rank2} in {team_conf2})</span></div>
+<div style="color: #9CA3AF; font-size: 0.85rem; margin-bottom: 5px;">{team_full_name2} <span style="color: #9CA3AF; font-size: 0.85rem;">({team_record2} | #{team_rank2} in {team_conf2})</span></div>
 <div style="color: #9CA3AF; font-size: 0.8rem; margin-bottom: 10px;">
 <span style="color: #9CA3AF;">HT:</span> <span style="color: #FAFAFA; font-weight: bold;">{p2_height}</span> • 
 <span style="color: #9CA3AF;">WT:</span> <span style="color: #FAFAFA; font-weight: bold;">{p2_weight} lbs</span> • 
@@ -4311,7 +4530,7 @@ elif page == "Around the NBA":
     
     # Fetch data
     with st.spinner("Fetching latest NBA updates..."):
-        mvp_ladder = get_mvp_ladder()
+        mvp_ladder, mvp_date = get_mvp_ladder()
         nba_schedule = get_nba_schedule()
         standings_df = get_league_standings(season)
         nba_news = get_nba_news()
@@ -4421,7 +4640,7 @@ white-space: nowrap; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
                                     <img src="{away_logo}" width="35" height="35" style="vertical-align: middle;" onerror="this.style.display='none'"/>
                                     <div style="text-align: left;">
                                         <div style="font-weight: bold; color: #FAFAFA;">{game['away_team']}</div>
-                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{away_record} {away_seed} {away_conf}</div>
+                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{away_record}, {away_seed} {away_conf}</div>
                                     </div>
                                 </div>
                                 <div>{away_score_display}</div>
@@ -4431,7 +4650,7 @@ white-space: nowrap; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
                                     <img src="{home_logo}" width="35" height="35" style="vertical-align: middle;" onerror="this.style.display='none'"/>
                                     <div style="text-align: left;">
                                         <div style="font-weight: bold; color: #FAFAFA;">{game['home_team']}</div>
-                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{home_record} {home_seed} {home_conf}</div>
+                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{home_record}, {home_seed} {home_conf}</div>
                                     </div>
                                 </div>
                                 <div>{home_score_display}</div>
@@ -4648,7 +4867,7 @@ elif page == "Standings":
                 rank = int(row['PlayoffRank'])
                 team_name = f"{row['TeamCity']} {row['TeamName']}".strip()
                 record = row['Record']
-                win_pct = f"{row['WinPct']:.3f}" if isinstance(row['WinPct'], float) else row['WinPct']
+                win_pct = f"{row['WinPct']*100:.1f}" if isinstance(row['WinPct'], (int, float)) else row['WinPct']
                 l10 = row.get('L10', 'N/A')
                 streak = row.get('strCurrentStreak', 'N/A')
                 gb = row.get('GB', '-')
@@ -4657,6 +4876,11 @@ elif page == "Standings":
                 conf_rec = row.get('ConferenceRecord', 'N/A')
                 div_rec = row.get('DivisionRecord', 'N/A')
                 logo_url = get_team_logo_url(team_abbrev)
+                
+                # Calculate GP
+                wins_val = row.get('Wins', 0)
+                loss_val = row.get('Losses', 0)
+                gp = int(wins_val) + int(loss_val) if (wins_val != 'N/A' and loss_val != 'N/A') else 0
                 
                 # Get team ratings
                 team_rtg = team_ratings.get(team_abbrev, {})
@@ -4691,17 +4915,19 @@ elif page == "Standings":
                         st.markdown(f"**:orange[{team_name}]** _(Fav)_")
                     else:
                         st.markdown(f"**{team_name}**")
+                    st.caption(f"(GP: {gp})")
                 
                 with col3:
                     st.caption("RECORD")
                     st.write(record)
+                
                 
                 with col4:
                     st.caption("GB")
                     st.write(gb if gb != 0 else "-")
                 
                 with col5:
-                    st.caption("PCT")
+                    st.caption("WIN %")
                     st.write(win_pct)
                 
                 with col6:
@@ -4747,7 +4973,7 @@ elif page == "Standings":
                     st.markdown("""
                     <div style="border-bottom: 2px dashed #FF6B35; margin-top: 5px; padding-bottom: 10px;"></div>
                     <div style="margin: 10px 0; padding-top: 5px;">
-                        <span style="color: #EF4444; font-size: 0.8rem; font-weight: bold;">OUT OF PLAYOFF RACE (LOTTERY)</span>
+                        <span style="color: #EF4444; font-size: 0.8rem; font-weight: bold;">OUT OF PLAYOFF RACE</span>
                     </div>
                     """, unsafe_allow_html=True)
                 else:
@@ -4929,7 +5155,7 @@ elif page == "Standings":
                 with header5:
                     st.caption("SEED")
                 with header6:
-                    st.caption("PCT")
+                    st.caption("WIN %")
                 st.markdown("<div style='margin-bottom: -25px'></div>", unsafe_allow_html=True)
                 for idx, (_, row) in enumerate(division_df.iterrows(), 1):
                     team_abbrev = get_team_abbrev(row['TeamCity'])
@@ -4938,9 +5164,14 @@ elif page == "Standings":
                     team_name = f"{row['TeamCity']} {row['TeamName']}".strip()
                     record = row['Record']
                     div_rec = row.get('DivisionRecord', 'N/A')
-                    win_pct = f"{row['WinPct']:.3f}" if isinstance(row['WinPct'], float) else row['WinPct']
+                    win_pct = f"{row['WinPct']*100:.1f}" if isinstance(row['WinPct'], (int, float)) else row['WinPct']
                     conf_seed = int(row['PlayoffRank']) if 'PlayoffRank' in row else 'N/A'
                     logo_url = get_team_logo_url(team_abbrev)
+                    
+                    # Calculate GP
+                    wins_val = row.get('Wins', 0)
+                    loss_val = row.get('Losses', 0)
+                    gp = int(wins_val) + int(loss_val) if (wins_val != 'N/A' and loss_val != 'N/A') else 0
                     
                     col_logo, col1, col2, col3, col4, col5, col6 = st.columns([0.5, 0.3, 2.0, 0.7, 0.7, 0.7, 0.7])
                     
@@ -4980,6 +5211,7 @@ elif page == "Standings":
                              display_name = f"{display_name} <span style='color: #F59E0B; font-weight: normal; font-size: 0.8rem;'>(Fav)</span>"
                         
                         st.markdown(display_name, unsafe_allow_html=True)
+                        st.caption(f"(GP: {gp})")
                     
                     with col3:
                         st.write(record)
@@ -5052,7 +5284,7 @@ elif st.session_state.current_page == "Awards":
     
     # Get required data for MVP Ladder
     standings_df = get_league_standings(season)
-    mvp_ladder = get_mvp_ladder()
+    mvp_ladder, mvp_date = get_mvp_ladder()
     
     # Pre-fetch stats for MVP candidates (and later awards)
     bulk_player_stats = get_bulk_player_stats()
@@ -5060,7 +5292,7 @@ elif st.session_state.current_page == "Awards":
     
     # ===== SECTION 1: MVP LADDER (Moved from Around the NBA) =====
     st.markdown("## 🏆 KIA MVP Ladder")
-    st.caption("The latest rankings in the race for the 2025-26 MVP award")
+    st.caption(f"The latest rankings in the race for the 2025-26 MVP award (as of {mvp_date})")
     st.caption("Disclaimer: REC refers to the team record, not the player's individual record. For individual record, view season stats.")
     
     if mvp_ladder:
