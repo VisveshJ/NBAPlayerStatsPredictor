@@ -1404,7 +1404,7 @@ if page == "Home":
             
             if favorite_players:
                 for player_name in favorite_players[:6]:
-                    col_img, col_info, col_actions = st.columns([1.0, 3.5, 1.5])
+                    col_logo, col_img, col_info, col_actions = st.columns([0.4, 0.7, 3.4, 1.5])
                     
                     # Fetch bio if not in cache
                     if 'player_bio_cache' not in st.session_state:
@@ -1415,32 +1415,30 @@ if page == "Home":
                     
                     bio = st.session_state['player_bio_cache'][player_name]
                     
+                    with col_logo:
+                        # Team Logo
+                        team_abbrev = bio.get('team_abbrev') if bio else None
+                        if team_abbrev:
+                            logo = get_team_logo_url(team_abbrev)
+                            if logo:
+                                st.image(logo, width=45)
+                            else:
+                                st.write(team_abbrev)
+
                     with col_img:
                         if bio and bio.get('player_id'):
                             headshot_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{bio['player_id']}.png"
-                            st.image(headshot_url, width=100)
+                            st.image(headshot_url, width=90)
                         else:
                             st.markdown("<div style='font-size: 2.5rem; text-align: center; margin-top: 10px;'>👤</div>", unsafe_allow_html=True)
                     
                     with col_info:
-                        # Team Logo + Name
-                        team_abbrev = bio.get('team_abbrev') if bio else None
-                        
-                        title_col1, title_col2 = st.columns([0.15, 0.85])
-                        with title_col1:
-                            if team_abbrev:
-                                logo = get_team_logo_url(team_abbrev)
-                                if logo:
-                                    st.image(logo, width=45)
-                                else:
-                                    st.write(team_abbrev)
-                        with title_col2:
-                            # Fetch position from bio
-                            pos_label = ""
-                            if bio and bio.get('position'):
-                                abbrev_pos = abbreviate_position(bio['position'], player_name)
-                                pos_label = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 0.8rem;'>({abbrev_pos})</span>"
-                            st.markdown(f"<h4 style='margin: 0; font-size: 1.1rem;'>{player_name}{pos_label}</h4>", unsafe_allow_html=True)
+                        # Name + Position
+                        pos_label = ""
+                        if bio and bio.get('position'):
+                            abbrev_pos = abbreviate_position(bio['position'], player_name)
+                            pos_label = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 0.8rem;'>({abbrev_pos})</span>"
+                        st.markdown(f"<h4 style='margin: 0; font-size: 1.1rem;'>{player_name}{pos_label}</h4>", unsafe_allow_html=True)
                         
                         # Bio Stats
                         if bio:
