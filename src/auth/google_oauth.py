@@ -165,39 +165,28 @@ class AuthManager:
             return
 
         try:
-            auth_url, _ = flow.authorization_url(prompt="select_account")
+            auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline")
             
-            st.markdown(f"""
-                <div style="text-align: center; padding: 20px;">
-                    <a href="{auth_url}" target="_self" style="
-                        background-color: white; 
-                        color: #3c4043; 
-                        padding: 12px 24px; 
-                        border-radius: 4px; 
-                        text-decoration: none; 
-                        font-family: 'Google Sans',Roboto,Arial,sans-serif;
-                        font-weight: 500; 
-                        border: 1px solid #dadce0; 
-                        display: inline-flex; 
-                        align-items: center; 
-                        gap: 12px;
-                        box-shadow: 0 1px 3px rgba(60,64,67,0.3);
-                        transition: background-color 0.2s;
-                    ">
-                        <img src="https://fonts.gstatic.com/s/i/productlogos/googleg/v6/24px.svg" width="20px">
-                        Sign in with Google
-                    </a>
-                    <p style="margin-top: 15px; color: #9CA3AF; font-size: 0.8rem;">
-                        Secure authentication via Google Cloud Project: <code>{flow.client_id[:15]}...</code>
-                    </p>
-                </div>
-            """, unsafe_allow_html=True)
+            st.markdown("### 🏀 NBA Sign In")
+            st.write("Join to save your favorite players and get personalized AI predictions.")
             
-            with st.expander("�️ Connection Manager"):
-                st.write(f"📡 **Outbound Redirect:** `{self.redirect_uri}`")
-                st.write(f"🔑 **Client ID Status:** {'Detected' if flow.client_id else 'Missing'}")
-                if st.button("Switch to Demo Mode"):
-                    self._show_demo_login()
+            # Use native link button for better header handling (fixes some 403 issues)
+            st.link_button("🚀 Sign in with Google", auth_url, type="primary", use_container_width=True)
+            
+            # Expert Diagnostic Info
+            with st.expander("🔍 Cloud Troubleshooting (If 403 Forbidden/Access Denied)"):
+                st.warning("⚠️ **Common Fix for 403 Errors:**")
+                st.markdown("""
+                1. **Add Test User:** In Google Cloud Console -> 'OAuth Consent Screen' -> 'Test Users', you **MUST** add your Gmail address.
+                2. **Enable API:** Search for 'Google People API' in Google Cloud and click **ENABLE**.
+                3. **Redirect URI:** Ensure this matches exactly:
+                """)
+                st.code(self.redirect_uri)
+                st.write(f"🔑 **Client ID:** `{flow.client_id[:20]}...`")
+                    
+        except Exception as e:
+            st.error(f"UI Error: {e}")
+            self._show_demo_login()
                     
         except Exception as e:
             st.error(f"UI Error: {e}")
