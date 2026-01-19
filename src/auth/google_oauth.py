@@ -61,61 +61,72 @@ class AuthManager:
             # Check if credentials file exists
             if not os.path.exists(config_path):
                 # Try to load from st.secrets if on Streamlit Cloud
+                # Priority: google_auth.web -> google_auth
+                auth_payload = None
+                
                 if "google_auth" in st.secrets:
-                   try:
-                       import json
-                       import tempfile
-                       
-                       # Helper to deeply convert Streamlit secrets (AttrDict) to standard dict
-                       def deep_dict(obj):
-                           if hasattr(obj, "to_dict"):
-                               return deep_dict(obj.to_dict())
-                           if isinstance(obj, dict):
-                               return {k: deep_dict(v) for k, v in obj.items()}
-                           if isinstance(obj, list):
-                               return [deep_dict(v) for v in obj]
-                           return obj
+                    try:
+                        import json
+                        import tempfile
+                        
+                        # Deep convert secrets to dict
+                        def deep_dict(obj):
+                            if hasattr(obj, "to_dict"):
+                                return deep_dict(obj.to_dict())
+                            if isinstance(obj, dict):
+                                return {k: deep_dict(v) for k, v in obj.items()}
+                            if isinstance(obj, list):
+                                return [deep_dict(v) for v in obj]
+                            return obj
 
-                       auth_config = deep_dict(st.secrets["google_auth"])
-                       
-                       # REQUIRED: If the user didn't wrap the config in 'web' or 'installed', 
-                       # wrap it for them so oauthlib doesn't complain.
-                       if "web" not in auth_config and "installed" not in auth_config:
-                           if "client_id" in auth_config:
-                               auth_config = {"web": auth_config}
-                           else:
-                               st.error("Invalid 'google_auth' secrets. Missing 'web' or 'client_id' key.")
-                               return None
-                       
-                       # FIX: The Google library requires 'redirect_uris' to be a LIST.
-                       # If it's a string in the TOML, convert it.
-                       key = "web" if "web" in auth_config else "installed"
-                       if "redirect_uris" in auth_config[key]:
-                           if isinstance(auth_config[key]["redirect_uris"], str):
-                               auth_config[key]["redirect_uris"] = [auth_config[key]["redirect_uris"]]
-                       else:
-                           auth_config[key]["redirect_uris"] = []
-                       
-                       # Ensure the current redirect_uri is in the list
-                       if self.redirect_uri not in auth_config[key]["redirect_uris"]:
-                           auth_config[key]["redirect_uris"].append(self.redirect_uri)
-                       
-                       # Debug logging (masked)
-                       log_config = {k: "********" if "secret" in k.lower() or "id" in k.lower() else v 
-                                    for k, v in auth_config.get(key, {}).items()}
-                       st.sidebar.caption("🔐 Auth Diagnostics")
-                       with st.sidebar.expander("Show Auth Config (Masked)"):
-                           st.write({ "type": key, "config": log_config, "redirect_uri": self.redirect_uri })
-                       
-                       tmp_file = tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.json')
-                       json.dump(auth_config, tmp_file)
-                       tmp_file.close()
-                       config_path = tmp_file.name
-                   except Exception as e:
-                       st.error(f"Error loading auth secrets: {e}")
-                       import traceback
-                       st.sidebar.error(traceback.format_exc())
-                       return None
+                        raw_secrets = deep_dict(st.secrets["google_auth"])
+                        
+                        # Handle different nesting styles
+                        if "web" in raw_secrets:
+                            auth_payload = {"web": raw_secrets["web"]}
+                        elif "installed" in raw_secrets:
+                            auth_payload = {"installed": raw_secrets["installed"]}
+                        elif "client_id" in raw_secrets:
+                            # User provided flat secrets under [google_auth]
+                            auth_payload = {"web": raw_secrets}
+                        else:
+                            st.sidebar.error("❌ 'google_auth' found but missing 'client_id' or 'web' section.")
+                            return None
+                        
+                        # Normalize redirect_uris to be a list
+                        key = "web" if "web" in auth_payload else "installed"
+                        if "redirect_uris" in auth_payload[key]:
+                            if isinstance(auth_payload[key]["redirect_uris"], str):
+                                auth_payload[key]["redirect_uris"] = [auth_payload[key]["redirect_uris"]]
+                        else:
+                            auth_payload[key]["redirect_uris"] = []
+                        
+                        # Inject current redirect_uri if missing
+                        if self.redirect_uri not in auth_payload[key]["redirect_uris"]:
+                            auth_payload[key]["redirect_uris"].append(self.redirect_uri)
+
+                        # Diagnostics (Masked)
+                        masked_payload = deep_dict(auth_payload)
+                        m_key = "web" if "web" in masked_payload else "installed"
+                        if "client_secret" in masked_payload[m_key]:
+                            masked_payload[m_key]["client_secret"] = "********"
+                        if "client_id" in masked_payload[m_key]:
+                            cid = masked_payload[m_key]["client_id"]
+                            masked_payload[m_key]["client_id"] = f"{cid[:10]}...{cid[-10:]}" if len(cid) > 20 else "********"
+                        
+                        st.sidebar.caption("🔐 OAuth Config Loaded")
+                        with st.sidebar.expander("Show Final JSON (Masked)"):
+                            st.json(masked_payload)
+
+                        # Write to temp file
+                        tmp_file = tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.json')
+                        json.dump(auth_payload, tmp_file)
+                        tmp_file.close()
+                        config_path = tmp_file.name
+                        
+                    except Exception as e:
+                        st.sidebar.error(f"Error preparing OAuth secrets: {e}")
+                        return None
                 else:
                     return None
             
@@ -128,8 +139,7 @@ class AuthManager:
                     cookie_expiry_days=self.cookie_expiry_days,
                 )
             except Exception as e:
-                st.error(f"Failed to initialize Authenticate: {e}")
-                st.sidebar.error(f"Init Error: {str(e)}")
+                st.sidebar.error(f"Authenticate Init Error: {e}")
                 return None
         
         return self._authenticator
@@ -137,78 +147,47 @@ class AuthManager:
     def check_authentication(self) -> bool:
         """
         Check if user is authenticated. 
-        Call this at the start of your app.
         Returns True if authenticated, False otherwise.
         """
-        # Initialize session state keys that the library expects
-        if "connected" not in st.session_state:
-            st.session_state["connected"] = False
-        if "user_info" not in st.session_state:
-            st.session_state["user_info"] = {}
-        if "oauth_id" not in st.session_state:
-            st.session_state["oauth_id"] = None
+        # Ensure session keys
+        for key in ["connected", "user_info", "oauth_id"]:
+            if key not in st.session_state:
+                st.session_state[key] = False if key == "connected" else ({} if key == "user_info" else None)
         
         auth = self._get_authenticator()
-        
         if auth is None:
-            # OAuth not configured - use demo mode
             return st.session_state.get("demo_logged_in", False)
         
-        # Check OAuth authentication
         try:
             auth.check_authentification()
-        except Exception as e:
-            # Handle any auth library errors gracefully
+        except:
             st.session_state["connected"] = False
             return False
         
         if st.session_state.get("connected", False):
-            # User is authenticated - sync with database
             self._sync_user_to_db()
             return True
-        
         return False
-    
-    def _sync_user_to_db(self) -> None:
-        """Sync authenticated user info to database."""
-        user_info = st.session_state.get("user_info", {})
-        oauth_id = st.session_state.get("oauth_id")
-        
-        if not oauth_id:
-            return
-        
-        # Check if user exists in DB
-        existing_user = self._db.get_user(oauth_id)
-        
-        if existing_user is None:
-            # Create new user
-            new_user = UserPreferences(
-                user_id=oauth_id,
-                email=user_info.get("email", ""),
-                name=user_info.get("name", "Unknown"),
-                picture_url=user_info.get("picture"),
-            )
-            self._db.create_or_update_user(new_user)
-        else:
-            # Update user info (name, picture might change)
-            existing_user.name = user_info.get("name", existing_user.name)
-            existing_user.picture_url = user_info.get("picture", existing_user.picture_url)
-            self._db.create_or_update_user(existing_user)
-    
+
     def show_login_button(self) -> None:
         """Display the Google login button."""
         auth = self._get_authenticator()
         
-        # Display debug info to help match URIs in Google Console
-        if "oauth_id" not in st.session_state or not st.session_state["oauth_id"]:
-            st.caption(f"🔧 **Configured Redirect URI:** `{self.redirect_uri}`")
+        if not self.is_authenticated():
+            st.caption(f"🔧 **Redirect URI:** `{self.redirect_uri}`")
 
         if auth is None:
-            # Show demo login for development
             self._show_demo_login()
             return
         
-        auth.login()
+        try:
+            auth.login()
+        except Exception as e:
+            st.error("📉 **OAuth Connection Failed**")
+            st.warning(f"Error Detail: {e}")
+            st.info("💡 **Tip:** Verify that your Redirect URI matches what you configured in the Google Cloud Console.")
+            if st.button("Try Demo Mode Instead"):
+                self._show_demo_login()
     
     def _show_demo_login(self) -> None:
         """Show demo login for development without Google OAuth."""
