@@ -8,11 +8,16 @@ from typing import Optional, Dict, Any
 import os
 
 # Import the modern library
+IMPORT_ERROR = None
 try:
     from st_google_auth import st_google_auth
     GOOGLE_AUTH_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     GOOGLE_AUTH_AVAILABLE = False
+    IMPORT_ERROR = str(e)
+except Exception as e:
+    GOOGLE_AUTH_AVAILABLE = False
+    IMPORT_ERROR = f"Unexpected error: {str(e)}"
 
 from src.database.sqlite_backend import get_database, SQLiteBackend
 from src.database.base import UserPreferences
@@ -131,6 +136,8 @@ class AuthManager:
         # --- DIAGNOSTICS SECTION ---
         with st.expander("🔍 Auth Diagnostics (Troubleshooting)"):
             st.write(f"✅ **Library Installed:** {GOOGLE_AUTH_AVAILABLE}")
+            if IMPORT_ERROR:
+                st.code(f"Import Error: {IMPORT_ERROR}")
             st.write(f"✅ **Client ID Detected:** {bool(self.client_id)}")
             st.write(f"✅ **Client Secret Detected:** {bool(self.client_secret)}")
             if not GOOGLE_AUTH_AVAILABLE:
