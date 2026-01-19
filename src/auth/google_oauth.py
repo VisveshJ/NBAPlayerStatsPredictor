@@ -27,20 +27,32 @@ class AuthManager:
     def __init__(
         self,
         credentials_path: str = "google_credentials.json",
-        redirect_uri: str = "http://localhost:8501",
+        redirect_uri: Optional[str] = None,
         **kwargs
     ):
         self._db: SQLiteBackend = get_database()
         self.credentials_path = credentials_path
         
-        # Determine URI: Strictly prioritize Production URL on Cloud
-        self.redirect_uri = "https://nbaplayerpredictor.streamlit.app"
+        # Determine URI: Smart detection
+        # 1. Try to get the redirect URI from Streamlit Secrets (Cloud priority)
+        try:
+            if "OAUTH_REDIRECT_URI" in st.secrets:
+                self.redirect_uri = st.secrets["OAUTH_REDIRECT_URI"]
+            else:
+                self.redirect_uri = "https://nbaplayerpredictor.streamlit.app"
+        except:
+            self.redirect_uri = "https://nbaplayerpredictor.streamlit.app"
+            
+        # 2. If we are running locally, override with localhost
+        # We detect local by checking if the passed arg or current environment suggests it
+        is_local = False
+        if redirect_uri and ("localhost" in redirect_uri or "127.0.0.1" in redirect_uri):
+            is_local = True
         
-        # Fallback to local only if explicitly passed
-        if "localhost" in str(redirect_uri) or "127.0.0.1" in str(redirect_uri):
+        if is_local:
             self.redirect_uri = "http://localhost:8501"
             
-        # Ensure NO trailing slash for the base config
+        # Ensure NO trailing slash
         self.redirect_uri = self.redirect_uri.rstrip("/")
 
     def _get_config(self) -> Optional[Dict[str, Any]]:
