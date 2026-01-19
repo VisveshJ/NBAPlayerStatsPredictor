@@ -38,8 +38,17 @@ class AuthManager:
         # 1. Force use of OAUTH_REDIRECT_URI from secrets if it exists (for Cloud)
         # 2. Argument passed to constructor
         # 3. Default localhost
-        if "OAUTH_REDIRECT_URI" in st.secrets:
-            self.redirect_uri = st.secrets["OAUTH_REDIRECT_URI"]
+        
+        # Safely check secrets to avoid error if no secrets.toml exists locally
+        redirect_from_secrets = None
+        try:
+            if "OAUTH_REDIRECT_URI" in st.secrets:
+                redirect_from_secrets = st.secrets["OAUTH_REDIRECT_URI"]
+        except Exception:
+            pass
+
+        if redirect_from_secrets:
+            self.redirect_uri = redirect_from_secrets
         else:
             self.redirect_uri = redirect_uri
             
@@ -56,7 +65,13 @@ class AuthManager:
             config_path = self.credentials_path
             
             # Use local file if it exists, otherwise use secrets
-            if not os.path.exists(config_path) and "google_auth" in st.secrets:
+            auth_in_secrets = False
+            try:
+                auth_in_secrets = "google_auth" in st.secrets
+            except Exception:
+                pass
+
+            if not os.path.exists(config_path) and auth_in_secrets:
                 try:
                     def deep_dict(obj):
                         if hasattr(obj, "to_dict"):
@@ -180,8 +195,13 @@ class AuthManager:
         
         # Troubleshooter
         with st.expander("🔍 Debugging"):
+            auth_found = False
+            try:
+                auth_found = 'google_auth' in st.secrets
+            except Exception:
+                pass
             st.write(f"Library: {GOOGLE_AUTH_AVAILABLE}")
-            st.write(f"Secrets Found: {'google_auth' in st.secrets}")
+            st.write(f"Secrets Found: {auth_found}")
             st.write(f"Active URI: {self.redirect_uri}")
         
         demo_name = st.text_input("Name:", key="demo_name_input")
