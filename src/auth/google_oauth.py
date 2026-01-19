@@ -158,12 +158,28 @@ class AuthManager:
             st.markdown("### 🏀 NBA Predictor Login")
             st.write("Join to save your favorites and get AI insights.")
             
-            st.link_button("🚀 Sign in with Google", auth_url, type="primary", use_container_width=True)
-            
-            with st.expander("🛠️ Connection Status"):
-                st.write(f"📡 **Redirect URI:** `{self.redirect_uri}`")
-                if st.button("Use Demo Login"):
-                    self._show_demo_login()
+            # Use HTML to force target="_self" which keeps the login in the same window
+            st.markdown(f"""
+                <a href="{auth_url}" target="_self" style="text-decoration: none;">
+                    <button style="
+                        width: 100%;
+                        background-color: #FF4B2B;
+                        color: white;
+                        border: none;
+                        padding: 12px 24px;
+                        border-radius: 8px;
+                        font-weight: bold;
+                        cursor: pointer;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                        gap: 10px;
+                        font-size: 1rem;
+                    ">
+                        🚀 Sign in with Google
+                    </button>
+                </a>
+            """, unsafe_allow_html=True)
         except:
             self._show_demo_login()
 
