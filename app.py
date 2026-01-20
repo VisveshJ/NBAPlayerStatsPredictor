@@ -5451,6 +5451,21 @@ elif st.session_state.current_page == "Awards":
                 except Exception as e:
                     st.error(f"Unexpected error: {e}")
     
+    # Auto-refresh odds when page loads if not fresh or already checked in this session
+    if 'odds_auto_checked' not in st.session_state:
+        st.session_state.odds_auto_checked = True
+        with st.status("🔍 Checking for fresh odds...", expanded=False) as status:
+            import subprocess
+            import sys
+            # Run without --force so it respects the script's internal 12h TTL
+            script_cmd = [sys.executable, "scripts/update_awards_odds.py"]
+            try:
+                subprocess.run(script_cmd, check=True, capture_output=True, text=True)
+                st.cache_data.clear()
+                status.update(label="✅ Odds checked and synced!", state="complete", expanded=False)
+            except Exception as e:
+                status.update(label="⚠️ Background refresh skipped.", state="complete", expanded=False)
+
     render_section_header("NBA Awards", "Season award favorites and betting odds")
     
     # Get required data for MVP Ladder
