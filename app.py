@@ -5392,13 +5392,29 @@ elif st.session_state.current_page == "Awards":
             with st.spinner("Refreshing DraftKings odds..."):
                 import subprocess
                 try:
-                    subprocess.run(["uv", "run", "python", "scripts/update_awards_odds.py", "--force"], check=True)
+                    result = subprocess.run(
+                        ["uv", "run", "python", "scripts/update_awards_odds.py", "--force"], 
+                        check=True, 
+                        capture_output=True, 
+                        text=True
+                    )
                     st.cache_data.clear()
                     st.success("Odds refreshed!")
+                    if result.stdout:
+                        with st.expander("Show Log"):
+                            st.code(result.stdout)
                     time.sleep(1)
                     st.rerun()
-                except Exception as e:
+                except subprocess.CalledProcessError as e:
                     st.error(f"Error refreshing: {e}")
+                    if e.stderr:
+                        st.error("Error details:")
+                        st.code(e.stderr)
+                    if e.stdout:
+                        st.info("Output before failure:")
+                        st.code(e.stdout)
+                except Exception as e:
+                    st.error(f"Unexpected error: {e}")
     
     render_section_header("NBA Awards", "Season award favorites and betting odds")
     

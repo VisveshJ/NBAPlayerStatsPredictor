@@ -94,15 +94,15 @@
     "candidates": [
       {
         "player": "Deni Avdija",
-        "odds": "\u2212200"
+        "odds": "\u2212190"
       },
       {
         "player": "Jalen Johnson",
-        "odds": "+350"
+        "odds": "+330"
       },
       {
         "player": "Keyonte George",
-        "odds": "+1000"
+        "odds": "+900"
       },
       {
         "player": "Anthony Black",
@@ -143,7 +143,7 @@
       },
       {
         "player": "Keldon Johnson",
-        "odds": "+300"
+        "odds": "+370"
       },
       {
         "player": "Jaime Jaquez Jr.",
@@ -151,7 +151,7 @@
       },
       {
         "player": "Anfernee Simons",
-        "odds": "+900"
+        "odds": "+1000"
       },
       {
         "player": "Reed Sheppard",
@@ -174,8 +174,53 @@
         "odds": "+2500"
       },
       {
-        "player": "Quentin Grimes",
+        "player": "Anthony Black",
         "odds": "+3000"
+      }
+    ]
+  },
+  {
+    "award_name": "Clutch Player of the Year",
+    "candidates": [
+      {
+        "player": "Shai Gilgeous-Alexander",
+        "odds": "+250"
+      },
+      {
+        "player": "Cade Cunningham",
+        "odds": "+250"
+      },
+      {
+        "player": "Anthony Edwards",
+        "odds": "+250"
+      },
+      {
+        "player": "Tyrese Maxey",
+        "odds": "+900"
+      },
+      {
+        "player": "Devin Booker",
+        "odds": "+1800"
+      },
+      {
+        "player": "Stephen Curry",
+        "odds": "+2500"
+      },
+      {
+        "player": "Deni Avdija",
+        "odds": "+2500"
+      },
+      {
+        "player": "James Harden",
+        "odds": "+5000"
+      },
+      {
+        "player": "Kevin Durant",
+        "odds": "+7000"
+      },
+      {
+        "player": "Jalen Johnson",
+        "odds": "+8000"
       }
     ]
   },
@@ -184,19 +229,19 @@
     "candidates": [
       {
         "player": "JB Bickerstaff",
-        "odds": "+140"
+        "odds": "+130"
       },
       {
         "player": "Mitch Johnson",
-        "odds": "+320"
+        "odds": "+300"
       },
       {
         "player": "Jordan Ott",
-        "odds": "+350"
+        "odds": "+320"
       },
       {
         "player": "Joe Mazzulla",
-        "odds": "+400"
+        "odds": "+425"
       },
       {
         "player": "David Adelman",
@@ -207,20 +252,20 @@
         "odds": "+5000"
       },
       {
-        "player": "Mike Brown",
-        "odds": "+6000"
-      },
-      {
         "player": "Mark Daigneault",
-        "odds": "+6000"
+        "odds": "+5500"
       },
       {
         "player": "Erik Spoelstra",
         "odds": "+6000"
       },
       {
+        "player": "Mike Brown",
+        "odds": "+8000"
+      },
+      {
         "player": "Nick Nurse",
-        "odds": "+15000"
+        "odds": "+10000"
       }
     ]
   }

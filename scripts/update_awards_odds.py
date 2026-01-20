@@ -3,6 +3,8 @@ import json
 import os
 import time
 import argparse
+import sys
+import traceback
 from playwright.sync_api import sync_playwright
 
 # Configuration
@@ -19,69 +21,82 @@ def scrape_dk_odds():
     awards_to_scrape = [
         {"tab": "ROTY", "name": "Rookie of the Year"},
         {"tab": "DPOY", "name": "Defensive Player of the Year"},
-        {"tab": "Most Improved", "name": "Most Improved Player"},
-        {"tab": "6th Man", "name": "Sixth Man of the Year"},
+        {"tab": "MOST IMPROVED", "name": "Most Improved Player"},
+        {"tab": "6TH MAN", "name": "Sixth Man of the Year"},
+        {"tab": "CLUTCH", "name": "Clutch Player of the Year"},
         {"tab": "COTY", "name": "Coach of the Year"}
     ]
     
-    with sync_playwright() as p:
-        # Launch browser (headless=True for background run)
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        
-        print(f"Loading {DRAFTKINGS_URL}...")
-        try:
-            page.goto(DRAFTKINGS_URL, timeout=60000)
-            
-            # Wait for any tab switcher sub tab to appear
-            page.wait_for_selector('.tab-switcher-sub-tab', timeout=15000)
-        except Exception as e:
-            print(f"Error loading page or navigation: {e}")
-            browser.close()
-            return
-
-        for award in awards_to_scrape:
-            print(f"Fetching: {award['name']}...")
-            
+    try:
+        with sync_playwright() as p:
+            print("Launching browser...")
             try:
-                # Click the tab
-                tab = page.get_by_text(award["tab"], exact=False).first
-                if tab and tab.is_visible():
-                    tab.click()
-                    time.sleep(3) # Wait for content load
-                    
-                    candidates = []
-                    
-                    # Locate outcome cells (using new selectors for current DK structure)
-                    outcomes = page.query_selector_all('.cb-market__button')
-                    
-                    for outcome in outcomes[:10]: # Top 10
-                         try:
-                             label_el = outcome.query_selector('.cb-market__button-title')
-                             odds_el = outcome.query_selector('.cb-market__button-odds')
-                             
-                             if label_el and odds_el:
-                                 player_name = label_el.inner_text().strip()
-                                 odds = odds_el.inner_text().strip()
-                                 candidates.append({"player": player_name, "odds": odds})
-                         except:
-                             continue
-                    
-                    if candidates:
-                        awards_data.append({
-                            "award_name": award["name"],
-                            "candidates": candidates
-                        })
-                        print(f"  Found {len(candidates)} candidates.")
-                    else:
-                        print("  No candidates found (selectors might be wrong).")
-                else:
-                    print(f"  Tab '{award['tab']}' not found.")
-                    
+                # Launch browser (headless=True for background run)
+                browser = p.chromium.launch(headless=True)
             except Exception as e:
-                print(f"  Error scraping {award['name']}: {e}")
-        
-        browser.close()
+                print(f"❌ Failed to launch browser: {e}")
+                print("Hint: You might need to run 'uv run playwright install chromium'")
+                return False
+                
+            page = browser.new_page()
+            
+            print(f"Loading {DRAFTKINGS_URL}...")
+            try:
+                page.goto(DRAFTKINGS_URL, timeout=60000)
+                
+                # Wait for any tab switcher sub tab to appear
+                page.wait_for_selector('.tab-switcher-sub-tab', timeout=20000)
+            except Exception as e:
+                print(f"❌ Error loading page or navigation: {e}")
+                browser.close()
+                return False
+
+            for award in awards_to_scrape:
+                print(f"Fetching: {award['name']}...")
+                
+                try:
+                    # Click the tab
+                    tab = page.get_by_text(award["tab"], exact=False).first
+                    if tab and tab.is_visible():
+                        tab.click()
+                        time.sleep(3) # Wait for content load
+                        
+                        candidates = []
+                        
+                        # Locate outcome cells (using new selectors for current DK structure)
+                        outcomes = page.query_selector_all('.cb-market__button')
+                        
+                        for outcome in outcomes[:10]: # Top 10
+                             try:
+                                 label_el = outcome.query_selector('.cb-market__button-title')
+                                 odds_el = outcome.query_selector('.cb-market__button-odds')
+                                 
+                                 if label_el and odds_el:
+                                     player_name = label_el.inner_text().strip()
+                                     odds = odds_el.inner_text().strip()
+                                     candidates.append({"player": player_name, "odds": odds})
+                             except:
+                                 continue
+                        
+                        if candidates:
+                            awards_data.append({
+                                "award_name": award["name"],
+                                "candidates": candidates
+                            })
+                            print(f"  Found {len(candidates)} candidates.")
+                        else:
+                            print("  No candidates found (selectors might be wrong).")
+                    else:
+                        print(f"  Tab '{award['tab']}' not found.")
+                        
+                except Exception as e:
+                    print(f"  Error scraping {award['name']}: {e}")
+            
+            browser.close()
+    except Exception as e:
+        print(f"❌ Critical error during scraping: {e}")
+        traceback.print_exc()
+        return False
     
     # Save to JSON
     if awards_data:
@@ -91,8 +106,10 @@ def scrape_dk_odds():
         with open(OUTPUT_FILE, "w") as f:
             json.dump(awards_data, f, indent=2)
         print(f"✅ Successfully saved odds for {len(awards_data)} awards to {OUTPUT_FILE}")
+        return True
     else:
         print("❌ No data collected.")
+        return False
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Scrape NBA Awards Odds from DraftKings")
@@ -107,7 +124,11 @@ if __name__ == "__main__":
         if age_days < 0.5:
             print(f"ℹ️ Odds data is only {age_days:.1f} days old. Skipping scrape (12-hour cycle).")
             print("Use --force to override.")
-            exit(0)
+            sys.exit(0)
             
-    scrape_dk_odds()
+    success = scrape_dk_odds()
+    if not success:
+        sys.exit(1)
+    else:
+        sys.exit(0)
 
