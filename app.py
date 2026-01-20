@@ -5391,9 +5391,15 @@ elif st.session_state.current_page == "Awards":
         if st.button("🔄 Refresh Odds", use_container_width=True):
             with st.spinner("Refreshing DraftKings odds..."):
                 import subprocess
+                import sys
+                
+                # Command to run the script
+                # We try to use sys.executable to stay in the same environment
+                script_cmd = [sys.executable, "scripts/update_awards_odds.py", "--force"]
+                
                 try:
                     result = subprocess.run(
-                        ["uv", "run", "python", "scripts/update_awards_odds.py", "--force"], 
+                        script_cmd, 
                         check=True, 
                         capture_output=True, 
                         text=True
@@ -5406,6 +5412,26 @@ elif st.session_state.current_page == "Awards":
                     time.sleep(1)
                     st.rerun()
                 except subprocess.CalledProcessError as e:
+                    # If it's a browser error, try to install playwright browsers
+                    if "playwright install" in (e.stdout + e.stderr).lower():
+                        st.info("Browser missing. Attempting to install Playwright Chromium...")
+                        try:
+                            # Run playwright install
+                            subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+                            st.success("Browser installed! Retrying refresh...")
+                            # Retry the script
+                            result = subprocess.run(script_cmd, check=True, capture_output=True, text=True)
+                            st.cache_data.clear()
+                            st.success("Odds refreshed!")
+                            if result.stdout:
+                                with st.expander("Show Log"):
+                                    st.code(result.stdout)
+                            time.sleep(1)
+                            st.rerun()
+                        except Exception as install_err:
+                            st.error(f"Failed to auto-install browser: {install_err}")
+                            st.info("Please contact admin to run: playwright install chromium")
+                    
                     st.error(f"Error refreshing: {e}")
                     if e.stderr:
                         st.error("Error details:")
