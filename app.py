@@ -2360,8 +2360,8 @@ elif page == "Predictions":
                         avg_values = [filtered_df[stat].mean() for stat in stats_to_plot]
                         
                         fig, ax = plt.subplots(figsize=(10, 6))
-                        fig.patch.set_facecolor('#0E1117')
-                        ax.set_facecolor('#0E1117')
+                        fig.patch.set_facecolor('#161B22')
+                        ax.set_facecolor('#161B22')
                         
                         x = np.arange(len(stats_to_plot))
                         width = 0.35

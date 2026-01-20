@@ -13,7 +13,7 @@ def apply_dark_theme():
     <style>
     /* ===== GLOBAL APP BACKGROUND ===== */
     .stApp {
-        background-color: #0E1117;
+        background-color: #161B22;
         color: #FAFAFA;
     }
     /* ===== TEXT ===== */
@@ -26,7 +26,7 @@ def apply_dark_theme():
     }
     /* ===== SIDEBAR ===== */
     [data-testid="stSidebar"] {
-        background-color: #111827;
+        background-color: #0D1117;
     }
     [data-testid="stSidebar"] * {
         color: #FAFAFA;
