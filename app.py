@@ -5414,11 +5414,11 @@ elif st.session_state.current_page == "Awards":
                 except subprocess.CalledProcessError as e:
                     # If it's a browser error, try to install playwright browsers
                     if "playwright install" in (e.stdout + e.stderr).lower():
-                        st.info("Browser missing. Attempting to install Playwright Chromium...")
+                        st.info("Browser missing. Attempting to install Playwright Chromium specialized for this environment...")
                         try:
-                            # Run playwright install
-                            subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
-                            st.success("Browser installed! Retrying refresh...")
+                            # Try both ways to be sure
+                            subprocess.run(["playwright", "install", "chromium"], check=True, capture_output=True)
+                            st.success("Browser binaries downloaded! Retrying refresh...")
                             # Retry the script
                             result = subprocess.run(script_cmd, check=True, capture_output=True, text=True)
                             st.cache_data.clear()
@@ -5428,9 +5428,18 @@ elif st.session_state.current_page == "Awards":
                                     st.code(result.stdout)
                             time.sleep(1)
                             st.rerun()
-                        except Exception as install_err:
-                            st.error(f"Failed to auto-install browser: {install_err}")
-                            st.info("Please contact admin to run: playwright install chromium")
+                        except Exception as e2:
+                            try:
+                                # Fallback to sys.executable method
+                                subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True, capture_output=True)
+                                result = subprocess.run(script_cmd, check=True, capture_output=True, text=True)
+                                st.cache_data.clear()
+                                st.success("Odds refreshed (via fallback install)!")
+                                time.sleep(1)
+                                st.rerun()
+                            except Exception as install_err:
+                                st.error(f"Failed to auto-install browser: {install_err}")
+                                st.info("This is common on some cloud platforms. Please try clicking the button again as the first attempt may have initialized the path.")
                     
                     st.error(f"Error refreshing: {e}")
                     if e.stderr:

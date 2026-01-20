@@ -31,7 +31,11 @@ def scrape_dk_odds():
             print("Launching browser...")
             try:
                 # Launch browser (headless=True for background run)
-                browser = p.chromium.launch(headless=True)
+                # Adding arguments for better compatibility with containerized environments (Streamlit Cloud/Docker)
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+                )
             except Exception as e:
                 print(f"❌ Failed to launch browser: {e}")
                 print("Hint: You might need to run 'uv run playwright install chromium'")
