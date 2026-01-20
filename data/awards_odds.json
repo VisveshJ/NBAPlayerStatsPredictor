@@ -180,51 +180,6 @@
     ]
   },
   {
-    "award_name": "Clutch Player of the Year",
-    "candidates": [
-      {
-        "player": "Shai Gilgeous-Alexander",
-        "odds": "+250"
-      },
-      {
-        "player": "Cade Cunningham",
-        "odds": "+250"
-      },
-      {
-        "player": "Anthony Edwards",
-        "odds": "+250"
-      },
-      {
-        "player": "Tyrese Maxey",
-        "odds": "+900"
-      },
-      {
-        "player": "Devin Booker",
-        "odds": "+1800"
-      },
-      {
-        "player": "Stephen Curry",
-        "odds": "+2500"
-      },
-      {
-        "player": "Deni Avdija",
-        "odds": "+2500"
-      },
-      {
-        "player": "James Harden",
-        "odds": "+5000"
-      },
-      {
-        "player": "Kevin Durant",
-        "odds": "+7000"
-      },
-      {
-        "player": "Jalen Johnson",
-        "odds": "+8000"
-      }
-    ]
-  },
-  {
     "award_name": "Coach of the Year",
     "candidates": [
       {

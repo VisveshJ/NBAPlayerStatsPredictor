@@ -23,7 +23,6 @@ def scrape_dk_odds():
         {"tab": "DPOY", "name": "Defensive Player of the Year"},
         {"tab": "MOST IMPROVED", "name": "Most Improved Player"},
         {"tab": "6TH MAN", "name": "Sixth Man of the Year"},
-        {"tab": "CLUTCH", "name": "Clutch Player of the Year"},
         {"tab": "COTY", "name": "Coach of the Year"}
     ]
     
