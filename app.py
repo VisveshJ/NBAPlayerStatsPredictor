@@ -101,6 +101,33 @@ def format_pct(val):
     except (ValueError, TypeError):
         return str(val)
 
+def get_streak_color(streak_text):
+    """Determine color for streak text (W in green, L in red)."""
+    if not streak_text or streak_text == 'N/A':
+        return "#FAFAFA"
+    if 'W' in str(streak_text).upper():
+        return "#10B981"  # Green
+    if 'L' in str(streak_text).upper():
+        return "#EF4444"  # Red
+    return "#FAFAFA"
+
+def get_record_color(record_text):
+    """Determine color for record text (Winning in green, Losing in red)."""
+    if not record_text or record_text == 'N/A' or '-' not in str(record_text):
+        return "#FAFAFA"
+    try:
+        parts = str(record_text).split('-')
+        if len(parts) >= 2:
+            w = int(parts[0])
+            l = int(parts[1])
+            if w > l:
+                return "#10B981"  # Green
+            if l > w:
+                return "#EF4444"  # Red
+    except:
+        pass
+    return "#FAFAFA"
+
 
 def get_local_now():
     """Get the current time in the user's selected timezone."""
@@ -3843,27 +3870,27 @@ elif page == "Favorites":
                                 </div>
                                 <div style="text-align: center;">
                                     <div style="color: #9CA3AF; font-size: 0.75rem;">HOME</div>
-                                    <div style="color: #FAFAFA; font-weight: 600;">{home}</div>
+                                    <div style="color: {get_record_color(home)}; font-weight: 600;">{home}</div>
                                 </div>
                                 <div style="text-align: center;">
                                     <div style="color: #9CA3AF; font-size: 0.75rem;">ROAD</div>
-                                    <div style="color: #FAFAFA; font-weight: 600;">{road}</div>
+                                    <div style="color: {get_record_color(road)}; font-weight: 600;">{road}</div>
                                 </div>
                                 <div style="text-align: center;">
                                     <div style="color: #9CA3AF; font-size: 0.75rem;">L10</div>
-                                    <div style="color: #FAFAFA; font-weight: 600;">{l10}</div>
+                                    <div style="color: {get_record_color(l10)}; font-weight: 600;">{l10}</div>
                                 </div>
                                 <div style="text-align: center;">
                                     <div style="color: #9CA3AF; font-size: 0.75rem;">STREAK</div>
-                                    <div style="color: #FAFAFA; font-weight: 600;">{streak}</div>
+                                    <div style="color: {get_streak_color(streak)}; font-weight: 600;">{streak}</div>
                                 </div>
                                 <div style="text-align: center;">
                                     <div style="color: #9CA3AF; font-size: 0.75rem;">vs ≥.500</div>
-                                    <div style="color: #F59E0B; font-weight: 600;">{vs_winning}</div>
+                                    <div style="color: {get_record_color(vs_winning)}; font-weight: 600;">{vs_winning}</div>
                                 </div>
                                 <div style="text-align: center;">
                                     <div style="color: #9CA3AF; font-size: 0.75rem;">vs <.500</div>
-                                    <div style="color: #60A5FA; font-weight: 600;">{vs_losing}</div>
+                                    <div style="color: {get_record_color(vs_losing)}; font-weight: 600;">{vs_losing}</div>
                                 </div>
                                 <div style="text-align: center;">
                                     <div style="color: #9CA3AF; font-size: 0.75rem;">COACH</div>
@@ -5025,8 +5052,8 @@ elif page == "Standings":
                 def st_header(text):
                     st.markdown(f'<div style="color: #9CA3AF; font-size: 0.75rem; font-weight: 600; white-space: nowrap; margin-bottom: 4px;">{text}</div>', unsafe_allow_html=True)
 
-                def st_value(text):
-                    st.markdown(f'<div style="font-size: 1rem; white-space: nowrap;">{text}</div>', unsafe_allow_html=True)
+                def st_value(text, color="#FAFAFA"):
+                    st.markdown(f'<div style="font-size: 1rem; white-space: nowrap; color: {color};">{text}</div>', unsafe_allow_html=True)
 
                 with col3:
                     st_header("RECORD")
@@ -5042,24 +5069,24 @@ elif page == "Standings":
                 
                 with col6:
                     st_header("HOME")
-                    st_value(home)
+                    st_value(home, color=get_record_color(home))
                 
                 with col7:
                     st_header("ROAD")
-                    st_value(road)
+                    st_value(road, color=get_record_color(road))
                 
                 with col8:
                     st_header("CONF")
-                    st_value(conf_rec)
+                    st_value(conf_rec, color=get_record_color(conf_rec))
                 
                 
                 with col10:
                     st_header("L10")
-                    st_value(l10)
+                    st_value(l10, color=get_record_color(l10))
                 
                 with col11:
                     st_header("STREAK")
-                    st_value(streak)
+                    st_value(streak, color=get_streak_color(streak))
                 
                 with col12:
                     st_header("ORTG")
@@ -5148,18 +5175,24 @@ elif page == "Standings":
                             st.image(logo1, width=40)
                     with col2:
                         st.markdown(f"**({team1['seed']}) {team1['name']}**")
-                        record_str1 = team1['record']
+                        record_value = team1['record']
                         if team1.get('streak'):
-                            record_str1 = f"{record_str1} ({team1['streak'].replace(' ', '')})"
-                        st.caption(record_str1)
+                            streak_val = team1['streak'].replace(' ', '')
+                            color = get_streak_color(streak_val)
+                            st.markdown(f"<p style='font-size: 0.8rem; color: #9CA3AF; margin: 0;'>{record_value} <span style='color: {color}; font-weight: bold;'>({streak_val})</span></p>", unsafe_allow_html=True)
+                        else:
+                            st.caption(record_value)
                     with col3:
                         st.markdown(f"**{matchup_type}**")
                     with col4:
                         st.markdown(f"**({team2['seed']}) {team2['name']}**")
-                        record_str2 = team2['record']
+                        record_value2 = team2['record']
                         if team2.get('streak'):
-                            record_str2 = f"{record_str2} ({team2['streak'].replace(' ', '')})"
-                        st.caption(record_str2)
+                            streak_val2 = team2['streak'].replace(' ', '')
+                            color2 = get_streak_color(streak_val2)
+                            st.markdown(f"<p style='font-size: 0.8rem; color: #9CA3AF; margin: 0;'>{record_value2} <span style='color: {color2}; font-weight: bold;'>({streak_val2})</span></p>", unsafe_allow_html=True)
+                        else:
+                            st.caption(record_value2)
                     with col5:
                         if logo2:
                             st.image(logo2, width=40)
@@ -5333,10 +5366,12 @@ elif page == "Standings":
                         st.caption(f"(GP: {gp})")
                     
                     with col3:
-                        st.write(record)
+                        color = get_record_color(record)
+                        st.markdown(f"<span style='color: white; font-weight: bold;'>{record}</span>", unsafe_allow_html=True)
                     
                     with col4:
-                        st.write(div_rec)
+                        color = get_record_color(div_rec)
+                        st.markdown(f"<span style='color: {color};'>{div_rec}</span>", unsafe_allow_html=True)
                     
                     with col5:
                         st.write(f"#{conf_seed}")
