@@ -3806,11 +3806,11 @@ elif page == "Favorites":
                             </div>
                             <div style="display: flex; gap: 20px; flex-wrap: wrap;">
                                 <div style="text-align: center;">
-                                    <div style="color: #9CA3AF; font-size: 0.75rem;">OFF RTG</div>
+                                    <div style="color: #9CA3AF; font-size: 0.75rem;">ORTG</div>
                                     <div style="color: #10B981; font-weight: 600;">{off_rtg} <span style="color: #6B7280; font-size: 0.8rem;">(#{off_rank})</span></div>
                                 </div>
                                 <div style="text-align: center;">
-                                    <div style="color: #9CA3AF; font-size: 0.75rem;">DEF RTG</div>
+                                    <div style="color: #9CA3AF; font-size: 0.75rem;">DRTG</div>
                                     <div style="color: #3B82F6; font-weight: 600;">{def_rtg} <span style="color: #6B7280; font-size: 0.8rem;">(#{def_rank})</span></div>
                                 </div>
                                 <div style="text-align: center;">
@@ -4981,8 +4981,9 @@ elif page == "Standings":
                     </div>
                     """, unsafe_allow_html=True)
                 
-                # Use Streamlit columns for layout with CONF and DIV records
-                col_logo, col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13 = st.columns([0.35, 0.4, 1.4, 0.6, 0.4, 0.5, 0.4, 0.4, 0.55, 0.55, 0.5, 0.8, 1.0, 1.0])
+                # Use Streamlit columns for layout with optimized ratios to prevent wrapping
+                # Order: Logo, Rank, Team, Record, GB, Win%, Home, Road, Conf, Div, L10, Streak, ORTG, DRTG
+                col_logo, col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13 = st.columns([0.35, 0.35, 2.0, 0.8, 0.5, 0.7, 0.8, 0.8, 0.7, 0.7, 0.6, 0.7, 1.0, 1.0])
                 
                 with col_logo:
                     if logo_url:
@@ -5001,56 +5002,61 @@ elif page == "Standings":
                         st.markdown(f"**{team_name}**")
                     st.caption(f"(GP: {gp})")
                 
+                def st_header(text):
+                    st.markdown(f'<div style="color: #9CA3AF; font-size: 0.75rem; font-weight: 600; white-space: nowrap; margin-bottom: 4px;">{text}</div>', unsafe_allow_html=True)
+
+                def st_value(text):
+                    st.markdown(f'<div style="font-size: 1rem; white-space: nowrap;">{text}</div>', unsafe_allow_html=True)
+
                 with col3:
-                    st.caption("RECORD")
-                    st.write(record)
-                
+                    st_header("RECORD")
+                    st_value(record)
                 
                 with col4:
-                    st.caption("GB")
-                    st.write(gb if gb != 0 else "-")
+                    st_header("GB")
+                    st_value(gb if gb != 0 else "-")
                 
                 with col5:
-                    st.caption("WIN %")
-                    st.write(win_pct)
+                    st_header("WIN %")
+                    st_value(win_pct)
                 
                 with col6:
-                    st.caption("HOME")
-                    st.write(home)
+                    st_header("HOME")
+                    st_value(home)
                 
                 with col7:
-                    st.caption("ROAD")
-                    st.write(road)
+                    st_header("ROAD")
+                    st_value(road)
                 
                 with col8:
-                    st.caption("CONF")
-                    st.write(conf_rec)
+                    st_header("CONF")
+                    st_value(conf_rec)
                 
                 with col9:
-                    st.caption("DIV")
-                    st.write(div_rec)
+                    st_header("DIV")
+                    st_value(div_rec)
                 
                 with col10:
-                    st.caption("L10")
-                    st.write(l10)
+                    st_header("L10")
+                    st_value(l10)
                 
                 with col11:
-                    st.caption("STREAK")
-                    st.write(streak)
+                    st_header("STREAK")
+                    st_value(streak)
                 
                 with col12:
-                    st.caption("ORTG")
+                    st_header("ORTG")
                     if off_rtg != 'N/A':
-                        st.write(f"{off_rtg} (#{off_rank})")
+                        st_value(f"{off_rtg} (#{off_rank})")
                     else:
-                        st.write("N/A")
+                        st_value("N/A")
                 
                 with col13:
-                    st.caption("DRTG")
+                    st_header("DRTG")
                     if def_rtg != 'N/A':
-                        st.write(f"{def_rtg} (#{def_rank})")
+                        st_value(f"{def_rtg} (#{def_rank})")
                     else:
-                        st.write("N/A")
+                        st_value("N/A")
                 
                 # End of play-in indicator after rank 10 and mark lottery teams
                 if rank == 10:
