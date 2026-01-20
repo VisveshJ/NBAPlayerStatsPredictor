@@ -5011,11 +5011,11 @@ elif page == "Standings":
                     rank_color = "#FF6B35" if is_favorite else "#FAFAFA"
                     st.markdown(f"""
                         <div style="display: flex; align-items: center; gap: 12px; height: 52px;">
+                            <div style="font-weight: bold; font-size: 1.1rem; color: {rank_color}; min-width: 25px;">
+                                {rank}
+                            </div>
                             <div style="flex-shrink: 0; width: 52px; display: flex; justify-content: center;">
                                 <img src="{logo_url}" style="width: 52px; height: 52px; filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.5));">
-                            </div>
-                            <div style="font-weight: bold; font-size: 1.1rem; color: {rank_color};">
-                                {rank}
                             </div>
                         </div>
                     """, unsafe_allow_html=True)
