@@ -5003,22 +5003,28 @@ elif page == "Standings":
                 
                 # Use Streamlit columns for layout with optimized ratios to prevent wrapping
                 # Order: Logo, Rank, Team, Record, GB, Win%, Home, Road, Conf, Div, L10, Streak, ORTG, DRTG
-                col_logo, col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13 = st.columns([0.5, 0.4, 1.9, 0.8, 0.5, 0.7, 0.8, 0.8, 0.7, 0.7, 0.6, 0.7, 1.0, 1.0])
-                
-                with col_logo:
-                    st.markdown(render_team_logo_html(logo_url, size=52, padding=0), unsafe_allow_html=True)
+                # Use Streamlit columns for layout with optimized ratios
+                # Order: Rank+Logo, Team, Record, GB, Win%, Home, Road, Conf, Div, L10, Streak, ORTG, DRTG
+                col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13 = st.columns([0.8, 1.9, 0.8, 0.5, 0.7, 0.8, 0.8, 0.7, 0.7, 0.6, 0.7, 1.0, 1.0])
                 
                 with col1:
-                    if is_favorite:
-                        st.markdown(f"**:orange[{rank}]**")
-                    else:
-                        st.markdown(f"**{rank}**")
+                    rank_color = "#FF6B35" if is_favorite else "#FAFAFA"
+                    st.markdown(f"""
+                        <div style="display: flex; align-items: center; gap: 12px; height: 52px;">
+                            <div style="flex-shrink: 0; width: 52px; display: flex; justify-content: center;">
+                                <img src="{logo_url}" style="width: 52px; height: 52px; filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.5));">
+                            </div>
+                            <div style="font-weight: bold; font-size: 1.1rem; color: {rank_color};">
+                                {rank}
+                            </div>
+                        </div>
+                    """, unsafe_allow_html=True)
                 
                 with col2:
                     if is_favorite:
-                        st.markdown(f"**:orange[{team_name}]** _(Fav)_")
+                        st.markdown(f'<div style="font-weight: bold; color: #FF6B35; padding-top: 4px;">{team_name} <span style="font-style: italic; font-size: 0.8rem; font-weight: normal;">(Fav)</span></div>', unsafe_allow_html=True)
                     else:
-                        st.markdown(f"**{team_name}**")
+                        st.markdown(f'<div style="font-weight: bold; color: #FAFAFA; padding-top: 4px;">{team_name}</div>', unsafe_allow_html=True)
                     st.caption(f"(GP: {gp})")
                 
                 def st_header(text):
