@@ -5581,7 +5581,9 @@ elif st.session_state.current_page == "Awards":
                 awards_data = json.load(f)
             
             last_modified = os.path.getmtime(data_path)
-            last_updated_str = time.strftime('%Y-%m-%d %I:%M %p', time.localtime(last_modified))
+            user_tz = pytz.timezone(st.session_state.get('user_timezone', 'US/Pacific'))
+            local_dt = datetime.fromtimestamp(last_modified, tz=user_tz)
+            last_updated_str = local_dt.strftime('%Y-%m-%d %I:%M %p')
             st.caption(f"Odds Updated: {last_updated_str} | Source: DraftKings")
             
             # Load Coach-to-Team mapping from CSV
