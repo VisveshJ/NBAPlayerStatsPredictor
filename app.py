@@ -4993,13 +4993,6 @@ elif page == "Standings":
                 off_rank = team_rtg.get('off_rank', 'N/A')
                 def_rank = team_rtg.get('def_rank', 'N/A')
                 
-                # Play-in indicator - mark boundary before 7 and after 10
-                if rank == 7:
-                    st.markdown("""
-                    <div style="border-top: 2px dashed #FF6B35; margin: 10px 0; padding-top: 5px;">
-                        <span style="color: #FF6B35; font-size: 0.8rem; font-weight: bold;">PLAY-IN TOURNAMENT</span>
-                    </div>
-                    """, unsafe_allow_html=True)
                 
                 # Use Streamlit columns for layout with optimized ratios to prevent wrapping
                 # Order: Logo, Rank, Team, Record, GB, Win%, Home, Road, Conf, Div, L10, Streak, ORTG, DRTG
@@ -5082,15 +5075,21 @@ elif page == "Standings":
                     else:
                         st_value("N/A")
                 
-                # End of play-in indicator after rank 10 and mark lottery teams
-                if rank == 10:
+                # Boundary markers - replace standard divider at tier transitions
+                if rank == 6:
                     st.markdown("""
-                    <div style="border-bottom: 2px dashed #FF6B35; margin-top: 5px; padding-bottom: 10px;"></div>
-                    <div style="margin: 10px 0; padding-top: 5px;">
+                    <div style="border-top: 2px dashed #F59E0B; margin: 15px 0 10px 0; padding-top: 5px;">
+                        <span style="color: #F59E0B; font-size: 0.8rem; font-weight: bold;">PLAY-IN TOURNAMENT</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                elif rank == 10:
+                    st.markdown("""
+                    <div style="border-top: 2px dashed #EF4444; margin: 15px 0 10px 0; padding-top: 5px;">
                         <span style="color: #EF4444; font-size: 0.8rem; font-weight: bold;">OUT OF PLAYOFF RACE</span>
                     </div>
                     """, unsafe_allow_html=True)
-                st.divider()
+                elif rank < 15:
+                    st.divider()
             
             # Display collected tiebreaker notes
             st.markdown("""
