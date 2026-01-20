@@ -631,16 +631,13 @@ def get_team_logo_url(team_abbrev):
 
 
 def render_team_logo_html(logo_url, size=44, padding=8):
-    """Return HTML for a premium team logo with a background 'puck'."""
+    """Return HTML for a clean team logo without background circle."""
     if not logo_url:
         return ""
     
-    inner_size = int(size * 0.72)
     return f"""
-    <div style="display: flex; align-items: center; justify-content: center; padding-top: {padding}px; border-radius: 50%;">
-        <div class="team-logo-puck" style="width: {size}px; height: {size}px;">
-            <img src="{logo_url}" style="width: {inner_size}px; height: {inner_size}px; filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.3));">
-        </div>
+    <div style="display: flex; align-items: center; justify-content: center; padding-top: {padding}px;">
+        <img src="{logo_url}" style="width: {size}px; height: {size}px; filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.5));">
     </div>
     """
 
@@ -1674,9 +1671,7 @@ elif page == "Predictions":
                             <div style="font-size: 0.8rem; font-weight: bold; margin-bottom: 8px;">{status_display}</div>
                             <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                                 <div style="display: flex; align-items: center; gap: 12px;">
-                                    <div class="team-logo-puck" style="width: 38px; height: 38px;">
-                                        <img src="{away_logo}" width="28" height="28" onerror="this.style.display='none'"/>
-                                    </div>
+                                    <img src="{away_logo}" width="38" height="38" style="filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.5));" onerror="this.style.display='none'"/>
                                     <div style="text-align: left;">
                                         <div style="font-weight: bold; color: #FAFAFA;">{game['away_team']}</div>
                                         <div style="color: #9CA3AF; font-size: 0.75rem;">{away_record}, {away_seed} {away_conf}</div>
@@ -1686,9 +1681,7 @@ elif page == "Predictions":
                             </div>
                             <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px;">
                                 <div style="display: flex; align-items: center; gap: 12px;">
-                                    <div class="team-logo-puck" style="width: 38px; height: 38px;">
-                                        <img src="{home_logo}" width="28" height="28" onerror="this.style.display='none'"/>
-                                    </div>
+                                    <img src="{home_logo}" width="38" height="38" style="filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.5));" onerror="this.style.display='none'"/>
                                     <div style="text-align: left;">
                                         <div style="font-weight: bold; color: #FAFAFA;">{game['home_team']}</div>
                                         <div style="color: #9CA3AF; font-size: 0.75rem;">{home_record}, {home_seed} {home_conf}</div>
@@ -1788,9 +1781,7 @@ elif page == "Predictions":
             if team_logo:
                 st.markdown(f"""
                 <div style="display: flex; align-items: center; justify-content: center; height: 100%;">
-                    <div class="team-logo-puck" style="width: 130px; height: 130px; background: rgba(255, 255, 255, 0.03);">
-                        <img src="{team_logo}" style="width: 100px; height: 100px; filter: drop-shadow(0px 4px 10px rgba(0,0,0,0.4));">
-                    </div>
+                    <img src="{team_logo}" style="width: 120px; height: 120px; filter: drop-shadow(0px 4px 8px rgba(0,0,0,0.5));">
                 </div>
                 """, unsafe_allow_html=True)
         
@@ -3815,9 +3806,7 @@ elif page == "Favorites":
                         if logo_url:
                             st.markdown(f"""
                             <div style="display: flex; align-items: center; justify-content: center; height: 100%;">
-                                <div class="team-logo-puck" style="width: 130px; height: 130px; background: rgba(255, 255, 255, 0.03);">
-                                    <img src="{logo_url}" style="width: 100px; height: 100px; filter: drop-shadow(0px 4px 10px rgba(0,0,0,0.4));">
-                                </div>
+                                <img src="{logo_url}" style="width: 120px; height: 120px; filter: drop-shadow(0px 4px 8px rgba(0,0,0,0.5));">
                             </div>
                             """, unsafe_allow_html=True)
                     
@@ -4752,9 +4741,7 @@ white-space: nowrap; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
                             <div style="font-size: 0.8rem; font-weight: bold; margin-bottom: 8px;">{status_display}</div>
                             <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                                 <div style="display: flex; align-items: center; gap: 12px;">
-                                    <div class="team-logo-puck" style="width: 38px; height: 38px;">
-                                        <img src="{away_logo}" width="28" height="28" onerror="this.style.display='none'"/>
-                                    </div>
+                                    <img src="{away_logo}" width="38" height="38" style="filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.5));" onerror="this.style.display='none'"/>
                                     <div style="text-align: left;">
                                         <div style="font-weight: bold; color: #FAFAFA;">{game['away_team']}</div>
                                         <div style="color: #9CA3AF; font-size: 0.75rem;">{away_record}, {away_seed} {away_conf}</div>
@@ -4764,9 +4751,7 @@ white-space: nowrap; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
                             </div>
                             <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px;">
                                 <div style="display: flex; align-items: center; gap: 12px;">
-                                    <div class="team-logo-puck" style="width: 38px; height: 38px;">
-                                        <img src="{home_logo}" width="28" height="28" onerror="this.style.display='none'"/>
-                                    </div>
+                                    <img src="{home_logo}" width="38" height="38" style="filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.5));" onerror="this.style.display='none'"/>
                                     <div style="text-align: left;">
                                         <div style="font-weight: bold; color: #FAFAFA;">{game['home_team']}</div>
                                         <div style="color: #9CA3AF; font-size: 0.75rem;">{home_record}, {home_seed} {home_conf}</div>
@@ -5018,10 +5003,10 @@ elif page == "Standings":
                 
                 # Use Streamlit columns for layout with optimized ratios to prevent wrapping
                 # Order: Logo, Rank, Team, Record, GB, Win%, Home, Road, Conf, Div, L10, Streak, ORTG, DRTG
-                col_logo, col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13 = st.columns([0.35, 0.35, 2.0, 0.8, 0.5, 0.7, 0.8, 0.8, 0.7, 0.7, 0.6, 0.7, 1.0, 1.0])
+                col_logo, col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13 = st.columns([0.5, 0.4, 1.9, 0.8, 0.5, 0.7, 0.8, 0.8, 0.7, 0.7, 0.6, 0.7, 1.0, 1.0])
                 
                 with col_logo:
-                    st.markdown(render_team_logo_html(logo_url, size=44, padding=8), unsafe_allow_html=True)
+                    st.markdown(render_team_logo_html(logo_url, size=52, padding=0), unsafe_allow_html=True)
                 
                 with col1:
                     if is_favorite:
