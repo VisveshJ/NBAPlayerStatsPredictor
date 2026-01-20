@@ -630,6 +630,21 @@ def get_team_logo_url(team_abbrev):
     return None
 
 
+def render_team_logo_html(logo_url, size=44, padding=8):
+    """Return HTML for a premium team logo with a background 'puck'."""
+    if not logo_url:
+        return ""
+    
+    inner_size = int(size * 0.72)
+    return f"""
+    <div style="display: flex; align-items: center; justify-content: center; padding-top: {padding}px; border-radius: 50%;">
+        <div class="team-logo-puck" style="width: {size}px; height: {size}px;">
+            <img src="{logo_url}" style="width: {inner_size}px; height: {inner_size}px; filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.3));">
+        </div>
+    </div>
+    """
+
+
 import unicodedata
 
 def normalize_name(name):
@@ -1658,8 +1673,10 @@ elif page == "Predictions":
                             {channel_html}
                             <div style="font-size: 0.8rem; font-weight: bold; margin-bottom: 8px;">{status_display}</div>
                             <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <img src="{away_logo}" width="35" height="35" style="vertical-align: middle;" onerror="this.style.display='none'"/>
+                                <div style="display: flex; align-items: center; gap: 12px;">
+                                    <div class="team-logo-puck" style="width: 38px; height: 38px;">
+                                        <img src="{away_logo}" width="28" height="28" onerror="this.style.display='none'"/>
+                                    </div>
                                     <div style="text-align: left;">
                                         <div style="font-weight: bold; color: #FAFAFA;">{game['away_team']}</div>
                                         <div style="color: #9CA3AF; font-size: 0.75rem;">{away_record}, {away_seed} {away_conf}</div>
@@ -1667,9 +1684,11 @@ elif page == "Predictions":
                                 </div>
                                 <div>{away_score_display}</div>
                             </div>
-                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px;">
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <img src="{home_logo}" width="35" height="35" style="vertical-align: middle;" onerror="this.style.display='none'"/>
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px;">
+                                <div style="display: flex; align-items: center; gap: 12px;">
+                                    <div class="team-logo-puck" style="width: 38px; height: 38px;">
+                                        <img src="{home_logo}" width="28" height="28" onerror="this.style.display='none'"/>
+                                    </div>
                                     <div style="text-align: left;">
                                         <div style="font-weight: bold; color: #FAFAFA;">{game['home_team']}</div>
                                         <div style="color: #9CA3AF; font-size: 0.75rem;">{home_record}, {home_seed} {home_conf}</div>
@@ -1767,7 +1786,13 @@ elif page == "Predictions":
         with logo_col:
             team_logo = get_team_logo_url(player_team)
             if team_logo:
-                st.image(team_logo, width=120)
+                st.markdown(f"""
+                <div style="display: flex; align-items: center; justify-content: center; height: 100%;">
+                    <div class="team-logo-puck" style="width: 130px; height: 130px; background: rgba(255, 255, 255, 0.03);">
+                        <img src="{team_logo}" style="width: 100px; height: 100px; filter: drop-shadow(0px 4px 10px rgba(0,0,0,0.4));">
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
         
         # Get team seed and full name
         team_seed_suffix = ""
@@ -3788,7 +3813,13 @@ elif page == "Favorites":
                     
                     with logo_col:
                         if logo_url:
-                            st.image(logo_url, width=120)
+                            st.markdown(f"""
+                            <div style="display: flex; align-items: center; justify-content: center; height: 100%;">
+                                <div class="team-logo-puck" style="width: 130px; height: 130px; background: rgba(255, 255, 255, 0.03);">
+                                    <img src="{logo_url}" style="width: 100px; height: 100px; filter: drop-shadow(0px 4px 10px rgba(0,0,0,0.4));">
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
                     
                     with card_col:
                         st.markdown(f"""
@@ -4720,8 +4751,10 @@ white-space: nowrap; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
                             {channel_html}
                             <div style="font-size: 0.8rem; font-weight: bold; margin-bottom: 8px;">{status_display}</div>
                             <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <img src="{away_logo}" width="35" height="35" style="vertical-align: middle;" onerror="this.style.display='none'"/>
+                                <div style="display: flex; align-items: center; gap: 12px;">
+                                    <div class="team-logo-puck" style="width: 38px; height: 38px;">
+                                        <img src="{away_logo}" width="28" height="28" onerror="this.style.display='none'"/>
+                                    </div>
                                     <div style="text-align: left;">
                                         <div style="font-weight: bold; color: #FAFAFA;">{game['away_team']}</div>
                                         <div style="color: #9CA3AF; font-size: 0.75rem;">{away_record}, {away_seed} {away_conf}</div>
@@ -4729,9 +4762,11 @@ white-space: nowrap; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
                                 </div>
                                 <div>{away_score_display}</div>
                             </div>
-                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px;">
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <img src="{home_logo}" width="35" height="35" style="vertical-align: middle;" onerror="this.style.display='none'"/>
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px;">
+                                <div style="display: flex; align-items: center; gap: 12px;">
+                                    <div class="team-logo-puck" style="width: 38px; height: 38px;">
+                                        <img src="{home_logo}" width="28" height="28" onerror="this.style.display='none'"/>
+                                    </div>
                                     <div style="text-align: left;">
                                         <div style="font-weight: bold; color: #FAFAFA;">{game['home_team']}</div>
                                         <div style="color: #9CA3AF; font-size: 0.75rem;">{home_record}, {home_seed} {home_conf}</div>
@@ -4986,8 +5021,7 @@ elif page == "Standings":
                 col_logo, col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13 = st.columns([0.35, 0.35, 2.0, 0.8, 0.5, 0.7, 0.8, 0.8, 0.7, 0.7, 0.6, 0.7, 1.0, 1.0])
                 
                 with col_logo:
-                    if logo_url:
-                        st.image(logo_url, width=35)
+                    st.markdown(render_team_logo_html(logo_url, size=44, padding=8), unsafe_allow_html=True)
                 
                 with col1:
                     if is_favorite:

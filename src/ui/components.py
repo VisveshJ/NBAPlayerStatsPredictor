@@ -102,6 +102,16 @@ def apply_dark_theme():
         text-align: center;
         border: 1px solid #374151;
     }
+    .team-logo-puck {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        flex-shrink: 0;
+    }
     .section-header {
         color: #FF6B35;
         font-size: 1.4rem;
