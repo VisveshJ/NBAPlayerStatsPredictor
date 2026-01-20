@@ -5009,7 +5009,6 @@ elif page == "Standings":
                 with col_team:
                     rank_color = "#FF6B35" if is_favorite else "#FAFAFA"
                     name_color = "#FF6B35" if is_favorite else "#FAFAFA"
-                    fav_label = '<span style="font-style: italic; font-size: 0.8rem; font-weight: normal; margin-left: 4px;">(Fav)</span>' if is_favorite else ""
                     
                     st.markdown(f"""
                         <div style="display: flex; align-items: center; gap: 12px; height: 52px; white-space: nowrap;">
@@ -5020,10 +5019,10 @@ elif page == "Standings":
                                 <img src="{logo_url}" style="width: 52px; height: 52px; filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.5));">
                             </div>
                             <div style="margin-left: 4px;">
-                                <div style="font-weight: bold; color: {name_color}; font-size: 1rem; line-height: 1.2;">
-                                    {team_name}{fav_label}
+                                <div style="font-weight: bold; color: {name_color}; font-size: 0.95rem; line-height: 1.2;">
+                                    {team_name}
                                 </div>
-                                <div style="color: #9CA3AF; font-size: 0.8rem; margin-top: 2px;">
+                                <div style="color: #9CA3AF; font-size: 0.75rem; margin-top: 2px;">
                                     (GP: {gp})
                                 </div>
                             </div>
@@ -5091,10 +5090,15 @@ elif page == "Standings":
                         <span style="color: #EF4444; font-size: 0.8rem; font-weight: bold;">OUT OF PLAYOFF RACE</span>
                     </div>
                     """, unsafe_allow_html=True)
-                else:
-                    st.divider()
+                st.divider()
             
             # Display collected tiebreaker notes
+            st.markdown("""
+            <div style="font-size: 0.8rem; color: #9CA3AF; margin-bottom: 5px;">
+                <span style="color: #FF6B35; font-weight: bold;">ORANGE</span> indicates a favorite team.
+            </div>
+            """, unsafe_allow_html=True)
+            
             if tiebreaker_notes:
                 st.markdown("---")
                 st.caption(f"**Tiebreaker Notes:**")
@@ -5321,9 +5325,10 @@ elif page == "Standings":
                         # Let's check session state: favorite users prefer visibility. 
                         # Compromise: Use Seed Color, but add Star for Favorite.
                         
-                        display_name = f"<span style='color: {color}; font-weight: bold;'>{team_name}</span>"
                         if is_favorite:
-                             display_name = f"{display_name} <span style='color: #F59E0B; font-weight: normal; font-size: 0.8rem;'>(Fav)</span>"
+                            color = "#FF6B35" # Orange for favorites
+                            
+                        display_name = f"<span style='color: {color}; font-weight: bold; font-size: 0.95rem;'>{team_name}</span>"
                         
                         st.markdown(display_name, unsafe_allow_html=True)
                         st.caption(f"(GP: {gp})")
@@ -5344,7 +5349,8 @@ elif page == "Standings":
                 st.markdown("""
                 <div style="margin-top: 15px; font-size: 0.8rem; color: #9CA3AF;">
                     <span style="color: #10B981; font-weight: bold;">●</span> Playoffs (1-6) &nbsp;&nbsp;
-                    <span style="color: #F59E0B; font-weight: bold;">●</span> Play-In Tournament (7-10)
+                    <span style="color: #F59E0B; font-weight: bold;">●</span> Play-In Tournament (7-10) &nbsp;&nbsp;
+                    <span style="color: #FF6B35; font-weight: bold;">●</span> Favorite Team
                 </div>
                 """, unsafe_allow_html=True)
             
