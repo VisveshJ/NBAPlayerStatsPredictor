@@ -346,7 +346,7 @@ def render_login_page():
         ">🏀 NBA Live Stats Predictor</h1>
         <p style="color: #9CA3AF; font-size: 1.2rem; margin-bottom: 40px; max-width: 500px; margin-left: auto; margin-right: auto;">
             Get AI-powered predictions for NBA player performance using advanced Hidden Markov Models.
-            Sign in to save your favorite players and teams!
+            Sign in to make predictions, select favorites, read news, and more!
         </p>
     </div>
     """, unsafe_allow_html=True)

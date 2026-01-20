@@ -1309,11 +1309,11 @@ season = "2025-26"
 if 'current_page' not in st.session_state:
     st.session_state.current_page = "Home"
 
-# Navigation options based on auth status
 if is_authenticated:
     nav_options = ["Home", "Predictions", "Player Stats", "Compare Players", "Around the NBA", "Standings", "Awards", "Favorites", "About"]
 else:
-    nav_options = ["Home", "Predictions", "Player Stats", "Compare Players", "Around the NBA", "Standings", "Awards", "About"]
+    # Restrict to Home and About when not logged in
+    nav_options = ["Home", "About"]
 
 # Check if we have pending navigation (from buttons like "View" or upcoming games)
 # This must be checked BEFORE the radio widget is rendered
@@ -1421,14 +1421,14 @@ if page == "Home":
         render_login_page()
         
         st.markdown("---")
-        st.markdown("<h3 style='text-align: center; color: #9CA3AF;'>Sign in to save your favorites</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: center; color: #9CA3AF;'>Sign in to unlock all features</h3>", unsafe_allow_html=True)
         
         col1, col2, col3 = st.columns([1, 1, 1])
         with col2:
             auth.show_login_button()
         
         st.markdown("---")
-        st.info("👈 You can still use **Live Predictions** and **Player Stats** without logging in!")
+        st.warning("🔒 **Full Access Restricted**: High-performance predictions, player stats, and historical comparisons are reserved for signed-in users.")
     
     else:
         # Personalized home page for authenticated users
