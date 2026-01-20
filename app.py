@@ -5004,28 +5004,32 @@ elif page == "Standings":
                 # Use Streamlit columns for layout with optimized ratios to prevent wrapping
                 # Order: Logo, Rank, Team, Record, GB, Win%, Home, Road, Conf, Div, L10, Streak, ORTG, DRTG
                 # Use Streamlit columns for layout with optimized ratios
-                # Order: Rank+Logo, Team, Record, GB, Win%, Home, Road, Conf, Div, L10, Streak, ORTG, DRTG
-                col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13 = st.columns([0.8, 1.9, 0.8, 0.5, 0.7, 0.8, 0.8, 0.7, 0.7, 0.6, 0.7, 1.0, 1.0])
+                # Identity Col (Rank, Logo, Name), then stats
+                col_team, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13 = st.columns([2.7, 0.8, 0.5, 0.7, 0.8, 0.8, 0.7, 0.7, 0.6, 0.7, 1.0, 1.0])
                 
-                with col1:
+                with col_team:
                     rank_color = "#FF6B35" if is_favorite else "#FAFAFA"
+                    name_color = "#FF6B35" if is_favorite else "#FAFAFA"
+                    fav_label = '<span style="font-style: italic; font-size: 0.8rem; font-weight: normal; margin-left: 4px;">(Fav)</span>' if is_favorite else ""
+                    
                     st.markdown(f"""
-                        <div style="display: flex; align-items: center; gap: 12px; height: 52px;">
-                            <div style="font-weight: bold; font-size: 1.1rem; color: {rank_color}; min-width: 25px;">
+                        <div style="display: flex; align-items: center; gap: 12px; height: 52px; white-space: nowrap;">
+                            <div style="font-weight: bold; font-size: 1.1rem; color: {rank_color}; min-width: 25px; text-align: center;">
                                 {rank}
                             </div>
                             <div style="flex-shrink: 0; width: 52px; display: flex; justify-content: center;">
                                 <img src="{logo_url}" style="width: 52px; height: 52px; filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.5));">
                             </div>
+                            <div style="margin-left: 4px;">
+                                <div style="font-weight: bold; color: {name_color}; font-size: 1rem; line-height: 1.2;">
+                                    {team_name}{fav_label}
+                                </div>
+                                <div style="color: #9CA3AF; font-size: 0.8rem; margin-top: 2px;">
+                                    (GP: {gp})
+                                </div>
+                            </div>
                         </div>
                     """, unsafe_allow_html=True)
-                
-                with col2:
-                    if is_favorite:
-                        st.markdown(f'<div style="font-weight: bold; color: #FF6B35; padding-top: 4px;">{team_name} <span style="font-style: italic; font-size: 0.8rem; font-weight: normal;">(Fav)</span></div>', unsafe_allow_html=True)
-                    else:
-                        st.markdown(f'<div style="font-weight: bold; color: #FAFAFA; padding-top: 4px;">{team_name}</div>', unsafe_allow_html=True)
-                    st.caption(f"(GP: {gp})")
                 
                 def st_header(text):
                     st.markdown(f'<div style="color: #9CA3AF; font-size: 0.75rem; font-weight: 600; white-space: nowrap; margin-bottom: 4px;">{text}</div>', unsafe_allow_html=True)
