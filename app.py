@@ -1501,7 +1501,7 @@ if page == "Home":
                                   on_click=nav_to_predictions, args=(player_name,))
             else:
                 render_empty_state(
-                    "No favorite players yet! Go to Live Predictions to add some.",
+                    "No favorite players yet! Go to Favorites to add some.",
                     ""
                 )
         
@@ -4982,7 +4982,7 @@ elif page == "Standings":
                     """, unsafe_allow_html=True)
                 
                 # Use Streamlit columns for layout with CONF and DIV records
-                col_logo, col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13 = st.columns([0.35, 0.2, 1.4, 0.5, 0.4, 0.4, 0.4, 0.4, 0.45, 0.45, 0.4, 0.4, 0.6, 0.6])
+                col_logo, col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13 = st.columns([0.35, 0.4, 1.4, 0.6, 0.4, 0.5, 0.4, 0.4, 0.55, 0.55, 0.5, 0.8, 1.0, 1.0])
                 
                 with col_logo:
                     if logo_url:
@@ -5039,14 +5039,14 @@ elif page == "Standings":
                     st.write(streak)
                 
                 with col12:
-                    st.caption("OFF RTG")
+                    st.caption("ORTG")
                     if off_rtg != 'N/A':
                         st.write(f"{off_rtg} (#{off_rank})")
                     else:
                         st.write("N/A")
                 
                 with col13:
-                    st.caption("DEF RTG")
+                    st.caption("DRTG")
                     if def_rtg != 'N/A':
                         st.write(f"{def_rtg} (#{def_rank})")
                     else:
