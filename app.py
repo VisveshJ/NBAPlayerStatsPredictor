@@ -5003,9 +5003,8 @@ elif page == "Standings":
                 
                 # Use Streamlit columns for layout with optimized ratios to prevent wrapping
                 # Order: Logo, Rank, Team, Record, GB, Win%, Home, Road, Conf, Div, L10, Streak, ORTG, DRTG
-                # Use Streamlit columns for layout with optimized ratios
-                # Identity Col (Rank, Logo, Name), then stats
-                col_team, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13 = st.columns([2.7, 0.8, 0.5, 0.7, 0.8, 0.8, 0.7, 0.7, 0.6, 0.7, 1.0, 1.0])
+                # Order: Identity Col (Rank, Logo, Name), then stats
+                col_team, col3, col4, col5, col6, col7, col8, col10, col11, col12, col13 = st.columns([3.0, 0.8, 0.5, 0.7, 0.8, 0.8, 0.8, 0.8, 0.8, 1.1, 1.1])
                 
                 with col_team:
                     rank_color = "#FF6B35" if is_favorite else "#FAFAFA"
@@ -5061,9 +5060,6 @@ elif page == "Standings":
                     st_header("CONF")
                     st_value(conf_rec)
                 
-                with col9:
-                    st_header("DIV")
-                    st_value(div_rec)
                 
                 with col10:
                     st_header("L10")
