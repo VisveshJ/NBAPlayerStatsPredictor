@@ -1688,12 +1688,15 @@ elif page == "Predictions":
                         
                         # Create a more visual card with logos and scores
                         channel_display = game.get('channel', '')
+                        box_score_url = f"https://www.nba.com/game/{game_id}" if game_id else "https://www.nba.com/games"
+                        box_score_html = f"<div style='position: absolute; top: 12px; left: 12px; font-size: 0.72rem; font-weight: 700;'><a href='{box_score_url}' target='_blank' style='color: #9CA3AF; text-decoration: none; border: 1px solid #374151; padding: 2px 6px; border-radius: 4px;'>BOX SCORE</a></div>"
                         channel_html = f"<div style='position: absolute; top: 12px; right: 12px; color: #9CA3AF; font-size: 0.72rem; font-weight: 600;'>{channel_display}</div>" if channel_display else ""
                         
                         st.markdown(f"""
                         <div style="background: linear-gradient(135deg, #1F2937 0%, #111827 100%); 
                                     border-radius: 10px; padding: 15px; text-align: center; 
                                     border: 1px solid #374151; margin-bottom: 10px; position: relative;">
+                            {box_score_html}
                             {channel_html}
                             <div style="font-size: 0.8rem; font-weight: bold; margin-bottom: 8px;">{status_display}</div>
                             <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
@@ -4758,12 +4761,15 @@ white-space: nowrap; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
                         
                         # Create a more visual card with logos and scores
                         channel_display = game.get('channel', '')
+                        box_score_url = f"https://www.nba.com/game/{game_id}" if game_id else "https://www.nba.com/games"
+                        box_score_html = f"<div style='position: absolute; top: 12px; left: 12px; font-size: 0.72rem; font-weight: 700;'><a href='{box_score_url}' target='_blank' style='color: #9CA3AF; text-decoration: none; border: 1px solid #374151; padding: 2px 6px; border-radius: 4px;'>BOX SCORE</a></div>"
                         channel_html = f"<div style='position: absolute; top: 12px; right: 12px; color: #9CA3AF; font-size: 0.72rem; font-weight: 600;'>{channel_display}</div>" if channel_display else ""
                         
                         st.markdown(f"""
                         <div style="background: linear-gradient(135deg, #1F2937 0%, #111827 100%); 
                                     border-radius: 10px; padding: 15px; text-align: center; 
                                     border: 1px solid #374151; margin-bottom: 10px; position: relative;">
+                            {box_score_html}
                             {channel_html}
                             <div style="font-size: 0.8rem; font-weight: bold; margin-bottom: 8px;">{status_display}</div>
                             <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
