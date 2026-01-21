@@ -5800,7 +5800,7 @@ elif st.session_state.current_page == "Awards":
     
     # ===== SECTION 1: MVP LADDER (Moved from Around the NBA) =====
     st.markdown("## 🏆 KIA MVP Ladder")
-    st.caption(f"The latest rankings in the race for the 2025-26 MVP award (as of {mvp_date})")
+    st.caption(f"The latest rankings in the race for the 2025-26 MVP award (as of {mvp_date}). Updated weekly.")
     st.caption("Disclaimer: REC refers to the team record, not the player's individual record. For individual record, view season stats.")
     
     if mvp_ladder:
@@ -5944,7 +5944,7 @@ elif st.session_state.current_page == "Awards":
     # ===== SECTION 2: ROOKIE OF THE YEAR LADDER =====
     st.markdown("## 🌟 Rookie of the Year Ladder")
     rookie_ladder, rookie_date = get_rookie_ladder()
-    st.caption(f"The latest rankings in the race for the 2025-26 Kia ROY award (as of {rookie_date})")
+    st.caption(f"The latest rankings in the race for the 2025-26 Kia ROY award (as of {rookie_date}). Updated weekly. ")
     
     if rookie_ladder:
         def render_rookie_card(player, rank_idx):
