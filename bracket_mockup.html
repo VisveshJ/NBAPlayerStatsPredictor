@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+        body {
+            background-color: #161B22;
+            color: #FAFAFA;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px;
+        }
+
+        .bracket-title {
+            color: #FF6B35;
+            font-size: 2.2rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .conference-label {
+            color: #9CA3AF;
+            font-size: 1.1rem;
+            margin-bottom: 40px;
+        }
+
+        .bracket-container {
+            display: flex;
+            gap: 60px;
+            align-items: flex-start;
+            position: relative;
+        }
+
+        .round {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+            justify-content: center;
+            position: relative;
+            padding-top: 40px;
+        }
+
+        .matchup {
+            width: 280px;
+            background: linear-gradient(135deg, #1F2937 0%, #111827 100%);
+            border: 1px solid #374151;
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .round-title {
+            text-align: center;
+            font-size: 0.85rem;
+            color: #FF6B35;
+            font-weight: 700;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+        }
+
+        .team {
+            display: flex;
+            align-items: center;
+            padding: 12px 14px;
+            gap: 12px;
+        }
+
+        .team:first-child {
+            border-bottom: 1px solid #374151;
+        }
+
+        .seed {
+            font-size: 0.8rem;
+            color: #9CA3AF;
+            width: 15px;
+            font-weight: bold;
+        }
+
+        .logo {
+            width: 28px;
+            height: 28px;
+            background: #374151;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+        }
+
+        .team-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-grow: 1;
+        }
+
+        .team-name {
+            font-weight: 700;
+            font-size: 0.95rem;
+        }
+
+        .team-record {
+            font-size: 0.75rem;
+            color: #9CA3AF;
+            margin-left: 8px;
+        }
+
+        .score-streak {
+            font-weight: bold;
+            font-size: 0.85rem;
+        }
+
+        .win {
+            color: #10B981;
+        }
+
+        .loss {
+            color: #EF4444;
+        }
+
+        /* Connectors */
+        .connector {
+            position: absolute;
+            right: -60px;
+            top: 50%;
+            width: 60px;
+            height: 2px;
+            background: #4B5563;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="bracket-title">Western Conference</div>
+    <div class="conference-label">Playoff Picture</div>
+
+    <div class="bracket-container">
+        <!-- Round 1 -->
+        <div class="round">
+            <div class="round-title">First Round</div>
+            <div class="matchup">
+                <div class="team">
+                    <span class="seed">1</span>
+                    <div class="logo">🌩️</div>
+                    <div class="team-info">
+                        <div><span class="team-name">Thunder</span><span class="team-record">57-25</span></div>
+                        <span class="score-streak win">W5</span>
+                    </div>
+                </div>
+                <div class="team">
+                    <span class="seed">8</span>
+                    <div class="logo">🌉</div>
+                    <div class="team-info">
+                        <div><span class="team-name">Warriors</span><span class="team-record">46-36</span></div>
+                        <span class="score-streak loss">L1</span>
+                    </div>
+                </div>
+            </div>
+            <div class="matchup">
+                <div class="team">
+                    <span class="seed">4</span>
+                    <div class="logo">🚀</div>
+                    <div class="team-info">
+                        <div><span class="team-name">Rockets</span><span class="team-record">50-32</span></div>
+                        <span class="score-streak win">W2</span>
+                    </div>
+                </div>
+                <div class="team">
+                    <span class="seed">5</span>
+                    <div class="logo">🐺</div>
+                    <div class="team-info">
+                        <div><span class="team-name">Wolves</span><span class="team-record">49-33</span></div>
+                        <span class="score-streak win">W1</span>
+                    </div>
+                </div>
+            </div>
+            <div class="matchup">
+                <div class="team">
+                    <span class="seed">2</span>
+                    <div class="logo">🟣</div>
+                    <div class="team-info">
+                        <div><span class="team-name">Lakers</span><span class="team-record">55-27</span></div>
+                        <span class="score-streak win">W3</span>
+                    </div>
+                </div>
+                <div class="team">
+                    <span class="seed">7</span>
+                    <div class="logo">🔴</div>
+                    <div class="team-info">
+                        <div><span class="team-name">Clippers</span><span class="team-record">47-35</span></div>
+                        <span class="score-streak loss">L2</span>
+                    </div>
+                </div>
+            </div>
+            <div class="matchup">
+                <div class="team">
+                    <span class="seed">3</span>
+                    <div class="logo">👑</div>
+                    <div class="team-info">
+                        <div><span class="team-name">Kings</span><span class="team-record">52-30</span></div>
+                        <span class="score-streak win">W4</span>
+                    </div>
+                </div>
+                <div class="team">
+                    <span class="seed">6</span>
+                    <div class="logo">☀️</div>
+                    <div class="team-info">
+                        <div><span class="team-name">Suns</span><span class="team-record">48-34</span></div>
+                        <span class="score-streak win">W2</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Round 2 -->
+        <div class="round" style="gap: 150px;">
+            <div class="round-title">Conf. Semifinals</div>
+            <div class="matchup">
+                <div class="team">
+                    <span class="seed"></span>
+                    <div class="logo">?</div>
+                    <div class="team-info"><span class="team-name">TBD</span></div>
+                </div>
+                <div class="team">
+                    <span class="seed"></span>
+                    <div class="logo">?</div>
+                    <div class="team-info"><span class="team-name">TBD</span></div>
+                </div>
+            </div>
+            <div class="matchup">
+                <div class="team">
+                    <span class="seed"></span>
+                    <div class="logo">?</div>
+                    <div class="team-info"><span class="team-name">TBD</span></div>
+                </div>
+                <div class="team">
+                    <span class="seed"></span>
+                    <div class="logo">?</div>
+                    <div class="team-info"><span class="team-name">TBD</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Round 3 -->
+        <div class="round">
+            <div class="round-title">Western Conference Finals</div>
+            <div class="matchup" style="border: 2px solid #FF6B35;">
+                <div class="team">
+                    <span class="seed"></span>
+                    <div class="logo">🏆</div>
+                    <div class="team-info"><span class="team-name">TBD</span></div>
+                </div>
+                <div class="team">
+                    <span class="seed"></span>
+                    <div class="logo">🏆</div>
+                    <div class="team-info"><span class="team-name">TBD</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
