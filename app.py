@@ -4888,9 +4888,16 @@ elif page == "Standings":
     
     st.title("NBA Standings")
     
-    # Display current date
-    current_date = get_local_now().strftime("%B %d, %Y")
-    st.markdown(f"**As of: {current_date}**")
+    # Display current date and refresh button
+    col_date, col_refresh = st.columns([3, 1])
+    with col_date:
+        current_date = get_local_now().strftime("%B %d, %Y")
+        st.markdown(f"**As of: {current_date}**")
+    with col_refresh:
+        if st.button("🔄 Refresh Standings", key="refresh_standings_btn"):
+            # Clear cached standings and ratings data
+            st.cache_data.clear()
+            st.rerun()
     st.markdown("---")
     
     # Get user's favorite teams for highlighting
@@ -4903,6 +4910,7 @@ elif page == "Standings":
         standings_df = get_league_standings(season)
         team_ratings = get_team_ratings_with_ranks(season)
         nba_schedule = get_nba_schedule()
+
     
     if standings_df.empty:
         st.error("Could not load standings. Please try again later.")
