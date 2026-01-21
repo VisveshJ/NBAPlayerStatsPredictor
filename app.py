@@ -5180,25 +5180,35 @@ elif page == "Standings":
                         if logo1:
                             st.image(logo1, width=40)
                     with col2:
-                        st.markdown(f"**({team1['seed']}) {team1['name']}**")
-                        record_value = team1['record']
+                        streak_html1 = ""
                         if team1.get('streak'):
-                            streak_val = team1['streak'].replace(' ', '')
-                            color = get_streak_color(streak_val)
-                            st.markdown(f"<p style='font-size: 0.8rem; color: #9CA3AF; margin: 0;'>{record_value} <span style='color: {color}; font-weight: bold;'>({streak_val})</span></p>", unsafe_allow_html=True)
-                        else:
-                            st.caption(record_value)
+                            sv1 = team1['streak'].replace(' ', '')
+                            c1 = get_streak_color(sv1)
+                            streak_html1 = f" <span style='color: {c1}; font-weight: bold;'>({sv1})</span>"
+                        
+                        st.markdown(f"""
+                            <div style='line-height: 1.2;'>
+                                <div style='font-weight: bold; font-size: 0.95rem; color: #FAFAFA;'>({team1['seed']}) {team1['name']}</div>
+                                <div style='font-size: 0.8rem; color: #9CA3AF;'>{team1['record']}{streak_html1}</div>
+                            </div>
+                        """, unsafe_allow_html=True)
+                        
                     with col3:
-                        st.markdown(f"**{matchup_type}**")
+                        st.markdown(f"<div style='margin-top: 8px; font-weight: bold;'>{matchup_type}</div>", unsafe_allow_html=True)
+                        
                     with col4:
-                        st.markdown(f"**({team2['seed']}) {team2['name']}**")
-                        record_value2 = team2['record']
+                        streak_html2 = ""
                         if team2.get('streak'):
-                            streak_val2 = team2['streak'].replace(' ', '')
-                            color2 = get_streak_color(streak_val2)
-                            st.markdown(f"<p style='font-size: 0.8rem; color: #9CA3AF; margin: 0;'>{record_value2} <span style='color: {color2}; font-weight: bold;'>({streak_val2})</span></p>", unsafe_allow_html=True)
-                        else:
-                            st.caption(record_value2)
+                            sv2 = team2['streak'].replace(' ', '')
+                            c2 = get_streak_color(sv2)
+                            streak_html2 = f" <span style='color: {c2}; font-weight: bold;'>({sv2})</span>"
+                            
+                        st.markdown(f"""
+                            <div style='line-height: 1.2;'>
+                                <div style='font-weight: bold; font-size: 0.95rem; color: #FAFAFA;'>({team2['seed']}) {team2['name']}</div>
+                                <div style='font-size: 0.8rem; color: #9CA3AF;'>{team2['record']}{streak_html2}</div>
+                            </div>
+                        """, unsafe_allow_html=True)
                     with col5:
                         if logo2:
                             st.image(logo2, width=40)
