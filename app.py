@@ -4652,6 +4652,11 @@ elif page == "Around the NBA":
     import pytz
     
     st.title("🏀 Around the NBA")
+    
+    # Define timezone for News Wire dates
+    et_tz = pytz.timezone('US/Eastern')
+    now_et = datetime.now(et_tz)
+    
     st.markdown("---")
     
     # Fetch data
