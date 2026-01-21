@@ -5212,7 +5212,7 @@ elif page == "Standings":
                     st.markdown("<div style='margin-top: 25px; font-weight: bold; text-align: center;'>@</div>", unsafe_allow_html=True)
                 with c3:
                     logo = team2['logo_url']
-                    cc1, cc2 = st.columns([0.45, 1])
+                    cc1, cc2 = st.columns([0.7, 1])
                     if logo: cc1.image(logo, width=55)
                     cc2.markdown(f"**#{team2['seed']} {team2['full_name']}**")
                     cc2.caption(f"{team2['record']}")
