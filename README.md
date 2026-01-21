@@ -54,8 +54,8 @@ An advanced, full-stack analytics platform built to provide AI-driven performanc
 ![Playoff Picture](screenshots/playoffs.png)
 
 ### NBA Awards & Odds
-- **Real-time Odds Scraper**: Live betting odds for MVP, DPOY, ROTY, and more, scraped via Playwright.
-- **MVP Ladder**: Comprehensive view of the current MVP race with live statistical resumes.
+- **Real-time Odds Scraper**: Live betting odds for DPOY, 6MOY and more, scraped via Playwright.
+- **MVP/ROY Ladder**: Comprehensive view of the current MVP race with live statistical resumes.
 
 ![Awards](screenshots/awards.png)
 
