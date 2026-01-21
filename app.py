@@ -5193,19 +5193,20 @@ elif page == "Standings":
                 """Render a play-in matchup card. Team1 is away, Team2 is home."""
                 if not team1 or not team2: return
                 st.markdown(f"**{label}**")
-                c1, c2, c3 = st.columns([1, 0.2, 1])
+                # Use padding columns to center the @ symbol
+                pad1, c1, c2, c3, pad2 = st.columns([0.3, 1, 0.15, 1, 0.3])
                 with c1:
                     logo = team1['logo_url']
-                    cc1, cc2 = st.columns([0.4, 1])
-                    if logo: cc1.image(logo, width=60)
+                    cc1, cc2 = st.columns([0.35, 1])
+                    if logo: cc1.image(logo, width=55)
                     cc2.markdown(f"**#{team1['seed']} {team1['full_name']}**")
                     cc2.caption(f"{team1['record']}")
                 with c2:
                     st.markdown("<div style='margin-top: 25px; font-weight: bold; text-align: center;'>@</div>", unsafe_allow_html=True)
                 with c3:
                     logo = team2['logo_url']
-                    cc1, cc2 = st.columns([0.4, 1])
-                    if logo: cc1.image(logo, width=60)
+                    cc1, cc2 = st.columns([0.35, 1])
+                    if logo: cc1.image(logo, width=55)
                     cc2.markdown(f"**#{team2['seed']} {team2['full_name']}**")
                     cc2.caption(f"{team2['record']}")
 
@@ -5329,8 +5330,6 @@ elif page == "Standings":
                     if is_tbd or not team:
                         return f"""
                             <div class="team">
-                                <span class="seed">-</span>
-                                <div style="font-size: 1.1rem;">🏀</div>
                                 <div class="team-info"><span class="team-name-primary tbd-team">TBD</span></div>
                             </div>
                         """
@@ -5352,7 +5351,7 @@ elif page == "Standings":
                 m3_6 = f'<div class="matchup">{team_html(teams.get(3))}{team_html(teams.get(6))}</div>'
                 m_semi_1 = f'<div class="matchup">{team_html(None, True)}{team_html(None, True)}</div>'
                 m_semi_2 = f'<div class="matchup">{team_html(None, True)}{team_html(None, True)}</div>'
-                m_finals = f'<div class="matchup" style="border: 2px solid #FF6B35;">{team_html(None, True)}{team_html(None, True)}</div>'
+                m_finals = f'<div class="matchup">{team_html(None, True)}{team_html(None, True)}</div>'
 
                 full_html = f"""
                 <div class="bracket-wrapper">
@@ -5364,8 +5363,8 @@ elif page == "Standings":
                         </div>
                         <div class="round">
                             <div class="round-title">Conf. Semifinals</div>
-                            <div style="margin-top: 42px;">{m_semi_1}</div>
-                            <div style="margin-top: 95px;">{m_semi_2}</div>
+                            <div style="margin-top: 55px;">{m_semi_1}</div>
+                            <div style="margin-top: 100px;">{m_semi_2}</div>
                         </div>
                         <div class="round">
                             <div class="round-title">Conf. Finals</div>
