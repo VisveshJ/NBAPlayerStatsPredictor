@@ -6025,22 +6025,16 @@ elif st.session_state.current_page == "Awards":
             """, unsafe_allow_html=True)
             
             # Photo with team logo side by side (like the MVP card)
-            if rank_idx < 3:
-                col_photo, col_logo = st.columns([1, 1])
-                with col_photo:
-                    if player_photo_url:
-                        st.image(player_photo_url, width=100)
-                with col_logo:
-                    if team_logo_url:
-                        st.image(team_logo_url, width=100)
-            else:
-                col_photo, col_logo = st.columns([1, 1])
-                with col_photo:
-                    if player_photo_url:
-                        st.image(player_photo_url, width=80)
-                with col_logo:
-                    if team_logo_url:
-                        st.image(team_logo_url, width=80)
+            # Use fixed height container to ensure alignment across all cards
+            st.markdown("<div style='min-height: 120px; display: flex; align-items: center; justify-content: center;'>", unsafe_allow_html=True)
+            col_photo, col_logo = st.columns([1, 1])
+            with col_photo:
+                if player_photo_url:
+                    st.image(player_photo_url, width=90)
+            with col_logo:
+                if team_logo_url:
+                    st.image(team_logo_url, width=90)
+            st.markdown("</div>", unsafe_allow_html=True)
             
             # Fetch position from bio
             pos_label = ""
