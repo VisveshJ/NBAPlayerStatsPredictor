@@ -5953,7 +5953,16 @@ elif st.session_state.current_page == "Awards":
             team_abbrev = player.get('team_abbrev', 'N/A')
             draft_pick = player.get('draft_pick', 'N/A')
             
-            player_photo_url = get_player_photo_url(player_name)
+            # Handle special characters in names for API lookup
+            api_lookup_name = player_name
+            # Map common special character variations
+            name_mappings = {
+                'Egor Demin': 'Egor Dëmin',
+                'Egor Dëmin': 'Egor Dëmin',
+            }
+            api_lookup_name = name_mappings.get(player_name, player_name)
+            
+            player_photo_url = get_player_photo_url(api_lookup_name)
             team_logo_url = get_team_logo_url(team_abbrev)
             
             # Fetch stats from bulk data (overrides scraped stats with current API data)
@@ -5966,18 +5975,28 @@ elif st.session_state.current_page == "Awards":
             
             try:
                 if bulk_player_stats is not None and not bulk_player_stats.empty:
-                    match = bulk_player_stats[bulk_player_stats['PLAYER_NAME'].str.lower() == player_name.lower()]
+                    # Try exact match first
+                    match = bulk_player_stats[bulk_player_stats['PLAYER_NAME'].str.lower() == api_lookup_name.lower()]
+                    # If no match, try without special chars
+                    if match.empty:
+                        match = bulk_player_stats[bulk_player_stats['PLAYER_NAME'].str.lower() == player_name.lower()]
+                    # Try contains as fallback
+                    if match.empty:
+                        # Try partial match on last name
+                        last_name = player_name.split()[-1] if ' ' in player_name else player_name
+                        match = bulk_player_stats[bulk_player_stats['PLAYER_NAME'].str.contains(last_name, case=False, na=False)]
+                    
                     if not match.empty:
                         s = match.iloc[0]
                         games_played = s.get('GP', 'N/A')
                         ppg = s.get('PTS', 0)
                         rpg = s.get('REB', 0)
                         apg = s.get('AST', 0)
-                        player_stats = f"{ppg:.1f} PPG, {rpg:.1f} RPG, {apg:.1f} APG"
+                        player_stats = f"{ppg:.1f} PPG · {rpg:.1f} RPG · {apg:.1f} APG"
                         fg = s.get('FG_PCT', 0) * 100
                         fg3 = s.get('FG3_PCT', 0) * 100
                         ft = s.get('FT_PCT', 0) * 100
-                        shooting_stats = f"{fg:.1f}% FG | {fg3:.1f}% 3P | {ft:.1f}% FT"
+                        shooting_stats = f"{fg:.1f}% FG% · {fg3:.1f}% 3P% · {ft:.1f}% FT%"
                         team_abbrev = s.get('TEAM_ABBREVIATION', team_abbrev)
                         team_logo_url = get_team_logo_url(team_abbrev)
                 
@@ -5988,49 +6007,77 @@ elif st.session_state.current_page == "Awards":
                         team_record = team_stand.iloc[0].get('Record', 'N/A')
                         team_rank = int(team_stand.iloc[0].get('PlayoffRank', 0))
                         team_conf = team_stand.iloc[0].get('Conference', '')[:1]
+                        team_conf = "East" if team_conf == "E" else "West" if team_conf == "W" else team_conf
             except:
                 pass
             
             # If no stats from API, use scraped stats as fallback
             if not player_stats:
-                player_stats = player.get('stats', 'N/A')
+                scraped = player.get('stats', 'N/A')
+                if scraped != "N/A":
+                    player_stats = scraped.replace(",", " ·")
             
-            # Display rank badge and draft pick badge
-            col_rank, col_pick = st.columns([1, 1])
-            with col_rank:
-                st.markdown(f"""
-                <div style="background: {rank_color}; color: #111827; font-weight: bold; 
-                text-align: center; padding: 4px 8px; border-radius: 20px; font-size: 0.85rem;">#{rank_idx + 1}</div>
-                """, unsafe_allow_html=True)
-            with col_pick:
-                pick_display = f"Pick #{draft_pick}" if draft_pick != "N/A" else "N/A"
-                st.markdown(f"""
-                <div style="background: #10B981; color: white; font-weight: bold; 
-                text-align: center; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem;">{pick_display}</div>
-                """, unsafe_allow_html=True)
+            # Display rank at top center (like MVP card)
+            st.markdown(f"""
+            <div style="text-align: center; margin-bottom: 10px;">
+                <span style="color: {rank_color}; font-weight: bold; font-size: 1.5rem;">#{rank_idx + 1}</span>
+            </div>
+            """, unsafe_allow_html=True)
             
-            # Photo with team logo side by side
-            col_photo, col_logo = st.columns([2, 1])
-            with col_photo:
-                if player_photo_url:
-                    st.image(player_photo_url, width=80 if rank_idx < 3 else 65)
-            with col_logo:
-                if team_logo_url:
-                    st.image(team_logo_url, width=45 if rank_idx < 3 else 35)
+            # Photo with team logo side by side (like the MVP card)
+            if rank_idx < 3:
+                col_photo, col_logo = st.columns([1, 1])
+                with col_photo:
+                    if player_photo_url:
+                        st.image(player_photo_url, width=100)
+                with col_logo:
+                    if team_logo_url:
+                        st.image(team_logo_url, width=100)
+            else:
+                col_photo, col_logo = st.columns([1, 1])
+                with col_photo:
+                    if player_photo_url:
+                        st.image(player_photo_url, width=80)
+                with col_logo:
+                    if team_logo_url:
+                        st.image(team_logo_url, width=80)
             
             # Fetch position from bio
             pos_label = ""
             try:
-                bio = fetch_player_bio(player_name)
+                bio = fetch_player_bio(api_lookup_name)
+                if not bio:
+                    bio = fetch_player_bio(player_name)
                 if bio and bio.get('position'):
                     abbrev_pos = abbreviate_position(bio['position'], player_name)
-                    pos_label = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 0.8rem;'>({abbrev_pos})</span>"
+                    pos_label = abbrev_pos
             except:
                 pass
             
+            # Format draft pick as (Rd1, #1) or (Rd2, #42) etc.
+            draft_label = ""
+            if draft_pick and draft_pick != "N/A" and draft_pick != "Undrafted":
+                pick_num = int(draft_pick) if draft_pick.isdigit() else 0
+                if pick_num > 0:
+                    if pick_num <= 30:
+                        draft_label = f"(Rd1, #{pick_num})"
+                    else:
+                        draft_label = f"(Rd2, #{pick_num})"
+            elif draft_pick == "Undrafted":
+                draft_label = "(Undrafted)"
+            
+            # Combine position and draft pick
+            pos_draft = ""
+            if pos_label and draft_label:
+                pos_draft = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 0.8rem;'>({pos_label}) {draft_label}</span>"
+            elif pos_label:
+                pos_draft = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 0.8rem;'>({pos_label})</span>"
+            elif draft_label:
+                pos_draft = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 0.8rem;'>{draft_label}</span>"
+            
             st.markdown(f"""
             <div style="text-align: center; margin-top: 10px;">
-                <div style="color: #FAFAFA; font-weight: bold; font-size: 0.9rem; margin-bottom: 5px; line-height: 1.2;">{player_name}{pos_label}</div>
+                <div style="color: #FAFAFA; font-weight: bold; font-size: 0.9rem; margin-bottom: 5px; line-height: 1.2;">{player_name}{pos_draft}</div>
                 <div style="color: #9CA3AF; font-size: 0.75rem; margin-bottom: 2px;">{player_stats}</div>
                 <div style="color: #6B7280; font-size: 0.75rem; margin-bottom: 8px;">{shooting_stats}</div>
                 <div style="display: flex; justify-content: center; gap: 12px; font-size: 0.75rem;">
