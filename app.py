@@ -5156,6 +5156,11 @@ elif page == "Standings":
         with tab_playoffs:
             st.markdown("### Playoff Picture (If Season Ended Today)")
             
+            # Restoring the seeding notes before the bracket
+            st.markdown("**Seeding Rules:**")
+            st.caption("_2 seed plays winner of (7 vs 8). 1 seed plays winner of (winner 9 vs 10) @ (loser 7 vs 8)._")
+            st.markdown("---")
+
             def render_playoff_bracket_html(conference_df, conference_name):
                 """Render a premium interactive playoff bracket for a conference."""
                 # Helper to get team by seed
@@ -5198,6 +5203,7 @@ elif page == "Standings":
                         align-items: center;
                         padding: 10px 0;
                         width: 100%;
+                        background-color: transparent;
                     }
                     .bracket-header {
                         display: flex;
@@ -5371,7 +5377,6 @@ elif page == "Standings":
                     {bracket_css}
                     <div class="bracket-header">
                         <div class="bracket-title">{conference_name} Conference</div>
-                        <div style="color: #9CA3AF; font-size: 0.9rem;">Playoff Picture</div>
                     </div>
                     <div class="bracket-container">
                         <!-- Round 1 -->
@@ -5404,12 +5409,12 @@ elif page == "Standings":
             east_df = standings_df[standings_df['Conference'] == 'East']
             
             # Show Western Conference Bracket
-            st.markdown(render_playoff_bracket_html(west_df, "Western"), unsafe_allow_html=True)
+            st.write(render_playoff_bracket_html(west_df, "Western"), unsafe_allow_html=True)
             
             st.markdown("<br><hr><br>", unsafe_allow_html=True)
             
             # Show Eastern Conference Bracket
-            st.markdown(render_playoff_bracket_html(east_df, "Eastern"), unsafe_allow_html=True)
+            st.write(render_playoff_bracket_html(east_df, "Eastern"), unsafe_allow_html=True)
             
             # Play-In Tournament Note
             st.markdown("---")
@@ -5424,9 +5429,9 @@ elif page == "Standings":
                 w10 = west_df[west_df['PlayoffRank'] == 10].iloc[0] if len(west_df[west_df['PlayoffRank'] == 10]) > 0 else None
                 
                 if w7 is not None and w8 is not None:
-                    st.caption(f"**7/8 Game:** {w8['TeamName']} @ {w7['TeamName']}")
+                    st.markdown(f"**7/8 Game:** {w8['TeamName']} @ {w7['TeamName']}")
                 if w9 is not None and w10 is not None:
-                    st.caption(f"**9/10 Game:** {w10['TeamName']} @ {w9['TeamName']}")
+                    st.markdown(f"**9/10 Game:** {w10['TeamName']} @ {w9['TeamName']}")
                     
             with col_e:
                 st.markdown("**East Play-In Matchups**")
@@ -5436,9 +5441,9 @@ elif page == "Standings":
                 e10 = east_df[east_df['PlayoffRank'] == 10].iloc[0] if len(east_df[east_df['PlayoffRank'] == 10]) > 0 else None
                 
                 if e7 is not None and e8 is not None:
-                    st.caption(f"**7/8 Game:** {e8['TeamName']} @ {e7['TeamName']}")
+                    st.markdown(f"**7/8 Game:** {e8['TeamName']} @ {e7['TeamName']}")
                 if e9 is not None and e10 is not None:
-                    st.caption(f"**9/10 Game:** {e10['TeamName']} @ {e9['TeamName']}")
+                    st.markdown(f"**9/10 Game:** {e10['TeamName']} @ {e9['TeamName']}")
 
         
         with tab_divisions:
