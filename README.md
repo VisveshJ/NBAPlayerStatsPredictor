@@ -11,45 +11,73 @@ An advanced, full-stack analytics platform built to provide AI-driven performanc
 - **Favorites Management**: Track your favorite teams and players with a dedicated dashboard.
 - **Dynamic Seeding & Records**: Real-time Western and Eastern Conference standings with color-coded streaks and detailed splits.
 
-![Standings](screenshots/standings.png)
+![Favorites](screenshots/favorites.png)
 
-### AI-Powered Predictions
-- **Hidden Markov Models**: Gaussian HMM identifies hidden performance states (Cold, Average, Hot) to forecast future stat lines.
-- **Situational Context**: Integrates Opponent Defensive Ratings (DRTG) to scale predictions.
-- **Consistency Analysis**: Calculates player volatility and performance reliability over the season.
+### Around the NBA
+- **Real-time News Wire**: Continuous scrolling news ticker and headline grid directly from NBA.com.
+- **Featured Stories**: Stay updated with the latest major headlines across the league.
 
-![Predictions](screenshots/prediction.png)
+![Around the NBA](screenshots/aroundnba.png)
 
-### Comparative Analysis
-- **Autocomplete Search**: Effortlessly find any active NBA player or team.
-- **Head-to-Head (H2H) Filter**: Compare players specifically when they play against each other.
-- **Visual Comparisons**: Aesthetic stat overlays and IND REC records.
-
-### NBA Awards & Odds
-- **Real-time Odds Scraper**: Live betting odds for MVP, DPOY, and ROTY scraped from DraftKings via Playwright.
-- **MVP Ladder**: Comprehensive view of the current MVP race with live statistical resumes.
-- **Auto-Refresh**: Background workers ensure odds stay fresh within a 12-hour cycle.
-
-### Live Scoreboard & News
-- **Today's Games**: Real-time scores, channel information, and one-click **Box Score** links for every game.
+### Today's Games
+- **Scoreboard**: Real-time scores, channel information, and one-click **Box Score** links for every game on the slate.
 
 ![Today's Games](screenshots/todays_games.png)
 
-- **Playoff Picture**: Dynamic visualization of First Round and Play-In Tournament matchups.
+### Player Stats
+- **Detailed History**: Comprehensive player game logs and biographical information.
+- **Visual Analytics**: Interactive charts showing season trends and historical performance.
+
+![Player Stats](screenshots/playerstats.png)
+
+### AI-Powered Predictions
+- **Hidden Markov Models**: Utilizes Gaussian HMM to identify player performance states (Cold, Average, Hot) and predict future stat lines.
+- **Situational Context**: Integrates Opponent Defensive Ratings (DRTG) to scale predictions based on matchup difficulty.
+
+![Predictions](screenshots/predictions.png)
+
+### Compare Players
+- **Head-to-Head (H2H)**: Compare players specifically when they play against each other, including historical matchup logs and IND REC.
+- **Visual Overlays**: Side-by-side statistical comparisons for season averages and situational performance.
+
+![Compare Players](screenshots/compareplayers.png)
+
+### NBA Standings
+- **Conference & Division Standings**: Detailed view of both conferences and all six divisions.
+- **Color-Coded Analysis**: Instantly identify playoff seeds, play-in spots, and performance streaks.
+
+![Standings](screenshots/standings.png)
+
+### Playoff Picture
+- **Dynamic Visualization**: Live look at the First Round and Play-In Tournament matchups if the season ended today.
 
 ![Playoff Picture](screenshots/playoffs.png)
 
-- **News Wire**: Continuous scrolling news ticker and headline grid directly from NBA.com.
+### NBA Awards & Odds
+- **Real-time Odds Scraper**: Live betting odds for MVP, DPOY, ROTY, and more, scraped via Playwright.
+- **MVP Ladder**: Comprehensive view of the current MVP race with live statistical resumes.
+
+![Awards](screenshots/awards.png)
+
+---
 
 ## Architecture & Design
 
 The application follows a modular, state-driven architecture designed for high data throughput and real-time responsiveness.
 
 ### System Components
-- **Data Acquisition Layer**: Orchestrates requests to the `nba-api` with robust caching and `Playwright` for automation.
+- **Data Acquisition Layer**: Orchestrates requests to the `nba-api` with robust caching (`st.cache_data`) and `Playwright` for browser automation.
 - **AI Processing Engine**: A custom implementation of Gaussian HMM that maps observable statistics to hidden performance states.
 - **Presentation Layer**: A premium dark-themed UI (Hex `#161B22`) utilizing custom CSS tokens and circle-free logo styling.
-- **Persistence**: **SQLite** backend stores user preferences, favorite lists, and cached leadboard data.
+- **Persistence**: **SQLite** backend stores user preferences, favorite lists, and cached leaderboard data.
+
+## Predictive Modeling (The HMM Approach)
+Unlike simple regressions, this app treats a player's season as a sequence of transitions between internal performance states.
+- **State Selection**: Automatically identifies hidden states from recent game sequences.
+- **Situational Adjustments**: 
+    - **Defensive Weighting**: Predictions are scaled based on the target team's Defensive Rating.
+    - **H2H Integration**: Matches against specific opponents are blended with the model output (weighted up to 40%).
+    - **Injury Filtration**: Excludes "noise" games (low minutes) to maintain model integrity.
 
 ## Tech Stack
 - **Languages**: Python 3.11+
@@ -58,6 +86,8 @@ The application follows a modular, state-driven architecture designed for high d
 - **Automation**: `Playwright` (Chromium Headless Shell)
 - **Database**: `SQLite`
 - **Auth**: `Google Cloud Console (OAuth 2.0 + PKCE)`
+
+---
 
 ## Getting Started
 
