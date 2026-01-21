@@ -5436,21 +5436,24 @@ elif page == "Standings":
                 # Sort by PlayoffRank (same as conference standings for consistent tiebreakers)
                 division_df = division_df.sort_values('PlayoffRank', ascending=True)
                 
-                # Header row - added DIV REC column
+                # Header row - using HTML for precise margin control
                 header_logo, header1, header2, header3, header4, header5, header6 = st.columns([0.5, 0.3, 2.0, 0.7, 0.7, 0.7, 0.7])
+                header_style = "color: #9CA3AF; font-size: 0.75rem; font-weight: 600; margin: 0; padding: 0;"
                 with header1:
-                    st.caption("#")
+                    st.markdown(f"<p style='{header_style}'>#</p>", unsafe_allow_html=True)
                 with header2:
-                    st.caption("TEAM")
+                    st.markdown(f"<p style='{header_style}'>TEAM</p>", unsafe_allow_html=True)
                 with header3:
-                    st.caption("RECORD")
+                    st.markdown(f"<p style='{header_style}'>RECORD</p>", unsafe_allow_html=True)
                 with header4:
-                    st.caption("DIV REC")
+                    st.markdown(f"<p style='{header_style}'>DIV REC</p>", unsafe_allow_html=True)
                 with header5:
-                    st.caption("SEED")
+                    st.markdown(f"<p style='{header_style}'>SEED</p>", unsafe_allow_html=True)
                 with header6:
-                    st.caption("WIN %")
-                st.markdown('<style>div.stCaption { margin-bottom: -20px !important; }</style>', unsafe_allow_html=True)
+                    st.markdown(f"<p style='{header_style}'>WIN %</p>", unsafe_allow_html=True)
+                
+                st.markdown("<div style='margin-top: -15px;'></div>", unsafe_allow_html=True)
+                
                 for idx, (_, row) in enumerate(division_df.iterrows(), 1):
                     team_abbrev = get_team_abbrev(row['TeamCity'])
                     is_favorite = team_abbrev in favorite_teams
