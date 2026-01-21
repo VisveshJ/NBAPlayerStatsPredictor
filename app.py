@@ -5186,10 +5186,11 @@ elif page == "Standings":
             east_df = standings_df[standings_df['Conference'] == 'East']
 
             # 1. PLAY-IN TOURNAMENT
-            st.markdown("### Play-In Tournament Status")
+            st.markdown("### Play-In Tournament")
             st.caption("_7 seed hosts 8 seed (winner gets #7). 9 seed hosts 10 seed (winner plays loser of 7/8 for #8)._")
 
             def render_play_in_card(team1, team2, label):
+                """Render a play-in matchup card. Team1 is away, Team2 is home."""
                 if not team1 or not team2: return
                 st.markdown(f"**{label}**")
                 c1, c2, c3 = st.columns([1, 0.2, 1])
@@ -5200,27 +5201,28 @@ elif page == "Standings":
                     cc2.markdown(f"**#{team1['seed']} {team1['full_name']}**")
                     cc2.caption(f"{team1['record']}")
                 with c2:
-                    st.markdown("<div style='margin-top: 25px; font-weight: bold; text-align: center;'>VS</div>", unsafe_allow_html=True)
+                    st.markdown("<div style='margin-top: 25px; font-weight: bold; text-align: center;'>@</div>", unsafe_allow_html=True)
                 with c3:
                     logo = team2['logo_url']
                     cc1, cc2 = st.columns([0.4, 1])
                     if logo: cc1.image(logo, width=60)
                     cc2.markdown(f"**#{team2['seed']} {team2['full_name']}**")
                     cc2.caption(f"{team2['record']}")
-                st.markdown("---")
 
-            col_pi_headers = st.columns(2)
-            with col_pi_headers[0]: st.markdown("#### Western Conference")
-            with col_pi_headers[1]: st.markdown("#### Eastern Conference")
-
-            # Side-by-side rows for Play-In to ensure aligned separators
-            r1c1, r1c2 = st.columns(2)
-            with r1c1: render_play_in_card(get_team_info_by_seed(west_df, 7), get_team_info_by_seed(west_df, 8), "7 vs 8 Matchup")
-            with r1c2: render_play_in_card(get_team_info_by_seed(east_df, 7), get_team_info_by_seed(east_df, 8), "7 vs 8 Matchup")
+            # Western Conference Play-In
+            st.markdown("#### Western Conference")
+            render_play_in_card(get_team_info_by_seed(west_df, 8), get_team_info_by_seed(west_df, 7), "7 vs 8 Matchup")
+            render_play_in_card(get_team_info_by_seed(west_df, 10), get_team_info_by_seed(west_df, 9), "9 vs 10 Matchup")
             
-            r2c1, r2c2 = st.columns(2)
-            with r2c1: render_play_in_card(get_team_info_by_seed(west_df, 9), get_team_info_by_seed(west_df, 10), "9 vs 10 Matchup")
-            with r2c2: render_play_in_card(get_team_info_by_seed(east_df, 9), get_team_info_by_seed(east_df, 10), "9 vs 10 Matchup")
+            st.markdown("---")
+            
+            # Eastern Conference Play-In
+            st.markdown("#### Eastern Conference")
+            render_play_in_card(get_team_info_by_seed(east_df, 8), get_team_info_by_seed(east_df, 7), "7 vs 8 Matchup")
+            render_play_in_card(get_team_info_by_seed(east_df, 10), get_team_info_by_seed(east_df, 9), "9 vs 10 Matchup")
+
+            st.markdown("---")
+
 
             # 2. BRACKETS
             def render_playoff_bracket_html(conference_df, is_flipped=False):
@@ -5382,13 +5384,13 @@ elif page == "Standings":
             # Western Bracket Section
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("<h3 style='text-align: center; color: #FF6B35; letter-spacing: 1px;'>WESTERN CONFERENCE BRACKET</h3>", unsafe_allow_html=True)
-            st.write(render_playoff_bracket_html(west_df, is_flipped=False), unsafe_allow_html=True)
+            components.html(render_playoff_bracket_html(west_df, is_flipped=False), height=700, scrolling=True)
             
             # Eastern Bracket Section
-            st.markdown("<br><br><br>", unsafe_allow_html=True)
+            st.markdown("<br><br>", unsafe_allow_html=True)
             st.markdown("---")
             st.markdown("<h3 style='text-align: center; color: #FF6B35; letter-spacing: 1px;'>EASTERN CONFERENCE BRACKET</h3>", unsafe_allow_html=True)
-            st.write(render_playoff_bracket_html(east_df, is_flipped=True), unsafe_allow_html=True)
+            components.html(render_playoff_bracket_html(east_df, is_flipped=True), height=700, scrolling=True)
 
 
         
