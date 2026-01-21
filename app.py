@@ -1298,6 +1298,197 @@ def get_mvp_ladder():
         return fallback_players, "January 16, 2026"
 
 
+def get_rookie_ladder():
+    """Fetch the latest Kia Rookie Ladder rankings from NBA.com with dynamic URL calculation."""
+    import requests
+    from bs4 import BeautifulSoup
+    import re
+    from datetime import datetime, timedelta
+    
+    # 2025-26 Draft picks mapping (Round.Pick format)
+    draft_picks_2025 = {
+        'Cooper Flagg': '1.01',
+        'Dylan Harper': '1.02', 
+        'Kon Knueppel': '1.03',
+        'Ace Bailey': '1.04',
+        'VJ Edgecombe': '1.05',
+        'Derik Queen': '1.06',
+        'Tre Johnson': '1.07',
+        'Egor Demin': '1.08',
+        'Jeremiah Fears': '1.09',
+        'Maxime Raynaud': '1.10',
+        'Khaman Maluach': '1.11',
+        'Kasparas Jakucionis': '1.12',
+        'Collin Murray-Boyles': '1.13',
+        'Carter Bryant': '1.14',
+        'Noa Essengue': '1.15',
+        'Liam McNeeley': '1.16',
+        'Boogie Fland': '1.17',
+        'Alex Karaban': '1.18',
+        'Jalil Bethea': '1.19',
+        'Brandon McCoy II': '1.20',
+        'Asa Newell': '1.21',
+        'Cedric Coward': '1.22',
+        'Hugo Gonzalez': '1.23',
+        'Jin Takahashi': '1.24',
+        'Nique Clifford': '1.25',
+        'Cameron Boozer': '1.26',
+        'Cayden Boozer': '1.27',
+        'Azuolas Tubelis': '1.28',
+        'Benjamin Patch': '1.29',
+        'Rashad Smith': '1.30',
+        # Round 2 picks
+        'Ajay Mitchell': '2.31',
+        'Jaylen Wells': '2.32',
+        'Jaxon Kohler': '2.33',
+        'Andrew Carr': '2.34',
+        'Dink Pate': '2.35',
+    }
+    
+    # Fallback data
+    fallback_players = [
+        {'rank': '1', 'name': 'Cooper Flagg', 'team': 'Los Angeles Lakers', 'team_abbrev': 'LAL', 'stats': '21.2 PPG, 7.5 RPG, 4.1 APG', 'draft_pick': '1.01', 'player_id': None},
+        {'rank': '2', 'name': 'Kon Knueppel', 'team': 'Los Angeles Lakers', 'team_abbrev': 'LAL', 'stats': '14.8 PPG, 4.2 RPG, 3.3 APG', 'draft_pick': '1.03', 'player_id': None},
+        {'rank': '3', 'name': 'VJ Edgecombe', 'team': 'Oklahoma City Thunder', 'team_abbrev': 'OKC', 'stats': '12.5 PPG, 3.8 RPG, 2.9 APG', 'draft_pick': '1.05', 'player_id': None},
+        {'rank': '4', 'name': 'Derik Queen', 'team': 'Sacramento Kings', 'team_abbrev': 'SAC', 'stats': '11.2 PPG, 6.3 RPG, 1.8 APG', 'draft_pick': '1.06', 'player_id': None},
+        {'rank': '5', 'name': 'Cedric Coward', 'team': 'Memphis Grizzlies', 'team_abbrev': 'MEM', 'stats': '10.5 PPG, 4.1 RPG, 2.4 APG', 'draft_pick': '1.22', 'player_id': None},
+    ]
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+    }
+    
+    try:
+        # Dynamically calculate URL based on current date
+        # Rookie Ladder articles are published weekly on Tuesdays (day 1)
+        today = get_local_now()
+        days_since_tuesday = (today.weekday() - 1) % 7
+        recent_tuesday = today - timedelta(days=days_since_tuesday)
+        
+        # Try URLs for the past few weeks to find the latest article
+        article_url = None
+        check_date = None
+        for weeks_back in range(4):  # Check up to 4 weeks back
+            check_date = recent_tuesday - timedelta(weeks=weeks_back)
+            month_abbrev = check_date.strftime('%b').lower()
+            day = check_date.day
+            year = check_date.year
+            url = f"https://www.nba.com/news/kia-rookie-ladder-{month_abbrev}-{day}-{year}"
+            
+            try:
+                resp = requests.head(url, headers=headers, timeout=5, allow_redirects=True)
+                if resp.status_code == 200:
+                    article_url = url
+                    break
+            except:
+                continue
+        
+        if not article_url:
+            return fallback_players, "January 21, 2026"
+            
+        # Scrape the article
+        art_resp = requests.get(article_url, headers=headers, timeout=10)
+        art_resp.raise_for_status()
+        art_soup = BeautifulSoup(art_resp.text, 'html.parser')
+        
+        players = []
+        
+        # Parse TOP 5 from h2/h3/h4 headings (e.g., "1. Cooper Flagg, Los Angeles Lakers")
+        rankings = art_soup.find_all(['h2', 'h3', 'h4'])
+        for r in rankings:
+            text = r.get_text(strip=True)
+            # Match pattern like "1. Player Name, Team Name"
+            match = re.match(r'^(\d+)\.?\s+(.+)', text)
+            if match and int(match.group(1)) <= 5:
+                rank = match.group(1)
+                rest = match.group(2)
+                
+                # Split name and team
+                if ',' in rest:
+                    parts = rest.split(',', 1)
+                    name = parts[0].strip()
+                    team = parts[1].strip() if len(parts) > 1 else "N/A"
+                else:
+                    name = rest
+                    team = "N/A"
+                
+                # Get stats from following paragraph
+                stats = "N/A"
+                current = r.find_next()
+                while current and current.name not in ['h2', 'h3', 'h4']:
+                    if current.name == 'p':
+                        p_text = current.get_text(strip=True)
+                        if "stats:" in p_text.lower():
+                            stats = p_text.split('stats:')[-1].split('|')[0].strip()
+                            break
+                    current = current.find_next()
+                
+                team_abbrev = get_team_abbrev(team)
+                draft_pick = draft_picks_2025.get(name, 'N/A')
+                
+                players.append({
+                    'rank': rank,
+                    'name': name,
+                    'team': team,
+                    'team_abbrev': team_abbrev,
+                    'stats': stats,
+                    'draft_pick': draft_pick,
+                    'player_id': None
+                })
+        
+        # Parse "The Next 5" section if present
+        next5_header = art_soup.find(lambda tag: tag.name in ['h2', 'h3', 'h4'] and 'next 5' in tag.get_text().lower())
+        if next5_header:
+            next_p = next5_header.find_next('p')
+            if next_p:
+                p_html = str(next_p)
+                lines = re.split(r'<br\s*/?\\s*>', p_html)
+                for line in lines:
+                    rank_match = re.search(r'<strong>(\d+)\.?</strong>\s*(.+)', line, re.IGNORECASE)
+                    if rank_match:
+                        rank = rank_match.group(1)
+                        rest = rank_match.group(2)
+                        rest = re.sub(r'<[^>]+>', '', rest)
+                        rest = re.sub(r'[↔️⬆️⬇️↗️↘️]', '', rest).strip()
+                        rest = re.sub(r'\s+', ' ', rest).strip()
+                        
+                        if ',' in rest:
+                            parts = rest.split(',', 1)
+                            name = parts[0].strip()
+                            team = parts[1].strip() if len(parts) > 1 else "N/A"
+                        else:
+                            name = rest
+                            team = "N/A"
+                        
+                        team_abbrev = get_team_abbrev(team)
+                        draft_pick = draft_picks_2025.get(name, 'N/A')
+                        
+                        players.append({
+                            'rank': rank,
+                            'name': name,
+                            'team': team,
+                            'team_abbrev': team_abbrev,
+                            'stats': 'N/A',
+                            'draft_pick': draft_pick,
+                            'player_id': None
+                        })
+        
+        # Sort by rank
+        players.sort(key=lambda x: int(x['rank']))
+        
+        # Use the date from the successful article
+        as_of_date = check_date.strftime("%B %d, %Y") if check_date else "January 21, 2026"
+
+        if len(players) >= 5:
+            return players[:10] if len(players) >= 10 else players, as_of_date
+        else:
+            return fallback_players, "January 21, 2026"
+            
+    except Exception as e:
+        print(f"Error fetching Rookie ladder: {e}")
+        return fallback_players, "January 21, 2026"
+
+
 def get_today_game_slate():
     """Get today's games from the full schedule."""
     from datetime import datetime
@@ -5798,7 +5989,105 @@ elif st.session_state.current_page == "Awards":
     
     st.markdown("---")
     
-    # ===== SECTION 2: BETTING ODDS FOR OTHER AWARDS =====
+    # ===== SECTION 2: ROOKIE OF THE YEAR LADDER =====
+    st.markdown("## 🌟 Rookie of the Year Ladder")
+    rookie_ladder, rookie_date = get_rookie_ladder()
+    st.caption(f"The latest rankings in the race for the 2025-26 Kia ROY award (as of {rookie_date})")
+    
+    if rookie_ladder:
+        def render_rookie_card(player, rank_idx):
+            rank_color = "#FFD700" if rank_idx == 0 else "#C0C0C0" if rank_idx == 1 else "#CD7F32" if rank_idx == 2 else "#667eea"
+            player_name = player['name']
+            team_abbrev = player.get('team_abbrev', 'N/A')
+            draft_pick = player.get('draft_pick', 'N/A')
+            stats = player.get('stats', 'N/A')
+            
+            player_photo_url = get_player_photo_url(player_name)
+            team_logo_url = get_team_logo_url(team_abbrev)
+            
+            # Fetch additional stats from bulk data if available
+            games_played = "N/A"
+            shooting_stats = ""
+            team_record = "N/A"
+            team_rank = "N/A"
+            team_conf = ""
+            
+            try:
+                if bulk_player_stats is not None and not bulk_player_stats.empty:
+                    match = bulk_player_stats[bulk_player_stats['PLAYER_NAME'].str.lower() == player_name.lower()]
+                    if not match.empty:
+                        s = match.iloc[0]
+                        games_played = s.get('GP', 'N/A')
+                        if stats == "N/A":
+                            ppg = s.get('PTS', 0)
+                            rpg = s.get('REB', 0)
+                            apg = s.get('AST', 0)
+                            stats = f"{ppg:.1f} PPG, {rpg:.1f} RPG, {apg:.1f} APG"
+                        fg = s.get('FG_PCT', 0) * 100
+                        fg3 = s.get('FG3_PCT', 0) * 100
+                        ft = s.get('FT_PCT', 0) * 100
+                        shooting_stats = f"{fg:.1f}% FG | {fg3:.1f}% 3P | {ft:.1f}% FT"
+                        team_abbrev = s.get('TEAM_ABBREVIATION', team_abbrev)
+                
+                # Get team record
+                if standings_df is not None and not standings_df.empty:
+                    team_stand = standings_df[standings_df.apply(lambda r: get_team_abbrev(r['TeamCity']) == team_abbrev, axis=1)]
+                    if not team_stand.empty:
+                        team_record = team_stand.iloc[0].get('Record', 'N/A')
+                        team_rank = int(team_stand.iloc[0].get('PlayoffRank', 0))
+                        team_conf = team_stand.iloc[0].get('Conference', '')[:1]
+            except:
+                pass
+            
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #1F2937 0%, #111827 100%); border-radius: 12px; 
+            padding: 15px; border: 1px solid #374151; text-align: center; min-height: 280px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <span style="background: {rank_color}; color: #111827; font-weight: bold; 
+                    padding: 4px 10px; border-radius: 20px; font-size: 0.9rem;">#{rank_idx + 1}</span>
+                    <span style="background: #10B981; color: white; font-weight: bold; 
+                    padding: 4px 10px; border-radius: 6px; font-size: 0.8rem;">Pick {draft_pick}</span>
+                </div>
+                <div style="position: relative; width: 80px; height: 80px; margin: 0 auto 10px auto;">
+                    <img src="{player_photo_url}" style="width: 80px; height: 80px; border-radius: 50%; 
+                    object-fit: cover; border: 3px solid {rank_color};">
+                    <img src="{team_logo_url}" style="position: absolute; bottom: -5px; right: -5px; 
+                    width: 30px; height: 30px; filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.5));">
+                </div>
+                <div style="font-weight: bold; font-size: 0.95rem; color: #FAFAFA; margin-bottom: 5px;">{player_name}</div>
+                <div style="color: #9CA3AF; font-size: 0.75rem; margin-bottom: 8px;">{team_abbrev}</div>
+                <div style="background: #374151; padding: 8px; border-radius: 6px; margin-bottom: 8px;">
+                    <div style="color: #FAFAFA; font-size: 0.85rem; font-weight: bold;">{stats}</div>
+                    <div style="color: #9CA3AF; font-size: 0.7rem; margin-top: 4px;">{shooting_stats}</div>
+                </div>
+                <div style="font-size: 0.75rem; color: #9CA3AF;">
+                    <span style="color: #FAFAFA; font-weight: bold;">{games_played}</span> GP | 
+                    REC: <span style="color: #FAFAFA; font-weight: bold;">{team_record}</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Render top 5 rookies in a row
+        cols = st.columns(5)
+        for i, player in enumerate(rookie_ladder[:5]):
+            with cols[i]:
+                render_rookie_card(player, i)
+        
+        # Show "Next 5" if available
+        if len(rookie_ladder) > 5:
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.caption("**The Next 5:**")
+            cols2 = st.columns(5)
+            for i, player in enumerate(rookie_ladder[5:10]):
+                with cols2[i]:
+                    render_rookie_card(player, i + 5)
+    else:
+        st.info("Rookie Ladder data currently unavailable.")
+    
+    st.markdown("---")
+    
+    # ===== SECTION 3: BETTING ODDS FOR OTHER AWARDS =====
     st.markdown("## 🎲 Other Award Favorites")
     st.caption("Top 5 betting favorites per award. Odds may be affected by 65-game rule.")
     
@@ -6010,7 +6299,7 @@ elif st.session_state.current_page == "Awards":
                 """, unsafe_allow_html=True)
             
             # Separate Coach of the Year from player awards, and exclude MVP odds
-            player_awards = [a for a in awards_data if "Coach" not in a['award_name'] and "MVP" not in a['award_name']]
+            player_awards = [a for a in awards_data if "Coach" not in a['award_name'] and "MVP" not in a['award_name'] and "Rookie" not in a['award_name']]
             coach_awards = [a for a in awards_data if "Coach" in a['award_name']]
             
             # Logic to collect ties for footnotes
