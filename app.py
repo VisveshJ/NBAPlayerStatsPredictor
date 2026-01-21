@@ -1305,53 +1305,13 @@ def get_rookie_ladder():
     import re
     from datetime import datetime, timedelta
     
-    # 2025-26 Draft picks mapping (Round.Pick format)
-    draft_picks_2025 = {
-        'Cooper Flagg': '1.01',
-        'Dylan Harper': '1.02', 
-        'Kon Knueppel': '1.03',
-        'Ace Bailey': '1.04',
-        'VJ Edgecombe': '1.05',
-        'Derik Queen': '1.06',
-        'Tre Johnson': '1.07',
-        'Egor Demin': '1.08',
-        'Jeremiah Fears': '1.09',
-        'Maxime Raynaud': '1.10',
-        'Khaman Maluach': '1.11',
-        'Kasparas Jakucionis': '1.12',
-        'Collin Murray-Boyles': '1.13',
-        'Carter Bryant': '1.14',
-        'Noa Essengue': '1.15',
-        'Liam McNeeley': '1.16',
-        'Boogie Fland': '1.17',
-        'Alex Karaban': '1.18',
-        'Jalil Bethea': '1.19',
-        'Brandon McCoy II': '1.20',
-        'Asa Newell': '1.21',
-        'Cedric Coward': '1.22',
-        'Hugo Gonzalez': '1.23',
-        'Jin Takahashi': '1.24',
-        'Nique Clifford': '1.25',
-        'Cameron Boozer': '1.26',
-        'Cayden Boozer': '1.27',
-        'Azuolas Tubelis': '1.28',
-        'Benjamin Patch': '1.29',
-        'Rashad Smith': '1.30',
-        # Round 2 picks
-        'Ajay Mitchell': '2.31',
-        'Jaylen Wells': '2.32',
-        'Jaxon Kohler': '2.33',
-        'Andrew Carr': '2.34',
-        'Dink Pate': '2.35',
-    }
-    
     # Fallback data
     fallback_players = [
-        {'rank': '1', 'name': 'Cooper Flagg', 'team': 'Los Angeles Lakers', 'team_abbrev': 'LAL', 'stats': '21.2 PPG, 7.5 RPG, 4.1 APG', 'draft_pick': '1.01', 'player_id': None},
-        {'rank': '2', 'name': 'Kon Knueppel', 'team': 'Los Angeles Lakers', 'team_abbrev': 'LAL', 'stats': '14.8 PPG, 4.2 RPG, 3.3 APG', 'draft_pick': '1.03', 'player_id': None},
-        {'rank': '3', 'name': 'VJ Edgecombe', 'team': 'Oklahoma City Thunder', 'team_abbrev': 'OKC', 'stats': '12.5 PPG, 3.8 RPG, 2.9 APG', 'draft_pick': '1.05', 'player_id': None},
-        {'rank': '4', 'name': 'Derik Queen', 'team': 'Sacramento Kings', 'team_abbrev': 'SAC', 'stats': '11.2 PPG, 6.3 RPG, 1.8 APG', 'draft_pick': '1.06', 'player_id': None},
-        {'rank': '5', 'name': 'Cedric Coward', 'team': 'Memphis Grizzlies', 'team_abbrev': 'MEM', 'stats': '10.5 PPG, 4.1 RPG, 2.4 APG', 'draft_pick': '1.22', 'player_id': None},
+        {'rank': '1', 'name': 'Kon Knueppel', 'team': 'Charlotte Hornets', 'team_abbrev': 'CHA', 'stats': '19 ppg, 5.3 rpg, 3.5 apg', 'draft_pick': '4', 'player_id': None},
+        {'rank': '2', 'name': 'Cooper Flagg', 'team': 'Dallas Mavericks', 'team_abbrev': 'DAL', 'stats': '18.8 ppg, 6.3 rpg, 4.1 apg', 'draft_pick': '1', 'player_id': None},
+        {'rank': '3', 'name': 'Ace Bailey', 'team': 'Miami Heat', 'team_abbrev': 'MIA', 'stats': '16.2 ppg, 5.1 rpg, 2.8 apg', 'draft_pick': '3', 'player_id': None},
+        {'rank': '4', 'name': 'Dylan Harper', 'team': 'Houston Rockets', 'team_abbrev': 'HOU', 'stats': '14.5 ppg, 4.2 rpg, 5.2 apg', 'draft_pick': '2', 'player_id': None},
+        {'rank': '5', 'name': 'VJ Edgecombe', 'team': 'Indiana Pacers', 'team_abbrev': 'IND', 'stats': '13.1 ppg, 3.8 rpg, 2.9 apg', 'draft_pick': '5', 'player_id': None},
     ]
     
     headers = {
@@ -1360,7 +1320,7 @@ def get_rookie_ladder():
     
     try:
         # Dynamically calculate URL based on current date
-        # Rookie Ladder articles are published weekly on Tuesdays (day 1)
+        # Rookie Ladder articles are published weekly on Tuesdays (weekday 1)
         today = get_local_now()
         days_since_tuesday = (today.weekday() - 1) % 7
         recent_tuesday = today - timedelta(days=days_since_tuesday)
@@ -1393,13 +1353,13 @@ def get_rookie_ladder():
         
         players = []
         
-        # Parse TOP 5 from h2/h3/h4 headings (e.g., "1. Cooper Flagg, Los Angeles Lakers")
+        # Parse TOP 5 from h2/h3/h4 headings (e.g., "1. Kon Knueppel, Charlotte Hornets")
         rankings = art_soup.find_all(['h2', 'h3', 'h4'])
         for r in rankings:
             text = r.get_text(strip=True)
             # Match pattern like "1. Player Name, Team Name"
             match = re.match(r'^(\d+)\.?\s+(.+)', text)
-            if match and int(match.group(1)) <= 5:
+            if match and int(match.group(1)) <= 10:
                 rank = match.group(1)
                 rest = match.group(2)
                 
@@ -1412,44 +1372,63 @@ def get_rookie_ladder():
                     name = rest
                     team = "N/A"
                 
-                # Get stats from following paragraph
+                # Get stats and draft pick from following paragraphs/text
                 stats = "N/A"
+                draft_pick = "N/A"
                 current = r.find_next()
                 while current and current.name not in ['h2', 'h3', 'h4']:
-                    if current.name == 'p':
+                    if current.name == 'p' or current.name == 'div':
                         p_text = current.get_text(strip=True)
-                        if "stats:" in p_text.lower():
-                            stats = p_text.split('stats:')[-1].split('|')[0].strip()
-                            break
+                        
+                        # Look for "Season stats:" pattern
+                        if "season stats:" in p_text.lower():
+                            stats_match = re.search(r'season stats:\s*(.+?)(?:last ladder|draft pick|$)', p_text, re.IGNORECASE)
+                            if stats_match:
+                                stats = stats_match.group(1).strip()
+                        
+                        # Look for "Draft pick: No. X" pattern
+                        if "draft pick:" in p_text.lower():
+                            pick_match = re.search(r'draft pick:\s*no\.?\s*(\d+)', p_text, re.IGNORECASE)
+                            if pick_match:
+                                draft_pick = pick_match.group(1)
+                    
                     current = current.find_next()
+                    # Don't search too far
+                    if current and current.name in ['h2', 'h3', 'h4']:
+                        break
                 
                 team_abbrev = get_team_abbrev(team)
-                draft_pick = draft_picks_2025.get(name, 'N/A')
                 
                 players.append({
                     'rank': rank,
                     'name': name,
                     'team': team,
                     'team_abbrev': team_abbrev,
-                    'stats': stats,
+                    'stats': stats if stats != "N/A" else "N/A",
                     'draft_pick': draft_pick,
+                    'games_played': 'N/A',
                     'player_id': None
                 })
         
-        # Parse "The Next 5" section if present
+        # Parse "The Next 5" section (contained in a <p> with <strong> tags for ranks)
         next5_header = art_soup.find(lambda tag: tag.name in ['h2', 'h3', 'h4'] and 'next 5' in tag.get_text().lower())
         if next5_header:
             next_p = next5_header.find_next('p')
             if next_p:
+                # The paragraph contains: <strong>6.</strong> Player, Team ↔️<br>...
                 p_html = str(next_p)
+                # Split by <br> or <br/>
                 lines = re.split(r'<br\s*/?\\s*>', p_html)
                 for line in lines:
+                    # Extract rank from <strong>N.</strong>
                     rank_match = re.search(r'<strong>(\d+)\.?</strong>\s*(.+)', line, re.IGNORECASE)
                     if rank_match:
                         rank = rank_match.group(1)
                         rest = rank_match.group(2)
+                        # Remove HTML tags and emojis, keep only text
                         rest = re.sub(r'<[^>]+>', '', rest)
-                        rest = re.sub(r'[↔️⬆️⬇️↗️↘️]', '', rest).strip()
+                        rest = re.sub(r'[↔️⬆️⬇️↗️↘️🔻🔺]', '', rest).strip()
+                        # Clean up any potential invisible characters
                         rest = re.sub(r'\s+', ' ', rest).strip()
                         
                         if ',' in rest:
@@ -1461,7 +1440,6 @@ def get_rookie_ladder():
                             team = "N/A"
                         
                         team_abbrev = get_team_abbrev(team)
-                        draft_pick = draft_picks_2025.get(name, 'N/A')
                         
                         players.append({
                             'rank': rank,
@@ -1469,11 +1447,12 @@ def get_rookie_ladder():
                             'team': team,
                             'team_abbrev': team_abbrev,
                             'stats': 'N/A',
-                            'draft_pick': draft_pick,
+                            'draft_pick': 'N/A',
+                            'games_played': 'N/A',
                             'player_id': None
                         })
         
-        # Sort by rank
+        # Sort by rank and ensure we have results
         players.sort(key=lambda x: int(x['rank']))
         
         # Use the date from the successful article
@@ -6000,14 +5979,14 @@ elif st.session_state.current_page == "Awards":
             player_name = player['name']
             team_abbrev = player.get('team_abbrev', 'N/A')
             draft_pick = player.get('draft_pick', 'N/A')
-            stats = player.get('stats', 'N/A')
             
             player_photo_url = get_player_photo_url(player_name)
             team_logo_url = get_team_logo_url(team_abbrev)
             
-            # Fetch additional stats from bulk data if available
-            games_played = "N/A"
+            # Fetch stats from bulk data (overrides scraped stats with current API data)
+            player_stats = ""
             shooting_stats = ""
+            games_played = "N/A"
             team_record = "N/A"
             team_rank = "N/A"
             team_conf = ""
@@ -6018,16 +5997,16 @@ elif st.session_state.current_page == "Awards":
                     if not match.empty:
                         s = match.iloc[0]
                         games_played = s.get('GP', 'N/A')
-                        if stats == "N/A":
-                            ppg = s.get('PTS', 0)
-                            rpg = s.get('REB', 0)
-                            apg = s.get('AST', 0)
-                            stats = f"{ppg:.1f} PPG, {rpg:.1f} RPG, {apg:.1f} APG"
+                        ppg = s.get('PTS', 0)
+                        rpg = s.get('REB', 0)
+                        apg = s.get('AST', 0)
+                        player_stats = f"{ppg:.1f} PPG, {rpg:.1f} RPG, {apg:.1f} APG"
                         fg = s.get('FG_PCT', 0) * 100
                         fg3 = s.get('FG3_PCT', 0) * 100
                         ft = s.get('FT_PCT', 0) * 100
                         shooting_stats = f"{fg:.1f}% FG | {fg3:.1f}% 3P | {ft:.1f}% FT"
                         team_abbrev = s.get('TEAM_ABBREVIATION', team_abbrev)
+                        team_logo_url = get_team_logo_url(team_abbrev)
                 
                 # Get team record
                 if standings_df is not None and not standings_df.empty:
@@ -6039,31 +6018,60 @@ elif st.session_state.current_page == "Awards":
             except:
                 pass
             
+            # If no stats from API, use scraped stats as fallback
+            if not player_stats:
+                player_stats = player.get('stats', 'N/A')
+            
+            # Display rank badge and draft pick badge
+            col_rank, col_pick = st.columns([1, 1])
+            with col_rank:
+                st.markdown(f"""
+                <div style="background: {rank_color}; color: #111827; font-weight: bold; 
+                text-align: center; padding: 4px 8px; border-radius: 20px; font-size: 0.85rem;">#{rank_idx + 1}</div>
+                """, unsafe_allow_html=True)
+            with col_pick:
+                pick_display = f"Pick #{draft_pick}" if draft_pick != "N/A" else "N/A"
+                st.markdown(f"""
+                <div style="background: #10B981; color: white; font-weight: bold; 
+                text-align: center; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem;">{pick_display}</div>
+                """, unsafe_allow_html=True)
+            
+            # Photo with team logo overlay (same as MVP)
+            if rank_idx < 3:
+                # Top 3: larger photo with team logo
+                if player_photo_url:
+                    st.image(player_photo_url, width=100)
+                if team_logo_url:
+                    st.image(team_logo_url, width=40)
+            else:
+                # Others: smaller display
+                if player_photo_url:
+                    st.image(player_photo_url, width=80)
+                if team_logo_url:
+                    st.image(team_logo_url, width=35)
+            
+            # Fetch position from bio
+            pos_label = ""
+            try:
+                bio = fetch_player_bio(player_name)
+                if bio and bio.get('position'):
+                    abbrev_pos = abbreviate_position(bio['position'], player_name)
+                    pos_label = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 0.8rem;'>({abbrev_pos})</span>"
+            except:
+                pass
+            
             st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #1F2937 0%, #111827 100%); border-radius: 12px; 
-            padding: 15px; border: 1px solid #374151; text-align: center; min-height: 280px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                    <span style="background: {rank_color}; color: #111827; font-weight: bold; 
-                    padding: 4px 10px; border-radius: 20px; font-size: 0.9rem;">#{rank_idx + 1}</span>
-                    <span style="background: #10B981; color: white; font-weight: bold; 
-                    padding: 4px 10px; border-radius: 6px; font-size: 0.8rem;">Pick {draft_pick}</span>
-                </div>
-                <div style="position: relative; width: 80px; height: 80px; margin: 0 auto 10px auto;">
-                    <img src="{player_photo_url}" style="width: 80px; height: 80px; border-radius: 50%; 
-                    object-fit: cover; border: 3px solid {rank_color};">
-                    <img src="{team_logo_url}" style="position: absolute; bottom: -5px; right: -5px; 
-                    width: 30px; height: 30px; filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.5));">
-                </div>
-                <div style="font-weight: bold; font-size: 0.95rem; color: #FAFAFA; margin-bottom: 5px;">{player_name}</div>
-                <div style="color: #9CA3AF; font-size: 0.75rem; margin-bottom: 8px;">{team_abbrev}</div>
-                <div style="background: #374151; padding: 8px; border-radius: 6px; margin-bottom: 8px;">
-                    <div style="color: #FAFAFA; font-size: 0.85rem; font-weight: bold;">{stats}</div>
-                    <div style="color: #9CA3AF; font-size: 0.7rem; margin-top: 4px;">{shooting_stats}</div>
-                </div>
-                <div style="font-size: 0.75rem; color: #9CA3AF;">
-                    <span style="color: #FAFAFA; font-weight: bold;">{games_played}</span> GP | 
-                    REC: <span style="color: #FAFAFA; font-weight: bold;">{team_record}</span>
+            <div style="text-align: center; margin-top: 10px;">
+                <div style="color: #FAFAFA; font-weight: bold; font-size: 0.9rem; margin-bottom: 5px; line-height: 1.2;">{player_name}{pos_label}</div>
+                <div style="color: #9CA3AF; font-size: 0.75rem; margin-bottom: 2px;">{player_stats}</div>
+                <div style="color: #6B7280; font-size: 0.75rem; margin-bottom: 8px;">{shooting_stats}</div>
+                <div style="display: flex; justify-content: center; gap: 12px; font-size: 0.75rem;">
+                    <div style="background: #374151; padding: 2px 8px; border-radius: 4px;">
+                        <span style="color: #9CA3AF;">GP:</span> <span style="color: #FAFAFA; font-weight: bold;">{games_played}</span>
+                    </div>
+                    <div style="background: #374151; padding: 2px 8px; border-radius: 4px;">
+                        <span style="color: #9CA3AF;">REC:</span> <span style="color: #FAFAFA; font-weight: bold;">{team_record}</span> | <span style="color: #FAFAFA; font-weight: bold;">#{team_rank} in {team_conf}</span>
+                    </div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -6077,7 +6085,7 @@ elif st.session_state.current_page == "Awards":
         # Show "Next 5" if available
         if len(rookie_ladder) > 5:
             st.markdown("<br>", unsafe_allow_html=True)
-            st.caption("**The Next 5:**")
+            st.markdown("##### The Next 5")
             cols2 = st.columns(5)
             for i, player in enumerate(rookie_ladder[5:10]):
                 with cols2[i]:
