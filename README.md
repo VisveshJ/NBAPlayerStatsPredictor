@@ -48,6 +48,11 @@ An advanced, full-stack analytics platform built to provide AI-driven performanc
 
 ![Standings](screenshots/standings.png)
 
+### Play-In Tournament
+- **Live Matchups**: Real-time visualization of the 7-10 seed play-in scenarios for both conferences.
+
+![Play-In Tournament](screenshots/playin.png)
+
 ### Playoff Picture
 - **Dynamic Visualization**: Live look at the First Round and Play-In Tournament matchups if the season ended today.
 
