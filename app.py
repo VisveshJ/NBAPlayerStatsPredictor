@@ -5154,7 +5154,7 @@ elif page == "Standings":
                 st.info("No Eastern Conference standings available.")
         
         with tab_playoffs:
-            st.markdown("### Playoff Picture (If Season Ended Today)")
+            #st.markdown("### Playoff Picture (If Season Ended Today)")
             
             # Helper to get team by seed (defined once for the whole tab)
             def get_team_info_by_seed(conf_df, seed):
@@ -5185,45 +5185,45 @@ elif page == "Standings":
             west_df = standings_df[standings_df['Conference'] == 'West']
             east_df = standings_df[standings_df['Conference'] == 'East']
 
-            # 1. PLAY-IN TOURNAMENT (AT THE TOP)
-            st.markdown("### 🏟️ Play-In Tournament Status")
+            # 1. PLAY-IN TOURNAMENT
+            st.markdown("### Play-In Tournament Status")
             st.caption("_7 seed hosts 8 seed (winner gets #7). 9 seed hosts 10 seed (winner plays loser of 7/8 for #8)._")
-            
+
             def render_play_in_card(team1, team2, label):
                 if not team1 or not team2: return
-                with st.container():
-                    st.markdown(f"**{label}**")
-                    c1, c2, c3 = st.columns([1, 0.2, 1])
-                    with c1:
-                        # Team 1 (Higher Seed/Home)
-                        logo = team1['logo_url']
-                        cc1, cc2 = st.columns([0.3, 1])
-                        if logo: cc1.image(logo, width=40)
-                        cc2.markdown(f"**#{team1['seed']} {team1['full_name']}**")
-                        cc2.caption(f"{team1['record']} ({team1['streak']})")
-                    with c2:
-                        st.markdown("<div style='margin-top: 15px; font-weight: bold;'>VS</div>", unsafe_allow_html=True)
-                    with c3:
-                        # Team 2 (Lower Seed/Away)
-                        logo = team2['logo_url']
-                        cc1, cc2 = st.columns([0.3, 1])
-                        if logo: cc1.image(logo, width=40)
-                        cc2.markdown(f"**#{team2['seed']} {team2['full_name']}**")
-                        cc2.caption(f"{team2['record']} ({team2['streak']})")
+                st.markdown(f"**{label}**")
+                c1, c2, c3 = st.columns([1, 0.2, 1])
+                with c1:
+                    logo = team1['logo_url']
+                    cc1, cc2 = st.columns([0.4, 1])
+                    if logo: cc1.image(logo, width=60)
+                    cc2.markdown(f"**#{team1['seed']} {team1['full_name']}**")
+                    cc2.caption(f"{team1['record']}")
+                with c2:
+                    st.markdown("<div style='margin-top: 25px; font-weight: bold; text-align: center;'>VS</div>", unsafe_allow_html=True)
+                with c3:
+                    logo = team2['logo_url']
+                    cc1, cc2 = st.columns([0.4, 1])
+                    if logo: cc1.image(logo, width=60)
+                    cc2.markdown(f"**#{team2['seed']} {team2['full_name']}**")
+                    cc2.caption(f"{team2['record']}")
                 st.markdown("---")
 
-            col_pi_w, col_pi_e = st.columns(2)
-            with col_pi_w:
-                st.markdown("#### Western Conference")
-                render_play_in_card(get_team_info_by_seed(west_df, 7), get_team_info_by_seed(west_df, 8), "7/8 Matchup")
-                render_play_in_card(get_team_info_by_seed(west_df, 9), get_team_info_by_seed(west_df, 10), "9/10 Matchup")
-            with col_pi_e:
-                st.markdown("#### Eastern Conference")
-                render_play_in_card(get_team_info_by_seed(east_df, 7), get_team_info_by_seed(east_df, 8), "7/8 Matchup")
-                render_play_in_card(get_team_info_by_seed(east_df, 9), get_team_info_by_seed(east_df, 10), "9/10 Matchup")
+            col_pi_headers = st.columns(2)
+            with col_pi_headers[0]: st.markdown("#### Western Conference")
+            with col_pi_headers[1]: st.markdown("#### Eastern Conference")
+
+            # Side-by-side rows for Play-In to ensure aligned separators
+            r1c1, r1c2 = st.columns(2)
+            with r1c1: render_play_in_card(get_team_info_by_seed(west_df, 7), get_team_info_by_seed(west_df, 8), "7 vs 8 Matchup")
+            with r1c2: render_play_in_card(get_team_info_by_seed(east_df, 7), get_team_info_by_seed(east_df, 8), "7 vs 8 Matchup")
+            
+            r2c1, r2c2 = st.columns(2)
+            with r2c1: render_play_in_card(get_team_info_by_seed(west_df, 9), get_team_info_by_seed(west_df, 10), "9 vs 10 Matchup")
+            with r2c2: render_play_in_card(get_team_info_by_seed(east_df, 9), get_team_info_by_seed(east_df, 10), "9 vs 10 Matchup")
 
             # 2. BRACKETS
-            def render_playoff_bracket_html(conference_df, conference_name, is_flipped=False):
+            def render_playoff_bracket_html(conference_df, is_flipped=False):
                 """Render a premium interactive playoff bracket for a conference."""
                 teams = {s: get_team_info_by_seed(conference_df, s) for s in range(1, 11)}
                 
@@ -5238,21 +5238,10 @@ elif page == "Standings":
                         display: flex;
                         flex-direction: column;
                         align-items: center;
-                        padding: 10px 0;
+                        padding: 0;
                         width: 100%;
                         background-color: transparent;
                         font-family: 'Inter', -apple-system, sans-serif;
-                    }}
-                    .bracket-header {{
-                        margin-bottom: 25px;
-                        text-align: center;
-                    }}
-                    .bracket-title {{
-                        color: #FF6B35;
-                        font-size: 1.8rem;
-                        font-weight: bold;
-                        text-transform: uppercase;
-                        letter-spacing: 2px;
                     }}
                     .bracket-container {{
                         display: flex;
@@ -5269,7 +5258,7 @@ elif page == "Standings":
                         display: flex;
                         flex-direction: column;
                         gap: 30px;
-                        justify-content: center;
+                        justify-content: flex-start;
                         position: relative;
                     }}
                     .round-title {{
@@ -5296,7 +5285,7 @@ elif page == "Standings":
                         display: flex;
                         align-items: center;
                         padding: 8px 12px;
-                        gap: 10px;
+                        gap: 12px;
                         height: 50px;
                         {order_css}
                     }}
@@ -5311,8 +5300,8 @@ elif page == "Standings":
                         text-align: center;
                     }}
                     .logo-img {{
-                        width: 24px;
-                        height: 24px;
+                        width: 40px;
+                        height: 40px;
                         filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.5));
                     }}
                     .team-info {{
@@ -5324,22 +5313,14 @@ elif page == "Standings":
                     }}
                     .team-name-primary {{
                         font-weight: 700;
-                        font-size: 0.9rem;
+                        font-size: 0.95rem;
                         color: #FAFAFA;
                     }}
                     .team-rec-small {{
-                        font-size: 0.65rem;
+                        font-size: 0.95rem;
                         color: #9CA3AF;
-                        margin-left: 6px;
+                        margin-left: 8px;
                     }}
-                    .score-streak-badge {{
-                        font-weight: bold;
-                        font-size: 0.7rem;
-                        padding: 2px 5px;
-                        border-radius: 3px;
-                    }}
-                    .win-text {{ color: #10B981; }}
-                    .loss-text {{ color: #EF4444; }}
                     .tbd-team {{ color: #4B5563; font-style: italic; }}
                 </style>
                 """
@@ -5349,12 +5330,10 @@ elif page == "Standings":
                         return f"""
                             <div class="team">
                                 <span class="seed">-</span>
-                                <div style="font-size: 1.2rem;">🏀</div>
+                                <div style="font-size: 1.5rem;">🏀</div>
                                 <div class="team-info"><span class="team-name-primary tbd-team">TBD</span></div>
                             </div>
                         """
-                    streak = team['streak']
-                    s_class = "win-text" if 'W' in streak else "loss-text" if 'L' in streak else ""
                     logo = f'<img src="{team["logo_url"]}" class="logo-img">' if team['logo_url'] else '🏀'
                     
                     return f"""
@@ -5362,8 +5341,7 @@ elif page == "Standings":
                             <span class="seed">{team['seed']}</span>
                             <div>{logo}</div>
                             <div class="team-info">
-                                <div><span class="team-name-primary">{team['abbrev']}</span><span class="team-rec-small">{team['record']}</span></div>
-                                <span class="score-streak-badge {s_class}">{streak}</span>
+                                <div><span class="team-name-primary">{team['abbrev']}</span><span class="team-rec-small">({team['record']})</span></div>
                             </div>
                         </div>
                     """
@@ -5379,19 +5357,19 @@ elif page == "Standings":
                 full_html = f"""
                 <div class="bracket-wrapper">
                     {bracket_css}
-                    <div class="bracket-header"><div class="bracket-title">{conference_name} Conference</div></div>
                     <div class="bracket-container">
                         <div class="round">
                             <div class="round-title">First Round</div>
                             {m1_8}{m4_5}{m2_7}{m3_6}
                         </div>
-                        <div class="round" style="gap: 150px; padding-top: 60px;">
+                        <div class="round">
                             <div class="round-title">Conf. Semifinals</div>
-                            {m_semi_1}{m_semi_2}
+                            <div style="margin-top: 65px;">{m_semi_1}</div>
+                            <div style="margin-top: 160px;">{m_semi_2}</div>
                         </div>
-                        <div class="round" style="padding-top: 175px;">
+                        <div class="round">
                             <div class="round-title">Conf. Finals</div>
-                            {m_finals}
+                            <div style="margin-top: 195px;">{m_finals}</div>
                         </div>
                     </div>
                 </div>
@@ -5401,13 +5379,16 @@ elif page == "Standings":
             # Render Brackets using Streamlit Components for better HTML isolation
             import streamlit.components.v1 as components
             
-            # Western Conference
-            st.markdown("---")
-            components.html(render_playoff_bracket_html(west_df, "Western", is_flipped=False), height=750, scrolling=True)
+            # Western Bracket Section
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("<h3 style='text-align: center; color: #FF6B35; letter-spacing: 1px;'>WESTERN CONFERENCE BRACKET</h3>", unsafe_allow_html=True)
+            st.write(render_playoff_bracket_html(west_df, is_flipped=False), unsafe_allow_html=True)
             
-            # Eastern Conference (Flipped)
+            # Eastern Bracket Section
+            st.markdown("<br><br><br>", unsafe_allow_html=True)
             st.markdown("---")
-            components.html(render_playoff_bracket_html(east_df, "Eastern", is_flipped=True), height=750, scrolling=True)
+            st.markdown("<h3 style='text-align: center; color: #FF6B35; letter-spacing: 1px;'>EASTERN CONFERENCE BRACKET</h3>", unsafe_allow_html=True)
+            st.write(render_playoff_bracket_html(east_df, is_flipped=True), unsafe_allow_html=True)
 
 
         
