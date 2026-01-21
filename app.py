@@ -5156,199 +5156,211 @@ elif page == "Standings":
         with tab_playoffs:
             st.markdown("### Playoff Picture (If Season Ended Today)")
             
-            # Restoring the seeding notes before the bracket
-            st.markdown("**Seeding Rules:**")
-            st.caption("_2 seed plays winner of (7 vs 8). 1 seed plays winner of (winner 9 vs 10) @ (loser 7 vs 8)._")
-            st.markdown("---")
+            # Helper to get team by seed (defined once for the whole tab)
+            def get_team_info_by_seed(conf_df, seed):
+                team_row = conf_df[conf_df['PlayoffRank'] == seed]
+                if not team_row.empty:
+                    row = team_row.iloc[0]
+                    city = row['TeamCity']
+                    name = row['TeamName']
+                    full_name = city if name in city else f"{city} {name}".strip()
+                    if city == 'LA' and name == 'Clippers': full_name = "LA Clippers"
+                        
+                    abbrev = get_team_abbrev(city)
+                    record = row['Record']
+                    streak = str(row.get('strCurrentStreak', '')).replace(' ', '')
+                    logo_url = get_team_logo_url(abbrev)
+                    return {
+                        'abbrev': abbrev,
+                        'name': name,
+                        'full_name': full_name,
+                        'city': city,
+                        'record': record,
+                        'streak': streak,
+                        'logo_url': logo_url,
+                        'seed': seed
+                    }
+                return None
 
-            def render_playoff_bracket_html(conference_df, conference_name):
+            west_df = standings_df[standings_df['Conference'] == 'West']
+            east_df = standings_df[standings_df['Conference'] == 'East']
+
+            # 1. PLAY-IN TOURNAMENT (AT THE TOP)
+            st.markdown("### 🏟️ Play-In Tournament Status")
+            st.caption("_7 seed hosts 8 seed (winner gets #7). 9 seed hosts 10 seed (winner plays loser of 7/8 for #8)._")
+            
+            def render_play_in_card(team1, team2, label):
+                if not team1 or not team2: return
+                with st.container():
+                    st.markdown(f"**{label}**")
+                    c1, c2, c3 = st.columns([1, 0.2, 1])
+                    with c1:
+                        # Team 1 (Higher Seed/Home)
+                        logo = team1['logo_url']
+                        cc1, cc2 = st.columns([0.3, 1])
+                        if logo: cc1.image(logo, width=40)
+                        cc2.markdown(f"**#{team1['seed']} {team1['full_name']}**")
+                        cc2.caption(f"{team1['record']} ({team1['streak']})")
+                    with c2:
+                        st.markdown("<div style='margin-top: 15px; font-weight: bold;'>VS</div>", unsafe_allow_html=True)
+                    with c3:
+                        # Team 2 (Lower Seed/Away)
+                        logo = team2['logo_url']
+                        cc1, cc2 = st.columns([0.3, 1])
+                        if logo: cc1.image(logo, width=40)
+                        cc2.markdown(f"**#{team2['seed']} {team2['full_name']}**")
+                        cc2.caption(f"{team2['record']} ({team2['streak']})")
+                st.markdown("---")
+
+            col_pi_w, col_pi_e = st.columns(2)
+            with col_pi_w:
+                st.markdown("#### Western Conference")
+                render_play_in_card(get_team_info_by_seed(west_df, 7), get_team_info_by_seed(west_df, 8), "7/8 Matchup")
+                render_play_in_card(get_team_info_by_seed(west_df, 9), get_team_info_by_seed(west_df, 10), "9/10 Matchup")
+            with col_pi_e:
+                st.markdown("#### Eastern Conference")
+                render_play_in_card(get_team_info_by_seed(east_df, 7), get_team_info_by_seed(east_df, 8), "7/8 Matchup")
+                render_play_in_card(get_team_info_by_seed(east_df, 9), get_team_info_by_seed(east_df, 10), "9/10 Matchup")
+
+            # 2. BRACKETS
+            def render_playoff_bracket_html(conference_df, conference_name, is_flipped=False):
                 """Render a premium interactive playoff bracket for a conference."""
-                # Helper to get team by seed
-                def get_team_by_seed(conf_df, seed):
-                    team_row = conf_df[conf_df['PlayoffRank'] == seed]
-                    if not team_row.empty:
-                        row = team_row.iloc[0]
-                        city = row['TeamCity']
-                        name = row['TeamName']
-                        # Special handling for Clippers name consistency if needed
-                        if city == 'LA' and name == 'Clippers':
-                            display_city = "LA Clippers"
-                        else:
-                            display_city = city
-                            
-                        abbrev = get_team_abbrev(city)
-                        record = row['Record']
-                        streak = str(row.get('strCurrentStreak', '')).replace(' ', '')
-                        logo_url = get_team_logo_url(abbrev)
-                        return {
-                            'abbrev': abbrev,
-                            'name': name,
-                            'city': display_city,
-                            'record': record,
-                            'streak': streak,
-                            'logo_url': logo_url,
-                            'seed': seed
-                        }
-                    return None
-
-                # Get teams for seeds 1-10
-                teams = {s: get_team_by_seed(conference_df, s) for s in range(1, 11)}
+                teams = {s: get_team_info_by_seed(conference_df, s) for s in range(1, 11)}
                 
                 # CSS for the bracket
-                bracket_css = """
+                flip_css = "flex-direction: row-reverse;" if is_flipped else ""
+                align_css = "text-align: right; padding-right: 14px;" if is_flipped else "text-align: left; padding-left: 14px;"
+                order_css = "flex-direction: row-reverse;" if is_flipped else "flex-direction: row;"
+
+                bracket_css = f"""
                 <style>
-                    .bracket-wrapper {
+                    .bracket-wrapper {{
                         display: flex;
                         flex-direction: column;
                         align-items: center;
                         padding: 10px 0;
                         width: 100%;
                         background-color: transparent;
-                    }
-                    .bracket-header {
-                        display: flex;
-                        flex-direction: column;
-                        align-items: center;
+                        font-family: 'Inter', -apple-system, sans-serif;
+                    }}
+                    .bracket-header {{
                         margin-bottom: 25px;
-                    }
-                    .bracket-title {
+                        text-align: center;
+                    }}
+                    .bracket-title {{
                         color: #FF6B35;
                         font-size: 1.8rem;
                         font-weight: bold;
                         text-transform: uppercase;
                         letter-spacing: 2px;
-                        margin-bottom: 5px;
-                    }
-                    .bracket-container {
+                    }}
+                    .bracket-container {{
                         display: flex;
-                        gap: 50px;
+                        gap: 40px;
                         align-items: flex-start;
                         position: relative;
                         padding: 20px 0;
                         justify-content: center;
                         width: 100%;
                         overflow-x: auto;
-                    }
-                    .round {
+                        {flip_css}
+                    }}
+                    .round {{
                         display: flex;
                         flex-direction: column;
-                        gap: 25px;
+                        gap: 30px;
                         justify-content: center;
                         position: relative;
-                    }
-                    .round-title {
+                    }}
+                    .round-title {{
                         text-align: center;
-                        font-size: 0.8rem;
+                        font-size: 0.75rem;
                         color: #FF6B35;
                         font-weight: 700;
                         margin-bottom: 15px;
                         text-transform: uppercase;
-                        letter-spacing: 1px;
                         background: rgba(255, 107, 53, 0.1);
-                        padding: 4px 10px;
+                        padding: 4px 8px;
                         border-radius: 4px;
-                    }
-                    .matchup {
-                        width: 250px;
+                    }}
+                    .matchup {{
+                        width: 240px;
                         background: linear-gradient(135deg, #1F2937 0%, #111827 100%);
                         border: 1px solid #374151;
-                        border-radius: 10px;
+                        border-radius: 8px;
                         overflow: hidden;
-                        position: relative;
                         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-                        transition: transform 0.2s, box-shadow 0.2s;
-                    }
-                    .matchup:hover {
-                        border-color: #4B5563;
-                        box-shadow: 0 6px 20px rgba(0,0,0,0.4);
-                    }
-                    .team {
+                        transition: transform 0.2s;
+                    }}
+                    .team {{
                         display: flex;
                         align-items: center;
-                        padding: 10px 14px;
-                        gap: 12px;
-                        height: 52px;
-                    }
-                    .team:first-child {
+                        padding: 8px 12px;
+                        gap: 10px;
+                        height: 50px;
+                        {order_css}
+                    }}
+                    .team:first-child {{
                         border-bottom: 1px solid #374151;
-                    }
-                    .seed {
+                    }}
+                    .seed {{
                         font-size: 0.75rem;
                         color: #9CA3AF;
                         width: 15px;
                         font-weight: bold;
-                    }
-                    .logo-box {
-                        width: 28px;
-                        height: 28px;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                    }
-                    .logo-img {
-                        width: 26px;
-                        height: 26px;
+                        text-align: center;
+                    }}
+                    .logo-img {{
+                        width: 24px;
+                        height: 24px;
                         filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.5));
-                    }
-                    .team-info {
+                    }}
+                    .team-info {{
                         display: flex;
                         justify-content: space-between;
                         align-items: center;
                         flex-grow: 1;
-                    }
-                    .team-name-primary {
+                        {align_css}
+                    }}
+                    .team-name-primary {{
                         font-weight: 700;
-                        font-size: 0.95rem;
+                        font-size: 0.9rem;
                         color: #FAFAFA;
-                    }
-                    .team-rec-small {
-                        font-size: 0.7rem;
+                    }}
+                    .team-rec-small {{
+                        font-size: 0.65rem;
                         color: #9CA3AF;
                         margin-left: 6px;
-                    }
-                    .score-streak-badge {
+                    }}
+                    .score-streak-badge {{
                         font-weight: bold;
-                        font-size: 0.75rem;
-                        padding: 2px 6px;
-                        border-radius: 4px;
-                    }
-                    .win-text { color: #10B981; }
-                    .loss-text { color: #EF4444; }
-                    
-                    .tbd-team {
-                        color: #4B5563;
-                        font-style: italic;
-                    }
-
-                    @media (max-width: 1200px) {
-                        .bracket-container {
-                            justify-content: flex-start;
-                        }
-                    }
+                        font-size: 0.7rem;
+                        padding: 2px 5px;
+                        border-radius: 3px;
+                    }}
+                    .win-text {{ color: #10B981; }}
+                    .loss-text {{ color: #EF4444; }}
+                    .tbd-team {{ color: #4B5563; font-style: italic; }}
                 </style>
                 """
 
                 def team_html(team, is_tbd=False):
                     if is_tbd or not team:
-                        return """
+                        return f"""
                             <div class="team">
                                 <span class="seed">-</span>
-                                <div class="logo-box">🏀</div>
-                                <div class="team-info">
-                                    <span class="team-name-primary tbd-team">TBD</span>
-                                </div>
+                                <div style="font-size: 1.2rem;">🏀</div>
+                                <div class="team-info"><span class="team-name-primary tbd-team">TBD</span></div>
                             </div>
                         """
-                    
                     streak = team['streak']
                     s_class = "win-text" if 'W' in streak else "loss-text" if 'L' in streak else ""
-                    
-                    logo_html = f'<img src="{team["logo_url"]}" class="logo-img">' if team['logo_url'] else '<div class="logo-box">🏀</div>'
+                    logo = f'<img src="{team["logo_url"]}" class="logo-img">' if team['logo_url'] else '🏀'
                     
                     return f"""
                         <div class="team">
                             <span class="seed">{team['seed']}</span>
-                            <div class="logo-box">{logo_html}</div>
+                            <div>{logo}</div>
                             <div class="team-info">
                                 <div><span class="team-name-primary">{team['abbrev']}</span><span class="team-rec-small">{team['record']}</span></div>
                                 <span class="score-streak-badge {s_class}">{streak}</span>
@@ -5356,46 +5368,27 @@ elif page == "Standings":
                         </div>
                     """
 
-                # Matchups
-                # Round 1
-                # 1 vs 8/9/10 winner (simplified to current 8 for now as per mockup)
                 m1_8 = f'<div class="matchup">{team_html(teams.get(1))}{team_html(teams.get(8))}</div>'
                 m4_5 = f'<div class="matchup">{team_html(teams.get(4))}{team_html(teams.get(5))}</div>'
                 m2_7 = f'<div class="matchup">{team_html(teams.get(2))}{team_html(teams.get(7))}</div>'
                 m3_6 = f'<div class="matchup">{team_html(teams.get(3))}{team_html(teams.get(6))}</div>'
-                
-                # Semi Finals
-                # TBD teams
                 m_semi_1 = f'<div class="matchup">{team_html(None, True)}{team_html(None, True)}</div>'
                 m_semi_2 = f'<div class="matchup">{team_html(None, True)}{team_html(None, True)}</div>'
-                
-                # Finals
                 m_finals = f'<div class="matchup" style="border: 2px solid #FF6B35;">{team_html(None, True)}{team_html(None, True)}</div>'
 
                 full_html = f"""
                 <div class="bracket-wrapper">
                     {bracket_css}
-                    <div class="bracket-header">
-                        <div class="bracket-title">{conference_name} Conference</div>
-                    </div>
+                    <div class="bracket-header"><div class="bracket-title">{conference_name} Conference</div></div>
                     <div class="bracket-container">
-                        <!-- Round 1 -->
                         <div class="round">
                             <div class="round-title">First Round</div>
-                            {m1_8}
-                            {m4_5}
-                            {m2_7}
-                            {m3_6}
+                            {m1_8}{m4_5}{m2_7}{m3_6}
                         </div>
-                        
-                        <!-- Round 2 -->
-                        <div class="round" style="gap: 154px; padding-top: 60px;">
+                        <div class="round" style="gap: 150px; padding-top: 60px;">
                             <div class="round-title">Conf. Semifinals</div>
-                            {m_semi_1}
-                            {m_semi_2}
+                            {m_semi_1}{m_semi_2}
                         </div>
-                        
-                        <!-- Round 3 -->
                         <div class="round" style="padding-top: 175px;">
                             <div class="round-title">Conf. Finals</div>
                             {m_finals}
@@ -5405,45 +5398,17 @@ elif page == "Standings":
                 """
                 return full_html
 
-            west_df = standings_df[standings_df['Conference'] == 'West']
-            east_df = standings_df[standings_df['Conference'] == 'East']
+            # Render Brackets using Streamlit Components for better HTML isolation
+            import streamlit.components.v1 as components
             
-            # Show Western Conference Bracket
-            st.write(render_playoff_bracket_html(west_df, "Western"), unsafe_allow_html=True)
-            
-            st.markdown("<br><hr><br>", unsafe_allow_html=True)
-            
-            # Show Eastern Conference Bracket
-            st.write(render_playoff_bracket_html(east_df, "Eastern"), unsafe_allow_html=True)
-            
-            # Play-In Tournament Note
+            # Western Conference
             st.markdown("---")
-            st.markdown("### 🏟️ Play-In Tournament Status")
-            col_w, col_e = st.columns(2)
+            components.html(render_playoff_bracket_html(west_df, "Western", is_flipped=False), height=750, scrolling=True)
             
-            with col_w:
-                st.markdown("**West Play-In Matchups**")
-                w7 = west_df[west_df['PlayoffRank'] == 7].iloc[0] if len(west_df[west_df['PlayoffRank'] == 7]) > 0 else None
-                w8 = west_df[west_df['PlayoffRank'] == 8].iloc[0] if len(west_df[west_df['PlayoffRank'] == 8]) > 0 else None
-                w9 = west_df[west_df['PlayoffRank'] == 9].iloc[0] if len(west_df[west_df['PlayoffRank'] == 9]) > 0 else None
-                w10 = west_df[west_df['PlayoffRank'] == 10].iloc[0] if len(west_df[west_df['PlayoffRank'] == 10]) > 0 else None
-                
-                if w7 is not None and w8 is not None:
-                    st.markdown(f"**7/8 Game:** {w8['TeamName']} @ {w7['TeamName']}")
-                if w9 is not None and w10 is not None:
-                    st.markdown(f"**9/10 Game:** {w10['TeamName']} @ {w9['TeamName']}")
-                    
-            with col_e:
-                st.markdown("**East Play-In Matchups**")
-                e7 = east_df[east_df['PlayoffRank'] == 7].iloc[0] if len(east_df[east_df['PlayoffRank'] == 7]) > 0 else None
-                e8 = east_df[east_df['PlayoffRank'] == 8].iloc[0] if len(east_df[east_df['PlayoffRank'] == 8]) > 0 else None
-                e9 = east_df[east_df['PlayoffRank'] == 9].iloc[0] if len(east_df[east_df['PlayoffRank'] == 9]) > 0 else None
-                e10 = east_df[east_df['PlayoffRank'] == 10].iloc[0] if len(east_df[east_df['PlayoffRank'] == 10]) > 0 else None
-                
-                if e7 is not None and e8 is not None:
-                    st.markdown(f"**7/8 Game:** {e8['TeamName']} @ {e7['TeamName']}")
-                if e9 is not None and e10 is not None:
-                    st.markdown(f"**9/10 Game:** {e10['TeamName']} @ {e9['TeamName']}")
+            # Eastern Conference (Flipped)
+            st.markdown("---")
+            components.html(render_playoff_bracket_html(east_df, "Eastern", is_flipped=True), height=750, scrolling=True)
+
 
         
         with tab_divisions:
