@@ -6080,11 +6080,11 @@ elif st.session_state.current_page == "Awards":
                 <div style="color: #FAFAFA; font-weight: bold; font-size: 0.9rem; margin-bottom: 5px; line-height: 1.2;">{player_name}{pos_draft}</div>
                 <div style="color: #9CA3AF; font-size: 0.75rem; margin-bottom: 2px;">{player_stats}</div>
                 <div style="color: #6B7280; font-size: 0.75rem; margin-bottom: 8px;">{shooting_stats}</div>
-                <div style="display: flex; justify-content: center; gap: 12px; font-size: 0.75rem;">
-                    <div style="background: #374151; padding: 2px 8px; border-radius: 4px;">
+                <div style="display: flex; flex-wrap: nowrap; justify-content: center; gap: 8px; font-size: 0.7rem;">
+                    <div style="background: #374151; padding: 2px 6px; border-radius: 4px; white-space: nowrap;">
                         <span style="color: #9CA3AF;">GP:</span> <span style="color: #FAFAFA; font-weight: bold;">{games_played}</span>
                     </div>
-                    <div style="background: #374151; padding: 2px 8px; border-radius: 4px;">
+                    <div style="background: #374151; padding: 2px 6px; border-radius: 4px; white-space: nowrap;">
                         <span style="color: #9CA3AF;">REC:</span> <span style="color: #FAFAFA; font-weight: bold;">{team_record}</span> | <span style="color: #FAFAFA; font-weight: bold;">#{team_rank} in {team_conf}</span>
                     </div>
                 </div>
