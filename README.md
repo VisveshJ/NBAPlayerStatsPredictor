@@ -22,7 +22,7 @@ An advanced, full-stack analytics platform built to provide AI-driven performanc
 ### Today's Games
 - **Scoreboard**: Real-time scores, channel information, and one-click **Box Score** links for every game on the slate.
 
-![Today's Games](screenshots/todays_games.png)
+![Today's Games](screenshots/today_games.png)
 
 ### Player Stats
 - **Detailed History**: Comprehensive player game logs and biographical information.
