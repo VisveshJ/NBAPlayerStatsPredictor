@@ -5132,15 +5132,15 @@ elif page == "Standings":
                 elif rank < 15:
                     st.divider()
             
-            # Display collected tiebreaker notes
+            # Display collected tiebreaker notes with orange legend
+            st.markdown("---")
             st.markdown("""
-            <div style="font-size: 0.8rem; color: #9CA3AF; margin-bottom: 5px;">
+            <div style="font-size: 0.8rem; color: #9CA3AF; margin-bottom: 10px;">
                 <span style="color: #FF6B35; font-weight: bold;">ORANGE</span> indicates a favorite team.
             </div>
             """, unsafe_allow_html=True)
             
             if tiebreaker_notes:
-                st.markdown("---")
                 st.caption(f"**Tiebreaker Notes:**")
                 for note in tiebreaker_notes:
                     st.caption(note)
@@ -5450,7 +5450,7 @@ elif page == "Standings":
                     st.caption("SEED")
                 with header6:
                     st.caption("WIN %")
-                st.markdown("<div style='margin-bottom: -40px'></div>", unsafe_allow_html=True)
+                st.markdown('<style>div.stCaption { margin-bottom: -20px !important; }</style>', unsafe_allow_html=True)
                 for idx, (_, row) in enumerate(division_df.iterrows(), 1):
                     team_abbrev = get_team_abbrev(row['TeamCity'])
                     is_favorite = team_abbrev in favorite_teams
