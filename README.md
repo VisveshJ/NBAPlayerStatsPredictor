@@ -34,7 +34,7 @@ An advanced, full-stack analytics platform built to provide AI-driven performanc
 - **Hidden Markov Models**: Utilizes Gaussian HMM to identify player performance states (Cold, Average, Hot) and predict future stat lines.
 - **Situational Context**: Integrates Opponent Defensive Ratings (DRTG) to scale predictions based on matchup difficulty.
 
-![Predictions](screenshots/predictions.png)
+![Predictions](screenshots/prediction.png)
 
 ### Compare Players
 - **Head-to-Head (H2H)**: Compare players specifically when they play against each other, including historical matchup logs and IND REC.
