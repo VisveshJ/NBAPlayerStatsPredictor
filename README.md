@@ -1,133 +1,85 @@
-# NBA Player Stats Predictor
+# 🏀 NBA Player Stats Predictor
 
-An advanced NBA player performance prediction app built with Streamlit, powered by Hidden Markov Models (HMM) for AI-driven stat forecasting.
+An advanced, full-stack analytics platform built to provide AI-driven performance forecasting using **Hidden Markov Models (HMM)**. This application bridges the gap between raw sports data and actionable insights through a modern, responsive dashboard.
 
 ![Home Page](screenshots/home.png)
 
-## Features
+## ✨ Core Features
 
-### AI-Powered Player Predictions
-Predict any NBA player's next game stats using a Hidden Markov Model that analyzes:
-- Recent performance trends
-- Opponent defensive ratings
-- Head-to-head historical matchups
-- Home/Away factors
+### 🤵 Personalized Dashboard
+- **Google OAuth 2.0 Integration**: Secure login (PKCE flow) to save your personalized experience.
+- **Favorites Management**: Track your favorite teams and players with a dedicated dashboard.
+- **Dynamic Seeding & Records**: Real-time Western and Eastern Conference standings with color-coded streaks (Green for Wins, Red for Losses) and detailed home/away/division splits.
 
-![Player Prediction](screenshots/prediction.png)
+### 🤖 AI-Powered Predictions
+- **Hidden Markov Models**: Utilizes Gaussian HMM to identify player performance states (Cold, Average, Hot) and predict future stat lines.
+- **Situational Context**: Integrates Opponent Defensive Ratings (DRTG) to scale predictions based on matchup difficulty.
+- **Consistency Analysis**: Calculates player volatility and performance reliability over the season.
 
-### Live Game Scores
-Real-time scores for today's games with:
-- Final scores highlighted (winner in green)
-- Live game updates during games
-- Scheduled game times with team matchups
+### 📊 Comparative Analysis
+- **Autocomplete Search**: Effortlessly find any active NBA player or team.
+- **Head-to-Head (H2H) Filter**: Compare players specifically when they play against each other, including historical matchup logs.
+- **Visual Comparisons**: Aesthetic stat overlays and head-to-head records (IND REC).
 
-![Today's Games](screenshots/todays_games.png)
+### 🏆 NBA Awards & Odds
+- **Real-time Odds Scraper**: Live betting odds for MVP, DPOY, ROTY, and more, scraped directly from DraftKings via Playwright.
+- **MVP Ladder**: Comprehensive view of the current MVP race with historical context and live statistical resumes.
+- **Auto-Refresh**: Background workers ensure odds stay fresh within a 12-hour cycle.
 
-### Comprehensive Standings
-Full NBA standings with advanced metrics:
-- Offensive and Defensive Ratings
-- Home/Away records
-- Win streaks and L10 records
-- Play-in tournament indicators
+### 📅 Live Scoreboard & News
+- **Today's Games**: Real-time scores, channel information, and one-click **Box Score** links for every game on the slate.
+- **Playoff Picture**: Dynamic visualization of First Round and Play-In Tournament matchups based on live seeding.
+- **News Wire**: Continuous scrolling news ticker and headline grid directly from NBA.com.
 
-![Standings](screenshots/standings.png)
+## 🏗️ Architecture & Design
 
-### Playoff Picture
-Visual playoff bracket showing:
-- Current seedings and matchups
-- Play-in tournament scenarios
-- Conference logos and team records
+The application follows a modular, state-driven architecture designed for high data throughput and real-time responsiveness.
 
-![Playoff Picture](screenshots/playoffs.png)
+### 🧩 System Components
+- **Data Acquisition Layer**: Orchestrates requests to the `nba-api` with robust caching (`st.cache_data`) and `Playwright` for browser automation.
+- **AI Processing Engine**: A custom implementation of Gaussian HMM that maps observable statistics to hidden performance states.
+- **Presentation Layer**: A premium dark-themed UI (Hex `#161B22`) utilizing custom CSS tokens, smooth transitions, and circle-free logo styling.
+- **Persistence**: **SQLite** backend stores user preferences, favorite lists, and cached leaderboard data.
 
-### Enhanced Player Profiles
-Detailed player information including:
-- Player headshots and team logos
-- Biographical data (Age, Height, Weight, Draft info)
-- Home vs Away performance splits
-- Win vs Loss performance splits
-- Recent game history with scores
+## 🤖 Predictive Modeling (The HMM Approach)
+Unlike simple regressions, this app treats a player's season as a sequence of transitions between internal performance states.
+- **State Selection**: Automatically identifies hidden states from recent game sequences.
+- **Situational Adjustments**: 
+    - **Defensive Weighting**: Predictions are scaled based on the target team's Defensive Rating.
+    - **H2H Integration**: Matches against specific opponents are blended with the model output (weighted up to 40%).
+    - **Injury Filtration**: Excludes "noise" games (low minutes) to maintain model integrity.
 
-### Favorites System
-Google OAuth authentication for:
-- Saving favorite players and teams
-- Quick access to player predictions
-- Personalized dashboard experience
+## 🖥️ Tech Stack
+- **Languages**: Python 3.11+
+- **ML Frameworks**: `hmmlearn`, `scikit-learn`, `numpy`, `pandas`
+- **Frontend**: `Streamlit`, `Vanilla CSS (Modern Dark Theme)`
+- **Automation**: `Playwright` (Chromium Headless Shell)
+- **Database**: `SQLite`
+- **Auth**: `Google Cloud Console (OAuth 2.0 + PKCE)`
 
-## Tech Stack
-
-- **Frontend**: Streamlit
-- **ML Model**: Hidden Markov Model (hmmlearn)
-- **Data Source**: NBA API (nba_api)
-- **Authentication**: Google OAuth 2.0
-- **Database**: SQLite
-
-## Getting Started
+## 🏁 Getting Started
 
 ### Prerequisites
-- Python 3.11+
-- [uv](https://docs.astral.sh/uv/) (recommended) or pip
+For Linux/Cloud environments (like Streamlit Cloud), ensure the system libraries in `packages.txt` are installed to support Playwright.
 
 ### Installation
-
-1. Clone the repository:
 ```bash
+# 1. Clone & Enter
 git clone https://github.com/VisveshJ/NBAPlayerStatsPredictor.git
 cd NBAPlayerStatsPredictor
+
+# 2. Install Dependencies
+pip install -r requirements.txt
+
+# 3. Initialize Playwright (Required for Odds Scraper)
+playwright install chromium
+
+# 4. Launch Application
+streamlit run app.py
 ```
 
-2. Install dependencies:
-```bash
-uv sync
-```
+### Configuration
+Update `.streamlit/secrets.toml` with your Google Cloud credentials for OAuth functionality.
 
-3. Set up Google OAuth (optional, for Favorites):
-   - Create a project in Google Cloud Console
-   - Enable Google OAuth 2.0
-   - Create credentials and add to `.streamlit/secrets.toml`:
-   ```toml
-   [google_oauth]
-   client_id = "your-client-id"
-   client_secret = "your-client-secret"
-   redirect_uri = "http://localhost:8501"
-   ```
-
-4. Run the app:
-```bash
-uv run streamlit run app.py
-```
-
-## Project Structure
-
-```
-NBAPlayerStatsPredictor/
-├── app.py                 # Main Streamlit application
-├── src/
-│   ├── auth/             # Google OAuth authentication
-│   ├── database/         # SQLite backend for favorites
-│   ├── logic/            # HMM model and prediction logic
-│   └── ui/               # UI components
-├── static/               # Static assets (conference logos)
-├── screenshots/          # README screenshots
-└── pyproject.toml        # Project dependencies
-```
-
-## How the Prediction Model Works
-
-The app uses a **Gaussian Hidden Markov Model** with 3 hidden states representing different performance levels:
-
-1. **State Detection**: Analyzes player's recent 5 games to identify current "hot", "average", or "cold" state
-2. **Transition Prediction**: Uses learned transition probabilities to predict next game state
-3. **Defensive Adjustment**: Adjusts predictions based on opponent's defensive rating
-4. **H2H Weighting**: Incorporates historical performance against specific opponents
-5. **Injury Filtering**: Excludes games where player played < 60% of average minutes
-
-## License
-
-This project is for educational and personal use.
-
-## Acknowledgments
-
-- [NBA API](https://github.com/swar/nba_api) for comprehensive NBA data
-- [Streamlit](https://streamlit.io/) for the amazing web framework
-- [hmmlearn](https://hmmlearn.readthedocs.io/) for HMM implementation
+## 📜 License
+This project is for educational and personal use. Special thanks to the `nba-api` contributors and the Streamlit community.
