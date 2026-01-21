@@ -5247,64 +5247,62 @@ elif page == "Standings":
                     }}
                     .bracket-container {{
                         display: flex;
-                        gap: 40px;
+                        gap: 25px;
                         align-items: flex-start;
                         position: relative;
-                        padding: 20px 0;
+                        padding: 10px 0;
                         justify-content: center;
                         width: 100%;
-                        overflow-x: auto;
                         {flip_css}
                     }}
                     .round {{
                         display: flex;
                         flex-direction: column;
-                        gap: 30px;
+                        gap: 15px;
                         justify-content: flex-start;
                         position: relative;
                     }}
                     .round-title {{
                         text-align: center;
-                        font-size: 0.75rem;
+                        font-size: 0.65rem;
                         color: #FF6B35;
                         font-weight: 700;
-                        margin-bottom: 15px;
+                        margin-bottom: 8px;
                         text-transform: uppercase;
                         background: rgba(255, 107, 53, 0.1);
-                        padding: 4px 8px;
+                        padding: 3px 6px;
                         border-radius: 4px;
                     }}
                     .matchup {{
-                        width: 240px;
+                        width: 200px;
                         background: linear-gradient(135deg, #1F2937 0%, #111827 100%);
                         border: 1px solid #374151;
-                        border-radius: 8px;
+                        border-radius: 6px;
                         overflow: hidden;
-                        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-                        transition: transform 0.2s;
+                        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
                     }}
                     .team {{
                         display: flex;
                         align-items: center;
-                        padding: 8px 12px;
-                        gap: 12px;
-                        height: 50px;
+                        padding: 5px 8px;
+                        gap: 8px;
+                        height: 40px;
                         {order_css}
                     }}
                     .team:first-child {{
                         border-bottom: 1px solid #374151;
                     }}
                     .seed {{
-                        font-size: 0.75rem;
+                        font-size: 0.7rem;
                         color: #9CA3AF;
-                        width: 15px;
+                        width: 12px;
                         font-weight: bold;
                         text-align: center;
                     }}
                     .logo-img {{
-                        width: 40px;
-                        height: 40px;
-                        filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.5));
+                        width: 28px;
+                        height: 28px;
+                        filter: drop-shadow(0px 1px 2px rgba(0,0,0,0.5));
                     }}
                     .team-info {{
                         display: flex;
@@ -5315,13 +5313,13 @@ elif page == "Standings":
                     }}
                     .team-name-primary {{
                         font-weight: 700;
-                        font-size: 0.95rem;
+                        font-size: 0.8rem;
                         color: #FAFAFA;
                     }}
                     .team-rec-small {{
-                        font-size: 0.95rem;
+                        font-size: 0.75rem;
                         color: #9CA3AF;
-                        margin-left: 8px;
+                        margin-left: 5px;
                     }}
                     .tbd-team {{ color: #4B5563; font-style: italic; }}
                 </style>
@@ -5332,7 +5330,7 @@ elif page == "Standings":
                         return f"""
                             <div class="team">
                                 <span class="seed">-</span>
-                                <div style="font-size: 1.5rem;">🏀</div>
+                                <div style="font-size: 1.1rem;">🏀</div>
                                 <div class="team-info"><span class="team-name-primary tbd-team">TBD</span></div>
                             </div>
                         """
@@ -5366,12 +5364,12 @@ elif page == "Standings":
                         </div>
                         <div class="round">
                             <div class="round-title">Conf. Semifinals</div>
-                            <div style="margin-top: 65px;">{m_semi_1}</div>
-                            <div style="margin-top: 160px;">{m_semi_2}</div>
+                            <div style="margin-top: 42px;">{m_semi_1}</div>
+                            <div style="margin-top: 95px;">{m_semi_2}</div>
                         </div>
                         <div class="round">
                             <div class="round-title">Conf. Finals</div>
-                            <div style="margin-top: 195px;">{m_finals}</div>
+                            <div style="margin-top: 130px;">{m_finals}</div>
                         </div>
                     </div>
                 </div>
@@ -5384,13 +5382,13 @@ elif page == "Standings":
             # Western Bracket Section
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("<h3 style='text-align: center; color: #FF6B35; letter-spacing: 1px;'>WESTERN CONFERENCE BRACKET</h3>", unsafe_allow_html=True)
-            components.html(render_playoff_bracket_html(west_df, is_flipped=False), height=700, scrolling=True)
+            components.html(render_playoff_bracket_html(west_df, is_flipped=False), height=520, scrolling=False)
             
             # Eastern Bracket Section
-            st.markdown("<br><br>", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("---")
             st.markdown("<h3 style='text-align: center; color: #FF6B35; letter-spacing: 1px;'>EASTERN CONFERENCE BRACKET</h3>", unsafe_allow_html=True)
-            components.html(render_playoff_bracket_html(east_df, is_flipped=True), height=700, scrolling=True)
+            components.html(render_playoff_bracket_html(east_df, is_flipped=True), height=520, scrolling=False)
 
 
         
