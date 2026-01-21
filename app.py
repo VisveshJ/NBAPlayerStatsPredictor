@@ -4652,12 +4652,6 @@ elif page == "Around the NBA":
     import pytz
     
     st.title("🏀 Around the NBA")
-    
-    # Display current date in ET
-    et_tz = pytz.timezone('US/Eastern')
-    now_et = datetime.now(et_tz)
-    current_date = now_et.strftime("%B %d, %Y")
-    st.markdown(f"**As of: {current_date}**")
     st.markdown("---")
     
     # Fetch data
