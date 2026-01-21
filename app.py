@@ -5189,12 +5189,11 @@ elif page == "Standings":
             st.markdown("### Play-In Tournament")
             st.caption("_7 seed hosts 8 seed (winner gets #7). 9 seed hosts 10 seed (winner plays loser of 7/8 for #8)._")
 
-            def render_play_in_card(team1, team2, label):
+            def render_play_in_card(team1, team2):
                 """Render a play-in matchup card. Team1 is away, Team2 is home."""
                 if not team1 or not team2: return
-                st.markdown(f"**{label}**")
-                # Use padding columns to center the @ symbol
-                pad1, c1, c2, c3, pad2 = st.columns([0.3, 1, 0.15, 1, 0.3])
+                # Use padding columns to center the @ symbol - increased c3 left padding
+                pad1, c1, c2, c3, pad2 = st.columns([0.2, 1, 0.15, 1.2, 0.2])
                 with c1:
                     logo = team1['logo_url']
                     cc1, cc2 = st.columns([0.35, 1])
@@ -5205,22 +5204,22 @@ elif page == "Standings":
                     st.markdown("<div style='margin-top: 25px; font-weight: bold; text-align: center;'>@</div>", unsafe_allow_html=True)
                 with c3:
                     logo = team2['logo_url']
-                    cc1, cc2 = st.columns([0.35, 1])
+                    cc1, cc2 = st.columns([0.45, 1])
                     if logo: cc1.image(logo, width=55)
                     cc2.markdown(f"**#{team2['seed']} {team2['full_name']}**")
                     cc2.caption(f"{team2['record']}")
 
             # Western Conference Play-In
             st.markdown("#### Western Conference")
-            render_play_in_card(get_team_info_by_seed(west_df, 8), get_team_info_by_seed(west_df, 7), "7 vs 8 Matchup")
-            render_play_in_card(get_team_info_by_seed(west_df, 10), get_team_info_by_seed(west_df, 9), "9 vs 10 Matchup")
+            render_play_in_card(get_team_info_by_seed(west_df, 8), get_team_info_by_seed(west_df, 7))
+            render_play_in_card(get_team_info_by_seed(west_df, 10), get_team_info_by_seed(west_df, 9))
             
             st.markdown("---")
             
             # Eastern Conference Play-In
             st.markdown("#### Eastern Conference")
-            render_play_in_card(get_team_info_by_seed(east_df, 8), get_team_info_by_seed(east_df, 7), "7 vs 8 Matchup")
-            render_play_in_card(get_team_info_by_seed(east_df, 10), get_team_info_by_seed(east_df, 9), "9 vs 10 Matchup")
+            render_play_in_card(get_team_info_by_seed(east_df, 8), get_team_info_by_seed(east_df, 7))
+            render_play_in_card(get_team_info_by_seed(east_df, 10), get_team_info_by_seed(east_df, 9))
 
             st.markdown("---")
 
