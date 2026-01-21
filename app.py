@@ -6019,14 +6019,12 @@ elif st.session_state.current_page == "Awards":
             
             # Display rank at top center (like MVP card)
             st.markdown(f"""
-            <div style="text-align: center; margin-bottom: 10px;">
+            <div style="text-align: center; margin-bottom: 5px;">
                 <span style="color: {rank_color}; font-weight: bold; font-size: 1.5rem;">#{rank_idx + 1}</span>
             </div>
             """, unsafe_allow_html=True)
             
             # Photo with team logo side by side (like the MVP card)
-            # Use fixed height container to ensure alignment across all cards
-            st.markdown("<div style='min-height: 120px; display: flex; align-items: center; justify-content: center;'>", unsafe_allow_html=True)
             col_photo, col_logo = st.columns([1, 1])
             with col_photo:
                 if player_photo_url:
@@ -6034,7 +6032,6 @@ elif st.session_state.current_page == "Awards":
             with col_logo:
                 if team_logo_url:
                     st.image(team_logo_url, width=90)
-            st.markdown("</div>", unsafe_allow_html=True)
             
             # Fetch position from bio
             pos_label = ""
