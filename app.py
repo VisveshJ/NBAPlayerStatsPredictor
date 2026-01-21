@@ -5450,7 +5450,7 @@ elif page == "Standings":
                     st.caption("SEED")
                 with header6:
                     st.caption("WIN %")
-                st.markdown("<div style='margin-bottom: -25px'></div>", unsafe_allow_html=True)
+                st.markdown("<div style='margin-bottom: -40px'></div>", unsafe_allow_html=True)
                 for idx, (_, row) in enumerate(division_df.iterrows(), 1):
                     team_abbrev = get_team_abbrev(row['TeamCity'])
                     is_favorite = team_abbrev in favorite_teams
@@ -5503,10 +5503,9 @@ elif page == "Standings":
                         if is_favorite:
                             color = "#FF6B35" # Orange for favorites
                             
-                        display_name = f"<span style='color: {color}; font-weight: bold; font-size: 0.95rem;'>{team_name}</span>"
+                        display_name = f"<span style='color: {color}; font-weight: bold; font-size: 0.95rem;'>{team_name}</span> <span style='color: #9CA3AF; font-size: 0.75rem;'>({gp} GP)</span>"
                         
                         st.markdown(display_name, unsafe_allow_html=True)
-                        st.caption(f"(GP: {gp})")
                     
                     with col3:
                         color = get_record_color(record)
