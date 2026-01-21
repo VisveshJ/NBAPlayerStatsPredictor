@@ -1305,13 +1305,18 @@ def get_rookie_ladder():
     import re
     from datetime import datetime, timedelta
     
-    # Fallback data
+    # Updated fallback data based on Jan 21, 2026 article
     fallback_players = [
-        {'rank': '1', 'name': 'Kon Knueppel', 'team': 'Charlotte Hornets', 'team_abbrev': 'CHA', 'stats': '19 ppg, 5.3 rpg, 3.5 apg', 'draft_pick': '4', 'player_id': None},
-        {'rank': '2', 'name': 'Cooper Flagg', 'team': 'Dallas Mavericks', 'team_abbrev': 'DAL', 'stats': '18.8 ppg, 6.3 rpg, 4.1 apg', 'draft_pick': '1', 'player_id': None},
-        {'rank': '3', 'name': 'Ace Bailey', 'team': 'Miami Heat', 'team_abbrev': 'MIA', 'stats': '16.2 ppg, 5.1 rpg, 2.8 apg', 'draft_pick': '3', 'player_id': None},
-        {'rank': '4', 'name': 'Dylan Harper', 'team': 'Houston Rockets', 'team_abbrev': 'HOU', 'stats': '14.5 ppg, 4.2 rpg, 5.2 apg', 'draft_pick': '2', 'player_id': None},
-        {'rank': '5', 'name': 'VJ Edgecombe', 'team': 'Indiana Pacers', 'team_abbrev': 'IND', 'stats': '13.1 ppg, 3.8 rpg, 2.9 apg', 'draft_pick': '5', 'player_id': None},
+        {'rank': '1', 'name': 'Kon Knueppel', 'team': 'Charlotte Hornets', 'team_abbrev': 'CHA', 'stats': '19 ppg, 5.3 rpg, 3.5 apg', 'draft_pick': '4', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '2', 'name': 'Cooper Flagg', 'team': 'Dallas Mavericks', 'team_abbrev': 'DAL', 'stats': '18.8 ppg, 6.3 rpg, 4.1 apg', 'draft_pick': '1', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '3', 'name': 'VJ Edgecombe', 'team': 'Philadelphia 76ers', 'team_abbrev': 'PHI', 'stats': '15.8 ppg, 5.3 rpg, 4.2 apg', 'draft_pick': '3', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '4', 'name': 'Derik Queen', 'team': 'New Orleans Pelicans', 'team_abbrev': 'NOP', 'stats': '12.6 ppg, 7.5 rpg, 4.3 apg', 'draft_pick': '13', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '5', 'name': 'Cedric Coward', 'team': 'Memphis Grizzlies', 'team_abbrev': 'MEM', 'stats': '14 ppg, 6.5 rpg, 2.9 apg', 'draft_pick': '11', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '6', 'name': 'Maxime Raynaud', 'team': 'Sacramento Kings', 'team_abbrev': 'SAC', 'stats': '10.1 ppg, 6.6 rpg, 1.1 apg', 'draft_pick': '42', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '7', 'name': 'Egor Demin', 'team': 'Brooklyn Nets', 'team_abbrev': 'BKN', 'stats': '10.4 ppg, 3 rpg, 3.4 apg', 'draft_pick': '8', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '8', 'name': 'Caleb Love', 'team': 'Portland Trail Blazers', 'team_abbrev': 'POR', 'stats': '11.1 ppg, 2.7 rpg, 2.6 apg', 'draft_pick': 'Undrafted', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '9', 'name': 'Jeremiah Fears', 'team': 'New Orleans Pelicans', 'team_abbrev': 'NOP', 'stats': '13.9 ppg, 3.7 rpg, 3.2 apg', 'draft_pick': '7', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '10', 'name': 'Dylan Harper', 'team': 'San Antonio Spurs', 'team_abbrev': 'SAS', 'stats': '10.6 ppg, 3.2 rpg, 3.6 apg', 'draft_pick': '2', 'games_played': 'N/A', 'player_id': None},
     ]
     
     headers = {
@@ -1351,116 +1356,84 @@ def get_rookie_ladder():
         art_resp.raise_for_status()
         art_soup = BeautifulSoup(art_resp.text, 'html.parser')
         
+        # Get all text content for parsing
+        full_text = art_soup.get_text()
+        
         players = []
         
-        # Parse TOP 5 from h2/h3/h4 headings (e.g., "1. Kon Knueppel, Charlotte Hornets")
-        rankings = art_soup.find_all(['h2', 'h3', 'h4'])
-        for r in rankings:
-            text = r.get_text(strip=True)
-            # Match pattern like "1. Player Name, Team Name"
-            match = re.match(r'^(\d+)\.?\s+(.+)', text)
-            if match and int(match.group(1)) <= 10:
-                rank = match.group(1)
-                rest = match.group(2)
-                
-                # Split name and team
-                if ',' in rest:
-                    parts = rest.split(',', 1)
-                    name = parts[0].strip()
-                    team = parts[1].strip() if len(parts) > 1 else "N/A"
-                else:
-                    name = rest
-                    team = "N/A"
-                
-                # Get stats and draft pick from following paragraphs/text
-                stats = "N/A"
-                draft_pick = "N/A"
-                current = r.find_next()
-                while current and current.name not in ['h2', 'h3', 'h4']:
-                    if current.name == 'p' or current.name == 'div':
-                        p_text = current.get_text(strip=True)
-                        
-                        # Look for "Season stats:" pattern
-                        if "season stats:" in p_text.lower():
-                            stats_match = re.search(r'season stats:\s*(.+?)(?:last ladder|draft pick|$)', p_text, re.IGNORECASE)
-                            if stats_match:
-                                stats = stats_match.group(1).strip()
-                        
-                        # Look for "Draft pick: No. X" pattern
-                        if "draft pick:" in p_text.lower():
-                            pick_match = re.search(r'draft pick:\s*no\.?\s*(\d+)', p_text, re.IGNORECASE)
-                            if pick_match:
-                                draft_pick = pick_match.group(1)
-                    
-                    current = current.find_next()
-                    # Don't search too far
-                    if current and current.name in ['h2', 'h3', 'h4']:
-                        break
-                
-                team_abbrev = get_team_abbrev(team)
-                
-                players.append({
-                    'rank': rank,
-                    'name': name,
-                    'team': team,
-                    'team_abbrev': team_abbrev,
-                    'stats': stats if stats != "N/A" else "N/A",
-                    'draft_pick': draft_pick,
-                    'games_played': 'N/A',
-                    'player_id': None
-                })
+        # Parse using regex on the full text
+        # Pattern: "1. Player Name, Team Name" followed by stats on next lines
+        # Top 5 and Next 5 have slightly different formats
         
-        # Parse "The Next 5" section (contained in a <p> with <strong> tags for ranks)
-        next5_header = art_soup.find(lambda tag: tag.name in ['h2', 'h3', 'h4'] and 'next 5' in tag.get_text().lower())
-        if next5_header:
-            next_p = next5_header.find_next('p')
-            if next_p:
-                # The paragraph contains: <strong>6.</strong> Player, Team ↔️<br>...
-                p_html = str(next_p)
-                # Split by <br> or <br/>
-                lines = re.split(r'<br\s*/?\\s*>', p_html)
-                for line in lines:
-                    # Extract rank from <strong>N.</strong>
-                    rank_match = re.search(r'<strong>(\d+)\.?</strong>\s*(.+)', line, re.IGNORECASE)
-                    if rank_match:
-                        rank = rank_match.group(1)
-                        rest = rank_match.group(2)
-                        # Remove HTML tags and emojis, keep only text
-                        rest = re.sub(r'<[^>]+>', '', rest)
-                        rest = re.sub(r'[↔️⬆️⬇️↗️↘️🔻🔺]', '', rest).strip()
-                        # Clean up any potential invisible characters
-                        rest = re.sub(r'\s+', ' ', rest).strip()
-                        
-                        if ',' in rest:
-                            parts = rest.split(',', 1)
-                            name = parts[0].strip()
-                            team = parts[1].strip() if len(parts) > 1 else "N/A"
-                        else:
-                            name = rest
-                            team = "N/A"
-                        
-                        team_abbrev = get_team_abbrev(team)
-                        
-                        players.append({
-                            'rank': rank,
-                            'name': name,
-                            'team': team,
-                            'team_abbrev': team_abbrev,
-                            'stats': 'N/A',
-                            'draft_pick': 'N/A',
-                            'games_played': 'N/A',
-                            'player_id': None
-                        })
+        # Match pattern like "1. Kon Knueppel, Charlotte Hornets"
+        player_pattern = re.compile(r'(\d+)\.\s+([A-Za-zÀ-ÿ\s\'\-\.]+),\s+([A-Za-z\s]+(?:76ers|Hornets|Mavericks|Lakers|Heat|Nets|Kings|Grizzlies|Pelicans|Spurs|Trail Blazers|Warriors|Cavaliers|Celtics|Bucks|Knicks|Suns|Thunder|Timberwolves|Nuggets|Clippers|Rockets|Pacers|Hawks|Magic|Pistons|Raptors|Bulls|Jazz|Wizards))')
         
-        # Sort by rank and ensure we have results
+        # Find all player mentions
+        matches = player_pattern.findall(full_text)
+        
+        for match in matches:
+            rank = match[0]
+            name = match[1].strip()
+            team = match[2].strip()
+            
+            # Only process ranks 1-10
+            if not rank.isdigit() or int(rank) < 1 or int(rank) > 10:
+                continue
+            
+            # Skip if player already added (avoid duplicates)
+            if any(p['rank'] == rank for p in players):
+                continue
+            
+            # Find stats and draft pick in the text following the player name
+            # Search for "Season stats:" and "Draft pick:" after the player mention
+            player_section_start = full_text.find(f"{rank}. {name}")
+            if player_section_start == -1:
+                continue
+                
+            # Get text chunk after player name (up to next player or 1000 chars)
+            next_player_match = re.search(r'\n\d+\.\s+[A-Za-z]', full_text[player_section_start + 50:])
+            if next_player_match:
+                section_end = player_section_start + 50 + next_player_match.start()
+            else:
+                section_end = player_section_start + 1000
+            
+            section = full_text[player_section_start:section_end]
+            
+            # Extract Season stats
+            stats = "N/A"
+            stats_match = re.search(r'Season stats:\s*([\d\.]+\s*ppg,\s*[\d\.]+\s*rpg,\s*[\d\.]+\s*apg)', section, re.IGNORECASE)
+            if stats_match:
+                stats = stats_match.group(1).strip()
+            
+            # Extract Draft pick
+            draft_pick = "N/A"
+            pick_match = re.search(r'Draft pick:\s*(?:No\.\s*)?(\d+|Undrafted)', section, re.IGNORECASE)
+            if pick_match:
+                draft_pick = pick_match.group(1)
+            
+            team_abbrev = get_team_abbrev(team)
+            
+            players.append({
+                'rank': rank,
+                'name': name,
+                'team': team,
+                'team_abbrev': team_abbrev,
+                'stats': stats,
+                'draft_pick': draft_pick,
+                'games_played': 'N/A',
+                'player_id': None
+            })
+        
+        # Sort by rank
         players.sort(key=lambda x: int(x['rank']))
         
         # Use the date from the successful article
         as_of_date = check_date.strftime("%B %d, %Y") if check_date else "January 21, 2026"
 
         if len(players) >= 5:
-            return players[:10] if len(players) >= 10 else players, as_of_date
+            return players[:10], as_of_date
         else:
+            # Use fallback if parsing failed
             return fallback_players, "January 21, 2026"
             
     except Exception as e:
@@ -6036,19 +6009,14 @@ elif st.session_state.current_page == "Awards":
                 text-align: center; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem;">{pick_display}</div>
                 """, unsafe_allow_html=True)
             
-            # Photo with team logo overlay (same as MVP)
-            if rank_idx < 3:
-                # Top 3: larger photo with team logo
+            # Photo with team logo side by side
+            col_photo, col_logo = st.columns([2, 1])
+            with col_photo:
                 if player_photo_url:
-                    st.image(player_photo_url, width=100)
+                    st.image(player_photo_url, width=80 if rank_idx < 3 else 65)
+            with col_logo:
                 if team_logo_url:
-                    st.image(team_logo_url, width=40)
-            else:
-                # Others: smaller display
-                if player_photo_url:
-                    st.image(player_photo_url, width=80)
-                if team_logo_url:
-                    st.image(team_logo_url, width=35)
+                    st.image(team_logo_url, width=45 if rank_idx < 3 else 35)
             
             # Fetch position from bio
             pos_label = ""
