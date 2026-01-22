@@ -4827,8 +4827,12 @@ elif page == "Compare Players":
                             # Select all game log columns (use correct names)
                             display_cols = ['GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN', 'Points', 'Rebounds', 'Assists', 'Steals', 'Blocks', 'Turnovers', 'PF', 'FG', '3P', 'FT', 'FG%', '3P%', 'FT%', 'TS%']
                             available_cols = [c for c in display_cols if c in p1_h2h.columns]
-                            # Sort by date descending (most recent first)
-                            h2h_display = p1_h2h[available_cols].sort_values('GAME_DATE', ascending=False).copy()
+                            h2h_display = p1_h2h[available_cols].copy()
+                            # Convert to datetime and sort by date descending (most recent first)
+                            h2h_display['GAME_DATE'] = pd.to_datetime(h2h_display['GAME_DATE'])
+                            h2h_display = h2h_display.sort_values('GAME_DATE', ascending=False)
+                            # Format date back to readable string
+                            h2h_display['GAME_DATE'] = h2h_display['GAME_DATE'].dt.strftime('%b %d, %Y')
                             
                             # Rename columns for cleaner display
                             h2h_display = h2h_display.rename(columns={
@@ -4900,8 +4904,12 @@ elif page == "Compare Players":
                             # Select all game log columns (use correct names)
                             display_cols = ['GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN', 'Points', 'Rebounds', 'Assists', 'Steals', 'Blocks', 'Turnovers', 'PF', 'FG', '3P', 'FT', 'FG%', '3P%', 'FT%', 'TS%']
                             available_cols = [c for c in display_cols if c in p2_h2h.columns]
-                            # Sort by date descending (most recent first)
-                            h2h_display = p2_h2h[available_cols].sort_values('GAME_DATE', ascending=False).copy()
+                            h2h_display = p2_h2h[available_cols].copy()
+                            # Convert to datetime and sort by date descending (most recent first)
+                            h2h_display['GAME_DATE'] = pd.to_datetime(h2h_display['GAME_DATE'])
+                            h2h_display = h2h_display.sort_values('GAME_DATE', ascending=False)
+                            # Format date back to readable string
+                            h2h_display['GAME_DATE'] = h2h_display['GAME_DATE'].dt.strftime('%b %d, %Y')
                             
                             # Rename columns for cleaner display
                             h2h_display = h2h_display.rename(columns={
