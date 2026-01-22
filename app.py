@@ -5645,10 +5645,10 @@ elif page == "Standings":
             render_play_in_card(west_8, west_7)
             render_play_in_card(west_10, west_9)
             
-            # Season Series section after both matchups
-            st.markdown("**Season Series**")
-            render_h2h_record(west_8, west_7, nba_schedule)
-            render_h2h_record(west_10, west_9, nba_schedule)
+            # Season Series section (on-demand)
+            with st.expander("📊 Show Season Series"):
+                render_h2h_record(west_8, west_7, nba_schedule)
+                render_h2h_record(west_10, west_9, nba_schedule)
             
             st.markdown("---")
             
@@ -5662,10 +5662,10 @@ elif page == "Standings":
             render_play_in_card(east_8, east_7)
             render_play_in_card(east_10, east_9)
             
-            # Season Series section after both matchups
-            st.markdown("**Season Series**")
-            render_h2h_record(east_8, east_7, nba_schedule)
-            render_h2h_record(east_10, east_9, nba_schedule)
+            # Season Series section (on-demand)
+            with st.expander("📊 Show Season Series"):
+                render_h2h_record(east_8, east_7, nba_schedule)
+                render_h2h_record(east_10, east_9, nba_schedule)
 
             st.markdown("---")
 
