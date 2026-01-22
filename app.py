@@ -5817,14 +5817,36 @@ elif page == "Standings":
             st.markdown("<h3 style='text-align: center; color: #FF6B35; letter-spacing: 1px;'>WESTERN CONFERENCE BRACKET</h3>", unsafe_allow_html=True)
             components.html(render_playoff_bracket_html(west_df, is_flipped=False), height=520, scrolling=False)
             
+            # Western Conference First Round H2H Records
+            st.markdown("#### First Round Matchups - Season Series")
+            west_matchups = [
+                (1, 8), (4, 5), (2, 7), (3, 6)
+            ]
+            for seed1, seed2 in west_matchups:
+                team1 = get_team_info_by_seed(west_df, seed1)
+                team2 = get_team_info_by_seed(west_df, seed2)
+                if team1 and team2:
+                    render_h2h_record(team2, team1, nba_schedule)
+            
             # Eastern Bracket Section
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("---")
             st.markdown("<h3 style='text-align: center; color: #FF6B35; letter-spacing: 1px;'>EASTERN CONFERENCE BRACKET</h3>", unsafe_allow_html=True)
             components.html(render_playoff_bracket_html(east_df, is_flipped=True), height=520, scrolling=False)
+            
+            # Eastern Conference First Round H2H Records
+            st.markdown("#### First Round Matchups - Season Series")
+            east_matchups = [
+                (1, 8), (4, 5), (2, 7), (3, 6)
+            ]
+            for seed1, seed2 in east_matchups:
+                team1 = get_team_info_by_seed(east_df, seed1)
+                team2 = get_team_info_by_seed(east_df, seed2)
+                if team1 and team2:
+                    render_h2h_record(team2, team1, nba_schedule)
 
 
-        
+
         with tab_divisions:
             # ===== DIVISION STANDINGS =====
             st.markdown("## Division Standings")
