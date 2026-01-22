@@ -5566,7 +5566,7 @@ elif page == "Standings":
                     return None
 
             def render_h2h_record(team1, team2, nba_schedule):
-                """Display the h2h record and next matchup for a play-in pairing."""
+                """Display the h2h record and next matchup for a play-in pairing, centered."""
                 if not team1 or not team2:
                     return
                 
@@ -5578,15 +5578,16 @@ elif page == "Standings":
                 
                 # Get next matchup between these teams
                 next_matchup = None
-                if nba_schedule is not None:
+                if nba_schedule:
                     try:
                         from datetime import datetime
                         today = datetime.now().date()
                         
-                        for _, game in nba_schedule.iterrows():
-                            home = game.get('HOME_TEAM_ABBREVIATION', '')
-                            away = game.get('VISITOR_TEAM_ABBREVIATION', '')
-                            game_date_str = game.get('GAME_DATE', '')
+                        # Schedule is a list of dicts, not a DataFrame
+                        for game in nba_schedule:
+                            home = game.get('home_team', '')
+                            away = game.get('away_team', '')
+                            game_date_str = game.get('game_date', '')
                             
                             # Check if this is a matchup between our teams
                             if (home == team1_abbrev and away == team2_abbrev) or \
@@ -5624,7 +5625,8 @@ elif page == "Standings":
                     info_parts.append(f"Next: {next_matchup['date']} ({away} @ {home})")
                 
                 if info_parts:
-                    st.caption(" • ".join(info_parts))
+                    # Center the text
+                    st.markdown(f"<p style='text-align: center; color: #9CA3AF; font-size: 0.85rem; margin-top: -10px;'>{' • '.join(info_parts)}</p>", unsafe_allow_html=True)
 
             # Western Conference Play-In
             st.markdown("#### Western Conference")
