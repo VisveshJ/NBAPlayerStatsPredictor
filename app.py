@@ -5625,8 +5625,7 @@ elif page == "Standings":
                     info_parts.append(f"Next: {next_matchup['date']} ({away} @ {home})")
                 
                 if info_parts:
-                    # Center the text
-                    st.markdown(f"<p style='text-align: center; color: #9CA3AF; font-size: 0.85rem; margin-top: -10px;'>{' • '.join(info_parts)}</p>", unsafe_allow_html=True)
+                    st.caption(" • ".join(info_parts))
 
             # Western Conference Play-In
             st.markdown("#### Western Conference")
