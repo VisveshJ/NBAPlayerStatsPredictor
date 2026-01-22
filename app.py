@@ -3169,10 +3169,9 @@ elif page == "Player Stats":
                 if splits_data:
                     splits_df = pd.DataFrame(splits_data)
                     
-                    # Style the splits table
+                    # Style the splits table with subtle background
                     def highlight_splits(row):
-                        # Use transparent background to blend with page
-                        return ['background-color: transparent; text-align: left'] * len(row)
+                        return ['background-color: rgba(45, 55, 72, 0.5); text-align: left'] * len(row)
                     
                     styled_splits = splits_df.style.apply(highlight_splits, axis=1).set_properties(**{'text-align': 'left'})
                     st.dataframe(styled_splits, use_container_width=True, hide_index=True)
@@ -3200,10 +3199,9 @@ elif page == "Player Stats":
                     if wl_splits_data:
                         wl_splits_df = pd.DataFrame(wl_splits_data)
                         
-                        # Style the splits table with Win/Loss colors
+                        # Style the splits table with subtle background
                         def highlight_wl_splits(row):
-                            # Use transparent background to blend with page
-                            return ['background-color: transparent; text-align: left'] * len(row)
+                            return ['background-color: rgba(45, 55, 72, 0.5); text-align: left'] * len(row)
                         
                         styled_wl_splits = wl_splits_df.style.apply(highlight_wl_splits, axis=1).set_properties(**{'text-align': 'left'})
                         st.dataframe(styled_wl_splits, use_container_width=True, hide_index=True)
@@ -3247,10 +3245,9 @@ elif page == "Player Stats":
                     if conf_splits_data:
                         conf_splits_df = pd.DataFrame(conf_splits_data)
                         
-                        # Style the splits table with conference colors
+                        # Style the splits table with subtle background
                         def highlight_conf_splits(row):
-                            # Use transparent background to blend with page
-                            return ['background-color: transparent; text-align: left'] * len(row)
+                            return ['background-color: rgba(45, 55, 72, 0.5); text-align: left'] * len(row)
                         
                         styled_conf_splits = conf_splits_df.style.apply(highlight_conf_splits, axis=1).set_properties(**{'text-align': 'left'})
                         st.dataframe(styled_conf_splits, use_container_width=True, hide_index=True)
@@ -3311,10 +3308,9 @@ elif page == "Player Stats":
                         if record_splits_data:
                             record_splits_df = pd.DataFrame(record_splits_data)
                             
-                            # Style the splits table - winning teams in orange/gold, losing in lighter shade
+                            # Style the splits table with subtle background
                             def highlight_record_splits(row):
-                                # Use transparent background to blend with page
-                                return ['background-color: transparent; text-align: left'] * len(row)
+                                return ['background-color: rgba(45, 55, 72, 0.5); text-align: left'] * len(row)
                             
                             styled_record_splits = record_splits_df.style.apply(highlight_record_splits, axis=1).set_properties(**{'text-align': 'left'})
                             st.dataframe(styled_record_splits, use_container_width=True, hide_index=True)
