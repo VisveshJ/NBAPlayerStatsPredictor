@@ -5862,13 +5862,11 @@ elif st.session_state.current_page == "Awards":
                                 st.error(f"Failed to auto-install browser: {install_err}")
                                 st.info("This is common on some cloud platforms. Please try clicking the button again as the first attempt may have initialized the path.")
                     
-                    st.error(f"Error refreshing: {e}")
-                    if e.stderr:
-                        st.error("Error details:")
-                        st.code(e.stderr)
-                    if e.stdout:
-                        st.info("Output before failure:")
-                        st.code(e.stdout)
+                    # Check if it's just unavailable props vs actual error
+                    if e.stdout and "No new data collected" in e.stdout:
+                        st.info("Props currently unavailable on DraftKings. Showing most recent data.")
+                    else:
+                        st.warning("Props currently unavailable. Showing most recent data.")
                 except Exception as e:
                     st.error(f"Unexpected error: {e}")
     

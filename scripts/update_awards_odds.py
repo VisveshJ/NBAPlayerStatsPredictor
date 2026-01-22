@@ -111,8 +111,14 @@ def scrape_dk_odds():
         print(f"✅ Successfully saved odds for {len(awards_data)} awards to {OUTPUT_FILE}")
         return True
     else:
-        print("❌ No data collected.")
-        return False
+        # No new data - preserve existing data if available
+        if os.path.exists(OUTPUT_FILE):
+            print("⚠️ No new data collected (DraftKings may not have awards open right now).")
+            print("   Keeping previous data. Awards odds will update when available.")
+            return True  # Don't fail - just keep old data
+        else:
+            print("❌ No data collected and no previous data exists.")
+            return False
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Scrape NBA Awards Odds from DraftKings")
