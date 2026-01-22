@@ -965,8 +965,8 @@ def get_nba_injuries():
             
             for row in rows:
                 cells = row.find_all('td')
-                if len(cells) >= 3:
-                    # Get player name
+                if len(cells) >= 4:
+                    # ESPN structure: 0=Name, 1=Position, 2=Date, 3=Status, 4=Description
                     player_cell = cells[0]
                     player_link = player_cell.find('a')
                     player_name = player_link.get_text(strip=True) if player_link else player_cell.get_text(strip=True)
@@ -975,19 +975,15 @@ def get_nba_injuries():
                     if not player_name or player_name.upper() == "NAME":
                         continue
                     
-                    # Get injury date
-                    injury_date = cells[1].get_text(strip=True) if len(cells) > 1 else ""
+                    # Get status (cell 3)
+                    status = cells[3].get_text(strip=True) if len(cells) > 3 else ""
                     
-                    # Get status
-                    status = cells[2].get_text(strip=True) if len(cells) > 2 else ""
-                    
-                    # Get injury description
-                    description = cells[3].get_text(strip=True) if len(cells) > 3 else ""
+                    # Get injury description (cell 4)
+                    description = cells[4].get_text(strip=True) if len(cells) > 4 else ""
                     
                     injuries.append({
                         'team': team_name,
                         'player': player_name,
-                        'date': injury_date,
                         'status': status,
                         'description': description
                     })
