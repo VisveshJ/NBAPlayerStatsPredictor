@@ -2593,27 +2593,41 @@ elif page == "Predictions":
                         if opp_injured_players or team_injured_players:
                             st.markdown("#### 🏥 Injury Report")
                             
+                            def format_injury_status(status):
+                                """Format injury status with icon and clean label."""
+                                s = status.lower()
+                                if 'out' in s:
+                                    return "🔴 OUT"
+                                elif 'doubtful' in s:
+                                    return "🟠 Doubtful"
+                                elif 'questionable' in s:
+                                    return "🟡 GTD"
+                                elif 'probable' in s or 'available' in s or 'active' in s:
+                                    return "🟢 Active"
+                                elif 'day-to-day' in s:
+                                    return "🟡 GTD"
+                                else:
+                                    return f"⚪ {status}"
+                            
                             inj_col1, inj_col2 = st.columns(2)
                             
                             with inj_col1:
                                 opp_full_name = TEAM_NAME_MAP.get(selected_opponent, selected_opponent)
-                                st.markdown(f"**{opp_full_name}** (Opponent)")
+                                st.markdown(f"**{opp_full_name}**")
                                 if opp_injured_players:
-                                    for p in opp_injured_players[:5]:  # Limit to 5
-                                        status_color = "#EF4444" if "out" in p['status'].lower() else "#F59E0B" if "doubtful" in p['status'].lower() else "#FBBF24"
-                                        st.markdown(f"<span style='color:{status_color};'>●</span> {p['name']} - {p['status']}", unsafe_allow_html=True)
+                                    for p in opp_injured_players[:6]:
+                                        st.markdown(f"{format_injury_status(p['status'])} {p['name']}")
                                 else:
-                                    st.caption("No injuries reported")
+                                    st.caption("✓ No injuries")
                             
                             with inj_col2:
                                 team_full_name = TEAM_NAME_MAP.get(player_team, player_team) if player_team else "Player's Team"
-                                st.markdown(f"**{team_full_name}** (Player's Team)")
+                                st.markdown(f"**{team_full_name}**")
                                 if team_injured_players:
-                                    for p in team_injured_players[:5]:  # Limit to 5
-                                        status_color = "#EF4444" if "out" in p['status'].lower() else "#F59E0B" if "doubtful" in p['status'].lower() else "#FBBF24"
-                                        st.markdown(f"<span style='color:{status_color};'>●</span> {p['name']} - {p['status']}", unsafe_allow_html=True)
+                                    for p in team_injured_players[:6]:
+                                        st.markdown(f"{format_injury_status(p['status'])} {p['name']}")
                                 else:
-                                    st.caption("No injuries reported")
+                                    st.caption("✓ No injuries")
                         
                         
                         st.markdown("---")
