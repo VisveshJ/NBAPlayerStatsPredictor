@@ -999,13 +999,13 @@ def get_nba_injuries():
 
 
 def analyze_team_injuries(injuries, team_abbrev):
-    """Analyze injuries for a team and return an impact score (0-10).
+    """Analyze injuries for a team and return impact score and injured players.
     
-    Higher score = more impactful injuries (weaker team).
-    Key players (stars, starters) weighted more heavily.
+    Returns:
+        tuple: (impact_score: float 0-10, injured_players: list of dicts)
     """
     if not injuries or not team_abbrev:
-        return 0
+        return 0, []
     
     # Map team abbreviations to ESPN team names
     team_name_map = {
@@ -1023,11 +1023,14 @@ def analyze_team_injuries(injuries, team_abbrev):
     team_injuries = [inj for inj in injuries if team_search.lower() in inj.get('team', '').lower()]
     
     if not team_injuries:
-        return 0
+        return 0, []
     
     impact_score = 0
+    injured_players = []
+    
     for inj in team_injuries:
         status = inj.get('status', '').lower()
+        player_name = inj.get('player', 'Unknown')
         
         # Weight by injury severity
         if 'out' in status:
@@ -1040,9 +1043,15 @@ def analyze_team_injuries(injuries, team_abbrev):
             impact_score += 0.3
         else:
             impact_score += 0.5
+        
+        injured_players.append({
+            'name': player_name,
+            'status': inj.get('status', 'Unknown'),
+            'description': inj.get('description', '')
+        })
     
     # Cap at 10
-    return min(round(impact_score, 1), 10)
+    return min(round(impact_score, 1), 10), injured_players
 
 def get_team_streaks(standings_df):
     """Calculate hot and cold teams based on standings data."""
@@ -2545,8 +2554,8 @@ elif page == "Predictions":
                     with st.spinner("Generating prediction..."):
                         # Calculate injury impact for prediction
                         injuries = get_nba_injuries()
-                        opp_injury_score = analyze_team_injuries(injuries, selected_opponent)
-                        team_injury_score = analyze_team_injuries(injuries, player_team) if player_team else 0
+                        opp_injury_score, opp_injured_players = analyze_team_injuries(injuries, selected_opponent)
+                        team_injury_score, team_injured_players = analyze_team_injuries(injuries, player_team) if player_team else (0, [])
                         
                         injury_impact = {
                             'opp_impact': opp_injury_score,
@@ -2580,14 +2589,32 @@ elif page == "Predictions":
                             st.metric("Assists", int(round(prediction['Assists'])))
                             st.metric("Turnovers", int(round(prediction['Turnovers'])))
                         
-                        # Show injury impact if any
-                        if injury_impact['opp_impact'] > 0 or injury_impact['team_impact'] > 0:
-                            injury_notes = []
-                            if injury_impact['opp_impact'] > 0:
-                                injury_notes.append(f"Opponent injury impact: +{injury_impact['opp_impact']:.1f}")
-                            if injury_impact['team_impact'] > 0:
-                                injury_notes.append(f"Team injuries (usage boost): +{injury_impact['team_impact']:.1f}")
-                            st.caption(f"📋 Injury adjustments applied: {', '.join(injury_notes)}")
+                        # Show injury reports if any players injured
+                        if opp_injured_players or team_injured_players:
+                            st.markdown("#### 🏥 Injury Report")
+                            
+                            inj_col1, inj_col2 = st.columns(2)
+                            
+                            with inj_col1:
+                                opp_full_name = TEAM_NAME_MAP.get(selected_opponent, selected_opponent)
+                                st.markdown(f"**{opp_full_name}** (Opponent)")
+                                if opp_injured_players:
+                                    for p in opp_injured_players[:5]:  # Limit to 5
+                                        status_color = "#EF4444" if "out" in p['status'].lower() else "#F59E0B" if "doubtful" in p['status'].lower() else "#FBBF24"
+                                        st.markdown(f"<span style='color:{status_color};'>●</span> {p['name']} - {p['status']}", unsafe_allow_html=True)
+                                else:
+                                    st.caption("No injuries reported")
+                            
+                            with inj_col2:
+                                team_full_name = TEAM_NAME_MAP.get(player_team, player_team) if player_team else "Player's Team"
+                                st.markdown(f"**{team_full_name}** (Player's Team)")
+                                if team_injured_players:
+                                    for p in team_injured_players[:5]:  # Limit to 5
+                                        status_color = "#EF4444" if "out" in p['status'].lower() else "#F59E0B" if "doubtful" in p['status'].lower() else "#FBBF24"
+                                        st.markdown(f"<span style='color:{status_color};'>●</span> {p['name']} - {p['status']}", unsafe_allow_html=True)
+                                else:
+                                    st.caption("No injuries reported")
+                        
                         
                         st.markdown("---")
                         
