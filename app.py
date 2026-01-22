@@ -5545,9 +5545,9 @@ elif page == "Standings":
                     cc2.caption(f"{team2['record']}")
 
             def get_h2h_record(team1_abbrev, team2_abbrev):
-                """Get head-to-head record between two teams this season."""
+                """Get head-to-head record between two teams this season (uses cached team logs)."""
                 try:
-                    # Get team1's game log
+                    # Get team1's game log - this is cached so won't make new API calls
                     team1_games = get_team_game_log(team1_abbrev, season, num_games=82)
                     if team1_games is None or len(team1_games) == 0:
                         return None
@@ -5562,7 +5562,7 @@ elif page == "Standings":
                     losses = len(team1_vs_team2[team1_vs_team2['WL'] == 'L'])
                     
                     return {'wins': wins, 'losses': losses, 'total': wins + losses}
-                except:
+                except Exception as e:
                     return None
 
             def render_h2h_record(team1, team2, nba_schedule, inline=False):
@@ -5829,33 +5829,11 @@ elif page == "Standings":
             st.markdown("<h3 style='text-align: center; color: #FF6B35; letter-spacing: 1px;'>WESTERN CONFERENCE BRACKET</h3>", unsafe_allow_html=True)
             components.html(render_playoff_bracket_html(west_df, is_flipped=False), height=520, scrolling=False)
             
-            # Western Conference First Round H2H Records
-            st.markdown("#### First Round Matchups - Season Series")
-            west_matchups = [
-                (1, 8), (4, 5), (2, 7), (3, 6)
-            ]
-            for seed1, seed2 in west_matchups:
-                team1 = get_team_info_by_seed(west_df, seed1)
-                team2 = get_team_info_by_seed(west_df, seed2)
-                if team1 and team2:
-                    render_h2h_record(team2, team1, nba_schedule)
-            
             # Eastern Bracket Section
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("---")
             st.markdown("<h3 style='text-align: center; color: #FF6B35; letter-spacing: 1px;'>EASTERN CONFERENCE BRACKET</h3>", unsafe_allow_html=True)
             components.html(render_playoff_bracket_html(east_df, is_flipped=True), height=520, scrolling=False)
-            
-            # Eastern Conference First Round H2H Records
-            st.markdown("#### First Round Matchups - Season Series")
-            east_matchups = [
-                (1, 8), (4, 5), (2, 7), (3, 6)
-            ]
-            for seed1, seed2 in east_matchups:
-                team1 = get_team_info_by_seed(east_df, seed1)
-                team2 = get_team_info_by_seed(east_df, seed2)
-                if team1 and team2:
-                    render_h2h_record(team2, team1, nba_schedule)
 
 
 
