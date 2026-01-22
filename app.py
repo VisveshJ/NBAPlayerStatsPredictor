@@ -1001,6 +1001,9 @@ def get_nba_injuries():
 def analyze_team_injuries(injuries, team_abbrev):
     """Analyze injuries for a team and return impact score and injured players.
     
+    Only returns players who are Out, Doubtful, or Questionable.
+    Checks description for actual game status when status is Day-To-Day.
+    
     Returns:
         tuple: (impact_score: float 0-10, injured_players: list of dicts)
     """
@@ -1029,24 +1032,35 @@ def analyze_team_injuries(injuries, team_abbrev):
     injured_players = []
     
     for inj in team_injuries:
-        status = inj.get('status', '').lower()
+        raw_status = inj.get('status', '').lower()
+        description = inj.get('description', '').lower()
         player_name = inj.get('player', 'Unknown')
         
-        # Weight by injury severity
-        if 'out' in status:
+        # Determine actual game status by checking description
+        # ESPN description often contains "is questionable" or "is probable" etc.
+        if 'out' in raw_status:
+            game_status = 'Out'
             impact_score += 2.0
-        elif 'doubtful' in status:
+        elif 'doubtful' in raw_status or 'doubtful' in description:
+            game_status = 'Doubtful'
             impact_score += 1.5
-        elif 'questionable' in status:
+        elif 'questionable' in description:
+            game_status = 'Questionable'
             impact_score += 0.8
-        elif 'day-to-day' in status or 'probable' in status:
-            impact_score += 0.3
+        elif 'probable' in description:
+            # Skip probable players - they're likely playing
+            continue
+        elif 'day-to-day' in raw_status:
+            # If day-to-day with no specific game status, treat as Questionable
+            game_status = 'Questionable'
+            impact_score += 0.8
         else:
-            impact_score += 0.5
+            # Skip players with unclear status (likely not impactful)
+            continue
         
         injured_players.append({
             'name': player_name,
-            'status': inj.get('status', 'Unknown'),
+            'status': game_status,
             'description': inj.get('description', '')
         })
     
