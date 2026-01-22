@@ -1036,7 +1036,7 @@ def analyze_team_injuries(injuries, team_abbrev):
         description = inj.get('description', '').lower()
         player_name = inj.get('player', 'Unknown')
         
-        # Determine actual game status by checking description
+        # Determine actual game status by checking both status and description
         # ESPN description often contains "is questionable" or "is probable" etc.
         if 'out' in raw_status:
             game_status = 'Out'
@@ -1044,10 +1044,10 @@ def analyze_team_injuries(injuries, team_abbrev):
         elif 'doubtful' in raw_status or 'doubtful' in description:
             game_status = 'Doubtful'
             impact_score += 1.5
-        elif 'questionable' in description:
+        elif 'questionable' in raw_status or 'questionable' in description:
             game_status = 'Questionable'
             impact_score += 0.8
-        elif 'probable' in description:
+        elif 'probable' in raw_status or 'probable' in description:
             # Skip probable players - they're likely playing
             continue
         elif 'day-to-day' in raw_status:
