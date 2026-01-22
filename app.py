@@ -2090,6 +2090,65 @@ elif page == "Predictions":
                     else:
                         st.toast(f"{player_team} is already being watched!")
 
+        # Season Averages - quick stats summary
+        st.markdown("### Season Averages")
+        
+        # Calculate shooting percentages for season
+        if 'FGM' in player_df.columns and 'FGA' in player_df.columns:
+            total_fgm = player_df['FGM'].sum()
+            total_fga = player_df['FGA'].sum()
+            season_fg_pct = (total_fgm / total_fga * 100) if total_fga > 0 else 0
+        else:
+            season_fg_pct = 0
+            total_fga = 0
+        
+        if '3PM' in player_df.columns and '3PA' in player_df.columns:
+            total_3pm = player_df['3PM'].sum()
+            total_3pa = player_df['3PA'].sum()
+            season_3p_pct = (total_3pm / total_3pa * 100) if total_3pa > 0 else 0
+        else:
+            season_3p_pct = 0
+        
+        if 'FTM' in player_df.columns and 'FTA' in player_df.columns:
+            total_ftm = player_df['FTM'].sum()
+            total_fta = player_df['FTA'].sum()
+            season_ft_pct = (total_ftm / total_fta * 100) if total_fta > 0 else 0
+        else:
+            season_ft_pct = 0
+            total_fta = 0
+        
+        # Calculate TS%
+        total_pts = player_df['Points'].sum()
+        season_ts_pct = (total_pts / (2 * (total_fga + 0.44 * total_fta)) * 100) if (total_fga + 0.44 * total_fta) > 0 else 0
+        
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
+        
+        with col1:
+            st.metric("PPG", f"{player_df['Points'].mean():.1f}")
+            st.metric("SPG", f"{player_df['Steals'].mean():.1f}")
+        
+        with col2:
+            st.metric("RPG", f"{player_df['Rebounds'].mean():.1f}")
+            st.metric("BPG", f"{player_df['Blocks'].mean():.1f}")
+        
+        with col3:
+            st.metric("APG", f"{player_df['Assists'].mean():.1f}")
+            st.metric("TO", f"{player_df['Turnovers'].mean():.1f}")
+        
+        with col4:
+            st.metric("FG%", format_pct(season_fg_pct))
+            st.metric("3P%", format_pct(season_3p_pct))
+        
+        with col5:
+            st.metric("FT%", format_pct(season_ft_pct))
+            st.metric("Games", len(player_df))
+        
+        with col6:
+            st.metric("TS%", format_pct(season_ts_pct))
+            st.metric("MPG", f"{player_df['MIN'].mean():.1f}" if 'MIN' in player_df.columns else "N/A")
+        
+        st.markdown("---")
+
         # Show recent games right after loading - ADD MINUTES
         st.markdown("### Recent Performance")
         
