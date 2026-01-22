@@ -5544,17 +5544,116 @@ elif page == "Standings":
                     cc2.markdown(f"**#{team2['seed']} {team2['full_name']}**")
                     cc2.caption(f"{team2['record']}")
 
+            def get_h2h_record(team1_abbrev, team2_abbrev):
+                """Get head-to-head record between two teams this season."""
+                try:
+                    # Get team1's game log
+                    team1_games = get_team_game_log(team1_abbrev, season, num_games=82)
+                    if team1_games is None or len(team1_games) == 0:
+                        return None
+                    
+                    # Find games vs team2
+                    team1_vs_team2 = team1_games[team1_games['MATCHUP'].str.contains(team2_abbrev, case=False, na=False)]
+                    
+                    if len(team1_vs_team2) == 0:
+                        return None
+                    
+                    wins = len(team1_vs_team2[team1_vs_team2['WL'] == 'W'])
+                    losses = len(team1_vs_team2[team1_vs_team2['WL'] == 'L'])
+                    
+                    return {'wins': wins, 'losses': losses, 'total': wins + losses}
+                except:
+                    return None
+
+            def render_h2h_record(team1, team2, nba_schedule):
+                """Display the h2h record and next matchup for a play-in pairing."""
+                if not team1 or not team2:
+                    return
+                
+                team1_abbrev = team1.get('abbrev', '')
+                team2_abbrev = team2.get('abbrev', '')
+                
+                # Get H2H record
+                h2h = get_h2h_record(team1_abbrev, team2_abbrev)
+                
+                # Get next matchup between these teams
+                next_matchup = None
+                if nba_schedule is not None:
+                    try:
+                        from datetime import datetime
+                        today = datetime.now().date()
+                        
+                        for _, game in nba_schedule.iterrows():
+                            home = game.get('HOME_TEAM_ABBREVIATION', '')
+                            away = game.get('VISITOR_TEAM_ABBREVIATION', '')
+                            game_date_str = game.get('GAME_DATE', '')
+                            
+                            # Check if this is a matchup between our teams
+                            if (home == team1_abbrev and away == team2_abbrev) or \
+                               (home == team2_abbrev and away == team1_abbrev):
+                                try:
+                                    game_date = pd.to_datetime(game_date_str).date()
+                                    if game_date >= today:
+                                        next_matchup = {
+                                            'date': game_date.strftime('%b %d'),
+                                            'home': home,
+                                            'away': away
+                                        }
+                                        break
+                                except:
+                                    pass
+                    except:
+                        pass
+                
+                # Build the display text
+                info_parts = []
+                
+                if h2h and h2h['total'] > 0:
+                    team2_wins = h2h['losses']
+                    team2_losses = h2h['wins']
+                    if team2_wins > team2_losses:
+                        info_parts.append(f"Series: {team2_abbrev} leads {team2_wins}-{team2_losses}")
+                    elif h2h['wins'] > h2h['losses']:
+                        info_parts.append(f"Series: {team1_abbrev} leads {h2h['wins']}-{h2h['losses']}")
+                    else:
+                        info_parts.append(f"Series: Tied {h2h['wins']}-{h2h['losses']}")
+                
+                if next_matchup:
+                    home = next_matchup['home']
+                    away = next_matchup['away']
+                    info_parts.append(f"Next: {next_matchup['date']} ({away} @ {home})")
+                
+                if info_parts:
+                    st.caption(" • ".join(info_parts))
+
             # Western Conference Play-In
             st.markdown("#### Western Conference")
-            render_play_in_card(get_team_info_by_seed(west_df, 8), get_team_info_by_seed(west_df, 7))
-            render_play_in_card(get_team_info_by_seed(west_df, 10), get_team_info_by_seed(west_df, 9))
+            west_7 = get_team_info_by_seed(west_df, 7)
+            west_8 = get_team_info_by_seed(west_df, 8)
+            west_9 = get_team_info_by_seed(west_df, 9)
+            west_10 = get_team_info_by_seed(west_df, 10)
+            
+            # Fetch schedule for next matchup info
+            nba_schedule = get_nba_schedule()
+            
+            render_play_in_card(west_8, west_7)
+            render_h2h_record(west_8, west_7, nba_schedule)
+            render_play_in_card(west_10, west_9)
+            render_h2h_record(west_10, west_9, nba_schedule)
             
             st.markdown("---")
             
             # Eastern Conference Play-In
             st.markdown("#### Eastern Conference")
-            render_play_in_card(get_team_info_by_seed(east_df, 8), get_team_info_by_seed(east_df, 7))
-            render_play_in_card(get_team_info_by_seed(east_df, 10), get_team_info_by_seed(east_df, 9))
+            east_7 = get_team_info_by_seed(east_df, 7)
+            east_8 = get_team_info_by_seed(east_df, 8)
+            east_9 = get_team_info_by_seed(east_df, 9)
+            east_10 = get_team_info_by_seed(east_df, 10)
+            
+            render_play_in_card(east_8, east_7)
+            render_h2h_record(east_8, east_7, nba_schedule)
+            render_play_in_card(east_10, east_9)
+            render_h2h_record(east_10, east_9, nba_schedule)
 
             st.markdown("---")
 
