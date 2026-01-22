@@ -2562,21 +2562,15 @@ elif page == "Predictions":
                     #st.info(f"Player Consistency: **{consistency_interpretation}** (CV: {consistency:.2f})")
                     
                     with st.spinner("Generating prediction..."):
-                        # Calculate injury impact for prediction
+                        # Fetch injuries for display (not used in prediction)
                         injuries = get_nba_injuries()
                         opp_injury_score, opp_injured_players = analyze_team_injuries(injuries, selected_opponent)
                         team_injury_score, team_injured_players = analyze_team_injuries(injuries, player_team) if player_team else (0, [])
                         
-                        injury_impact = {
-                            'opp_impact': opp_injury_score,
-                            'team_impact': team_injury_score
-                        }
-                        
                         prediction = predict_with_drtg(
                             model, stat_cols, scaler, filtered_df,
                             team_def_ratings, selected_opponent, 
-                            full_player_df=player_df,
-                            injury_impact=injury_impact
+                            full_player_df=player_df
                         )
                     
                     if prediction:

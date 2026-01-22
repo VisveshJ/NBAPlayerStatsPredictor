@@ -85,13 +85,8 @@ def train_hmm_with_drtg(player_df, team_def_ratings, n_states=3, use_temporal_we
     return model, stat_cols, scaler, player_df
 
 
-def predict_with_drtg(model, stat_cols, scaler, recent_df, team_def_ratings, target_opponent, full_player_df=None, injury_impact=None):
-    """Generate prediction with defensive rating, head-to-head performance, and injury impact.
-    
-    Args:
-        injury_impact: Optional dict with 'opp_impact' (0-10 score, higher = weaker defense) 
-                      and 'team_impact' (0-10 score, higher = more usage for player)
-    """
+def predict_with_drtg(model, stat_cols, scaler, recent_df, team_def_ratings, target_opponent, full_player_df=None):
+    """Generate prediction with defensive rating and head-to-head performance."""
     target_drtg = team_def_ratings.get(target_opponent)
     if target_drtg is None:
         return None
@@ -124,21 +119,6 @@ def predict_with_drtg(model, stat_cols, scaler, recent_df, team_def_ratings, tar
         raw_factor = target_drtg / avg_drtg
         deviation = raw_factor - 1.0
         defensive_factor = 1.0 + (deviation * 1.5)  # 1.5x amplification for reasonable adjustment
-        
-        # Apply injury impact adjustments
-        injury_boost = 1.0
-        if injury_impact:
-            # Opponent injuries: if their defense is weakened, boost offensive stats
-            opp_impact = injury_impact.get('opp_impact', 0)  # 0-10 scale
-            if opp_impact > 0:
-                # Max ~8% boost for heavily injured defense (score of 10)
-                injury_boost += (opp_impact / 125)
-            
-            # Own team injuries: if teammates are out, player may see more usage
-            team_impact = injury_impact.get('team_impact', 0)  # 0-10 scale
-            if team_impact > 0:
-                # Max ~5% boost for heavy teammate injuries (increases usage rate)
-                injury_boost += (team_impact / 200)
         
         adjusted_prediction = next_state_mean.copy()
         
@@ -196,10 +176,6 @@ def predict_with_drtg(model, stat_cols, scaler, recent_df, team_def_ratings, tar
             value = predicted_unscaled[i]
             if stat in defensive_sensitive_stats:
                 value *= defensive_factor
-            
-            # Apply injury boost to offensive stats
-            if stat in ['Points', 'Assists', 'Rebounds'] and injury_boost > 1.0:
-                value *= injury_boost
             
             # Blend with head-to-head data if available
             if stat in h2h_adjustment and h2h_weight > 0:
