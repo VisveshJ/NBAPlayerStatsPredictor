@@ -4827,7 +4827,8 @@ elif page == "Compare Players":
                             # Select all game log columns (use correct names)
                             display_cols = ['GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN', 'Points', 'Rebounds', 'Assists', 'Steals', 'Blocks', 'Turnovers', 'PF', 'FG', '3P', 'FT', 'FG%', '3P%', 'FT%', 'TS%']
                             available_cols = [c for c in display_cols if c in p1_h2h.columns]
-                            h2h_display = p1_h2h[available_cols].copy()
+                            # Sort by date descending (most recent first)
+                            h2h_display = p1_h2h[available_cols].sort_values('GAME_DATE', ascending=False).copy()
                             
                             # Rename columns for cleaner display
                             h2h_display = h2h_display.rename(columns={
@@ -4899,7 +4900,8 @@ elif page == "Compare Players":
                             # Select all game log columns (use correct names)
                             display_cols = ['GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN', 'Points', 'Rebounds', 'Assists', 'Steals', 'Blocks', 'Turnovers', 'PF', 'FG', '3P', 'FT', 'FG%', '3P%', 'FT%', 'TS%']
                             available_cols = [c for c in display_cols if c in p2_h2h.columns]
-                            h2h_display = p2_h2h[available_cols].copy()
+                            # Sort by date descending (most recent first)
+                            h2h_display = p2_h2h[available_cols].sort_values('GAME_DATE', ascending=False).copy()
                             
                             # Rename columns for cleaner display
                             h2h_display = h2h_display.rename(columns={
