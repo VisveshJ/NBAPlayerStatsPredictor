@@ -5565,10 +5565,10 @@ elif page == "Standings":
                 except:
                     return None
 
-            def render_h2h_record(team1, team2, nba_schedule):
-                """Display the h2h record and next matchup for a play-in pairing, centered."""
+            def render_h2h_record(team1, team2, nba_schedule, inline=False):
+                """Display the h2h record and next matchup. Returns string if inline=True, else prints."""
                 if not team1 or not team2:
-                    return
+                    return "" if inline else None
                 
                 team1_abbrev = team1.get('abbrev', '')
                 team2_abbrev = team2.get('abbrev', '')
@@ -5613,18 +5613,23 @@ elif page == "Standings":
                     team2_wins = h2h['losses']
                     team2_losses = h2h['wins']
                     if team2_wins > team2_losses:
-                        info_parts.append(f"Series: {team2_abbrev} leads {team2_wins}-{team2_losses}")
+                        info_parts.append(f"{team2_abbrev} leads {team1_abbrev} {team2_wins}-{team2_losses}")
                     elif h2h['wins'] > h2h['losses']:
-                        info_parts.append(f"Series: {team1_abbrev} leads {h2h['wins']}-{h2h['losses']}")
+                        info_parts.append(f"{team1_abbrev} leads {team2_abbrev} {h2h['wins']}-{h2h['losses']}")
                     else:
-                        info_parts.append(f"Series: Tied {h2h['wins']}-{h2h['losses']}")
+                        info_parts.append(f"{team1_abbrev} and {team2_abbrev} tied {h2h['wins']}-{h2h['losses']}")
                 
                 if next_matchup:
                     home = next_matchup['home']
                     away = next_matchup['away']
                     info_parts.append(f"Next: {next_matchup['date']} ({away} @ {home})")
+                elif h2h and h2h['total'] > 0:
+                    # No more games left
+                    info_parts.append("Season series complete")
                 
-                if info_parts:
+                if inline:
+                    return " • ".join(info_parts)
+                elif info_parts:
                     st.caption(" • ".join(info_parts))
 
             # Western Conference Play-In
@@ -5638,8 +5643,11 @@ elif page == "Standings":
             nba_schedule = get_nba_schedule()
             
             render_play_in_card(west_8, west_7)
-            render_h2h_record(west_8, west_7, nba_schedule)
             render_play_in_card(west_10, west_9)
+            
+            # Season Series section after both matchups
+            st.markdown("**Season Series**")
+            render_h2h_record(west_8, west_7, nba_schedule)
             render_h2h_record(west_10, west_9, nba_schedule)
             
             st.markdown("---")
@@ -5652,11 +5660,15 @@ elif page == "Standings":
             east_10 = get_team_info_by_seed(east_df, 10)
             
             render_play_in_card(east_8, east_7)
-            render_h2h_record(east_8, east_7, nba_schedule)
             render_play_in_card(east_10, east_9)
+            
+            # Season Series section after both matchups
+            st.markdown("**Season Series**")
+            render_h2h_record(east_8, east_7, nba_schedule)
             render_h2h_record(east_10, east_9, nba_schedule)
 
             st.markdown("---")
+
 
 
             # 2. BRACKETS
