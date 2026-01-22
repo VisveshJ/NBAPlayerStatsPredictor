@@ -3173,9 +3173,9 @@ elif page == "Player Stats":
                     def highlight_splits(row):
                         split = str(row.get('Split', '')).lower()
                         if 'home' in split:
-                            return ['background-color: rgba(59, 130, 246, 0.25); text-align: left'] * len(row)
+                            return ['background-color: rgba(16, 185, 129, 0.2); text-align: left'] * len(row)
                         else:
-                            return ['background-color: rgba(45, 55, 72, 0.5); text-align: left'] * len(row)
+                            return ['background-color: rgba(59, 130, 246, 0.25); text-align: left'] * len(row)
                     
                     styled_splits = splits_df.style.apply(highlight_splits, axis=1).set_properties(**{'text-align': 'left'})
                     st.dataframe(styled_splits, use_container_width=True, hide_index=True)
@@ -3209,7 +3209,7 @@ elif page == "Player Stats":
                             if 'win' in split:
                                 return ['background-color: rgba(16, 185, 129, 0.2); text-align: left'] * len(row)
                             else:
-                                return ['background-color: rgba(45, 55, 72, 0.5); text-align: left'] * len(row)
+                                return ['background-color: rgba(59, 130, 246, 0.25); text-align: left'] * len(row)
                         
                         styled_wl_splits = wl_splits_df.style.apply(highlight_wl_splits, axis=1).set_properties(**{'text-align': 'left'})
                         st.dataframe(styled_wl_splits, use_container_width=True, hide_index=True)
@@ -3257,7 +3257,7 @@ elif page == "Player Stats":
                         def highlight_conf_splits(row):
                             split = str(row.get('Split', '')).lower()
                             if 'east' in split:
-                                return ['background-color: rgba(239, 68, 68, 0.2); text-align: left'] * len(row)
+                                return ['background-color: rgba(16, 185, 129, 0.2); text-align: left'] * len(row)
                             else:
                                 return ['background-color: rgba(59, 130, 246, 0.25); text-align: left'] * len(row)
                         
@@ -3324,9 +3324,9 @@ elif page == "Player Stats":
                             def highlight_record_splits(row):
                                 split = str(row.get('Split', '')).lower()
                                 if '≥.500' in split or '>=.500' in split or '>=' in split:
-                                    return ['background-color: rgba(251, 146, 60, 0.25); text-align: left'] * len(row)
+                                    return ['background-color: rgba(16, 185, 129, 0.2); text-align: left'] * len(row)
                                 else:
-                                    return ['background-color: rgba(45, 55, 72, 0.5); text-align: left'] * len(row)
+                                    return ['background-color: rgba(59, 130, 246, 0.25); text-align: left'] * len(row)
                             
                             styled_record_splits = record_splits_df.style.apply(highlight_record_splits, axis=1).set_properties(**{'text-align': 'left'})
                             st.dataframe(styled_record_splits, use_container_width=True, hide_index=True)
