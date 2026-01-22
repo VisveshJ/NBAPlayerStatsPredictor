@@ -998,6 +998,52 @@ def get_nba_injuries():
         return []
 
 
+def analyze_team_injuries(injuries, team_abbrev):
+    """Analyze injuries for a team and return an impact score (0-10).
+    
+    Higher score = more impactful injuries (weaker team).
+    Key players (stars, starters) weighted more heavily.
+    """
+    if not injuries or not team_abbrev:
+        return 0
+    
+    # Map team abbreviations to ESPN team names
+    team_name_map = {
+        'ATL': 'Atlanta', 'BOS': 'Boston', 'BKN': 'Brooklyn', 'CHA': 'Charlotte',
+        'CHI': 'Chicago', 'CLE': 'Cleveland', 'DAL': 'Dallas', 'DEN': 'Denver',
+        'DET': 'Detroit', 'GSW': 'Golden State', 'HOU': 'Houston', 'IND': 'Indiana',
+        'LAC': 'Clippers', 'LAL': 'Lakers', 'MEM': 'Memphis', 'MIA': 'Miami',
+        'MIL': 'Milwaukee', 'MIN': 'Minnesota', 'NOP': 'New Orleans', 'NYK': 'New York',
+        'OKC': 'Oklahoma City', 'ORL': 'Orlando', 'PHI': 'Philadelphia', 'PHX': 'Phoenix',
+        'POR': 'Portland', 'SAC': 'Sacramento', 'SAS': 'San Antonio', 'TOR': 'Toronto',
+        'UTA': 'Utah', 'WAS': 'Washington'
+    }
+    
+    team_search = team_name_map.get(team_abbrev, team_abbrev)
+    team_injuries = [inj for inj in injuries if team_search.lower() in inj.get('team', '').lower()]
+    
+    if not team_injuries:
+        return 0
+    
+    impact_score = 0
+    for inj in team_injuries:
+        status = inj.get('status', '').lower()
+        
+        # Weight by injury severity
+        if 'out' in status:
+            impact_score += 2.0
+        elif 'doubtful' in status:
+            impact_score += 1.5
+        elif 'questionable' in status:
+            impact_score += 0.8
+        elif 'day-to-day' in status or 'probable' in status:
+            impact_score += 0.3
+        else:
+            impact_score += 0.5
+    
+    # Cap at 10
+    return min(round(impact_score, 1), 10)
+
 def get_team_streaks(standings_df):
     """Calculate hot and cold teams based on standings data."""
     if standings_df is None or standings_df.empty:
@@ -2497,10 +2543,21 @@ elif page == "Predictions":
                     #st.info(f"Player Consistency: **{consistency_interpretation}** (CV: {consistency:.2f})")
                     
                     with st.spinner("Generating prediction..."):
+                        # Calculate injury impact for prediction
+                        injuries = get_nba_injuries()
+                        opp_injury_score = analyze_team_injuries(injuries, selected_opponent)
+                        team_injury_score = analyze_team_injuries(injuries, player_team) if player_team else 0
+                        
+                        injury_impact = {
+                            'opp_impact': opp_injury_score,
+                            'team_impact': team_injury_score
+                        }
+                        
                         prediction = predict_with_drtg(
                             model, stat_cols, scaler, filtered_df,
                             team_def_ratings, selected_opponent, 
-                            full_player_df=player_df  # Pass full df for H2H data
+                            full_player_df=player_df,
+                            injury_impact=injury_impact
                         )
                     
                     if prediction:
@@ -2522,6 +2579,15 @@ elif page == "Predictions":
                         with metric_col3:
                             st.metric("Assists", int(round(prediction['Assists'])))
                             st.metric("Turnovers", int(round(prediction['Turnovers'])))
+                        
+                        # Show injury impact if any
+                        if injury_impact['opp_impact'] > 0 or injury_impact['team_impact'] > 0:
+                            injury_notes = []
+                            if injury_impact['opp_impact'] > 0:
+                                injury_notes.append(f"Opponent injury impact: +{injury_impact['opp_impact']:.1f}")
+                            if injury_impact['team_impact'] > 0:
+                                injury_notes.append(f"Team injuries (usage boost): +{injury_impact['team_impact']:.1f}")
+                            st.caption(f"📋 Injury adjustments applied: {', '.join(injury_notes)}")
                         
                         st.markdown("---")
                         
