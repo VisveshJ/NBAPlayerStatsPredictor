@@ -5597,13 +5597,16 @@ elif page == "Standings":
                 # Build the display text
                 info_parts = []
                 
+                # Use "beat" if season series is complete, otherwise "leads"
+                verb = "beat" if not next_matchup else "leads"
+                
                 if h2h and h2h['total'] > 0:
                     team2_wins = h2h['losses']
                     team2_losses = h2h['wins']
                     if team2_wins > team2_losses:
-                        info_parts.append(f"{team2_abbrev} leads {team1_abbrev} {team2_wins}-{team2_losses}")
+                        info_parts.append(f"{team2_abbrev} {verb} {team1_abbrev} {team2_wins}-{team2_losses}")
                     elif h2h['wins'] > h2h['losses']:
-                        info_parts.append(f"{team1_abbrev} leads {team2_abbrev} {h2h['wins']}-{h2h['losses']}")
+                        info_parts.append(f"{team1_abbrev} {verb} {team2_abbrev} {h2h['wins']}-{h2h['losses']}")
                     else:
                         info_parts.append(f"{team1_abbrev} and {team2_abbrev} tied {h2h['wins']}-{h2h['losses']}")
                 
