@@ -1203,7 +1203,7 @@ def get_nba_news():
         return []
 
 
-@st.cache_data(ttl=3600*24*7)  # 7-day cache for MVP ladder (updates weekly)
+@st.cache_data(ttl=3600*12)  # 12-hour cache for MVP ladder (refreshes twice daily to catch weekly updates)
 def get_mvp_ladder():
     """Fetch the latest Kia MVP Ladder rankings from NBA.com with dynamic URL calculation."""
     import requests
@@ -1231,25 +1231,24 @@ def get_mvp_ladder():
     
     try:
         # Dynamically calculate URL based on current date
-        # Articles are published weekly on Thursdays (day 3)
+        # Check each day going backwards to find the latest article
         today = get_local_now()
-        # Find most recent Thursday (or today if Thursday)
-        days_since_thursday = (today.weekday() - 3) % 7
-        recent_thursday = today - timedelta(days=days_since_thursday)
         
-        # Try URLs for the past few weeks to find the latest article
+        # Try URLs for the past 14 days to find the latest article
         article_url = None
-        for weeks_back in range(4):  # Check up to 4 weeks back
-            check_date = recent_thursday - timedelta(weeks=weeks_back)
+        article_date = None
+        for days_back in range(7):  # Check up to 1 week back
+            check_date = today - timedelta(days=days_back)
             month_abbrev = check_date.strftime('%b').lower()
             day = check_date.day
             year = check_date.year
             url = f"https://www.nba.com/news/kia-mvp-ladder-{month_abbrev}-{day}-{year}"
             
             try:
-                resp = requests.head(url, headers=headers, timeout=5, allow_redirects=True)
+                resp = requests.head(url, headers=headers, timeout=2, allow_redirects=True)
                 if resp.status_code == 200:
                     article_url = url
+                    article_date = check_date
                     break
             except:
                 continue
@@ -1351,7 +1350,7 @@ def get_mvp_ladder():
         players.sort(key=lambda x: int(x['rank']))
         
         # Use the date from the successful article
-        as_of_date = check_date.strftime("%B %d, %Y") if check_date else "January 16, 2026"
+        as_of_date = article_date.strftime("%B %d, %Y") if article_date else "January 16, 2026"
 
         if len(players) >= 10:
             return players[:10], as_of_date
@@ -1363,6 +1362,7 @@ def get_mvp_ladder():
         return fallback_players, "January 16, 2026"
 
 
+@st.cache_data(ttl=3600*12)  # 12-hour cache for Rookie Ladder
 def get_rookie_ladder():
     """Fetch the latest Kia Rookie Ladder rankings from NBA.com with dynamic URL calculation."""
     import requests
@@ -1390,25 +1390,24 @@ def get_rookie_ladder():
     
     try:
         # Dynamically calculate URL based on current date
-        # Rookie Ladder articles are published weekly on Tuesdays (weekday 1)
+        # Check each day going backwards to find the latest article
         today = get_local_now()
-        days_since_tuesday = (today.weekday() - 1) % 7
-        recent_tuesday = today - timedelta(days=days_since_tuesday)
         
-        # Try URLs for the past few weeks to find the latest article
+        # Try URLs for the past 14 days to find the latest article
         article_url = None
-        check_date = None
-        for weeks_back in range(4):  # Check up to 4 weeks back
-            check_date = recent_tuesday - timedelta(weeks=weeks_back)
+        article_date = None
+        for days_back in range(7):  # Check up to 1 week back
+            check_date = today - timedelta(days=days_back)
             month_abbrev = check_date.strftime('%b').lower()
             day = check_date.day
             year = check_date.year
             url = f"https://www.nba.com/news/kia-rookie-ladder-{month_abbrev}-{day}-{year}"
             
             try:
-                resp = requests.head(url, headers=headers, timeout=5, allow_redirects=True)
+                resp = requests.head(url, headers=headers, timeout=2, allow_redirects=True)
                 if resp.status_code == 200:
                     article_url = url
+                    article_date = check_date
                     break
             except:
                 continue
@@ -1493,7 +1492,7 @@ def get_rookie_ladder():
         players.sort(key=lambda x: int(x['rank']))
         
         # Use the date from the successful article
-        as_of_date = check_date.strftime("%B %d, %Y") if check_date else "January 21, 2026"
+        as_of_date = article_date.strftime("%B %d, %Y") if article_date else "January 21, 2026"
 
         if len(players) >= 5:
             return players[:10], as_of_date
