@@ -1305,46 +1305,35 @@ def get_mvp_ladder():
                     'player_id': None
                 })
         
-        # Parse "The Next 5" section (contained in a <p> with <strong> tags for ranks)
-        next5_header = art_soup.find(lambda tag: tag.name in ['h2', 'h3', 'h4'] and 'next 5' in tag.get_text().lower())
-        if next5_header:
-            next_p = next5_header.find_next('p')
-            if next_p:
-                # The paragraph contains: <strong>6.</strong> Player, Team ↔️<br>...
-                p_html = str(next_p)
-                # Split by <br> or <br/>
-                lines = re.split(r'<br\s*/?\s*>', p_html)
-                for line in lines:
-                    # Extract rank from <strong>N.</strong>
-                    rank_match = re.search(r'<strong>(\d+)\.?</strong>\s*(.+)', line, re.IGNORECASE)
-                    if rank_match:
-                        rank = rank_match.group(1)
-                        rest = rank_match.group(2)
-                        # Remove HTML tags and emojis, keep only text
-                        rest = re.sub(r'<[^>]+>', '', rest)
-                        rest = re.sub(r'[↔️⬆️⬇️↗️↘️]', '', rest).strip()
-                        # Clean up any potential invisible characters
-                        rest = re.sub(r'\s+', ' ', rest).strip()
-                        
-                        if ',' in rest:
-                            parts = rest.split(',', 1)
-                            name = parts[0].strip()
-                            team = parts[1].strip() if len(parts) > 1 else "N/A"
-                        else:
-                            name = rest
-                            team = "N/A"
-                        
-                        team_abbrev = get_team_abbrev(team)
-                        
-                        players.append({
-                            'rank': rank,
-                            'name': name,
-                            'team': team,
-                            'team_abbrev': team_abbrev,
-                            'stats': 'N/A',
-                            'games_played': 'N/A',
-                            'player_id': None
-                        })
+        # Parse "The Next 5" section - look for the text pattern
+        # Format: "6. Jaylen Brown, Boston Celtics ⬇️"
+        full_text = art_soup.get_text()
+        
+        # Find the "next 5" section and parse entries 6-10
+        next5_match = re.search(r'(?:the\s+)?next\s+5[:\s]*\n?(.*?)(?:and\s+five\s+more|$)', full_text, re.IGNORECASE | re.DOTALL)
+        if next5_match:
+            next5_text = next5_match.group(1)
+            # Parse each line that starts with a number
+            for line in next5_text.split('\n'):
+                line = line.strip()
+                # Match pattern: "6. Player Name, Team Name emoji"
+                rank_match = re.match(r'^(\d+)\.?\s+([^,]+),\s*([^↔️⬆️⬇️↗️↘️\n]+)', line)
+                if rank_match:
+                    rank = rank_match.group(1)
+                    name = rank_match.group(2).strip()
+                    team = rank_match.group(3).strip()
+                    
+                    team_abbrev = get_team_abbrev(team)
+                    
+                    players.append({
+                        'rank': rank,
+                        'name': name,
+                        'team': team,
+                        'team_abbrev': team_abbrev,
+                        'stats': 'N/A',
+                        'games_played': 'N/A',
+                        'player_id': None
+                    })
         
         # Sort by rank and ensure we have 10
         players.sort(key=lambda x: int(x['rank']))
@@ -1352,8 +1341,8 @@ def get_mvp_ladder():
         # Use the date from the successful article
         as_of_date = article_date.strftime("%B %d, %Y") if article_date else "January 16, 2026"
 
-        if len(players) >= 10:
-            return players[:10], as_of_date
+        if len(players) >= 5:
+            return players[:10], as_of_date  # Return up to 10 if available
         else:
             return fallback_players, "January 16, 2026"
             
