@@ -163,7 +163,7 @@ def nav_to_predictions(player_name):
     st.session_state.auto_load_player = player_name
 
 # ==================== DATA FETCHING FUNCTIONS ====================
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=900)
 def get_current_defensive_ratings(season="2025-26"):
     """Fetch current defensive ratings for all NBA teams with retry logic."""
     max_retries = 3
@@ -230,116 +230,140 @@ def get_current_defensive_ratings(season="2025-26"):
     return {}
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=900)
 def get_team_ratings_with_ranks(season="2025-26"):
-    """Get offensive and defensive ratings with league rankings for all teams."""
-    try:
-        time.sleep(0.6)
-        team_stats = leaguedashteamstats.LeagueDashTeamStats(
-            season=season,
-            season_type_all_star="Regular Season",
-            measure_type_detailed_defense="Advanced",
-            per_mode_detailed="PerGame"
-        )
-        
-        df = team_stats.get_data_frames()[0]
-        
-        # Find team abbreviation column
-        all_teams = teams.get_teams()
-        team_name_to_abbrev = {}
-        for t in all_teams:
-            team_name_to_abbrev[t['full_name']] = t['abbreviation']
-            team_name_to_abbrev[t['nickname']] = t['abbreviation']
-        team_name_to_abbrev['LA Clippers'] = 'LAC'
-        
-        # Build ratings dict with rankings
-        result = {}
-        
-        # Sort by offensive rating (descending - higher is better) and assign ranks
-        df_sorted_off = df.sort_values('OFF_RATING', ascending=False).reset_index(drop=True)
-        df_sorted_off['OFF_RANK'] = range(1, len(df_sorted_off) + 1)
-        
-        # Sort by defensive rating (ascending - lower is better) and assign ranks
-        df_sorted_def = df.sort_values('DEF_RATING', ascending=True).reset_index(drop=True)
-        df_sorted_def['DEF_RANK'] = range(1, len(df_sorted_def) + 1)
-        
-        # Merge ranks back
-        for _, row in df.iterrows():
-            team_name = row.get('TEAM_NAME', '')
-            abbrev = team_name_to_abbrev.get(team_name)
-            if not abbrev:
-                continue
+    """Get offensive and defensive ratings with league rankings for all teams with retry logic."""
+    max_retries = 3
+    last_error = None
+    
+    for attempt in range(max_retries):
+        try:
+            if attempt > 0:
+                time.sleep(2 * attempt)
+            
+            time.sleep(0.6)
+            team_stats = leaguedashteamstats.LeagueDashTeamStats(
+                season=season,
+                season_type_all_star="Regular Season",
+                measure_type_detailed_defense="Advanced",
+                per_mode_detailed="PerGame"
+            )
+            
+            df = team_stats.get_data_frames()[0]
+            
+            # Find team abbreviation column
+            all_teams = teams.get_teams()
+            team_name_to_abbrev = {}
+            for t in all_teams:
+                team_name_to_abbrev[t['full_name']] = t['abbreviation']
+                team_name_to_abbrev[t['nickname']] = t['abbreviation']
+            team_name_to_abbrev['LA Clippers'] = 'LAC'
+            
+            # Build ratings dict with rankings
+            result = {}
+            
+            # Sort by offensive rating (descending - higher is better) and assign ranks
+            df_sorted_off = df.sort_values('OFF_RATING', ascending=False).reset_index(drop=True)
+            df_sorted_off['OFF_RANK'] = range(1, len(df_sorted_off) + 1)
+            
+            # Sort by defensive rating (ascending - lower is better) and assign ranks
+            df_sorted_def = df.sort_values('DEF_RATING', ascending=True).reset_index(drop=True)
+            df_sorted_def['DEF_RANK'] = range(1, len(df_sorted_def) + 1)
+            
+            # Merge ranks back
+            for _, row in df.iterrows():
+                team_name = row.get('TEAM_NAME', '')
+                abbrev = team_name_to_abbrev.get(team_name)
+                if not abbrev:
+                    continue
+                    
+                off_rtg = round(row['OFF_RATING'], 1)
+                def_rtg = round(row['DEF_RATING'], 1)
                 
-            off_rtg = round(row['OFF_RATING'], 1)
-            def_rtg = round(row['DEF_RATING'], 1)
+                # Find ranks
+                off_rank = df_sorted_off[df_sorted_off['TEAM_NAME'] == team_name]['OFF_RANK'].values
+                def_rank = df_sorted_def[df_sorted_def['TEAM_NAME'] == team_name]['DEF_RANK'].values
+                
+                result[abbrev] = {
+                    'off_rtg': off_rtg,
+                    'def_rtg': def_rtg,
+                    'off_rank': int(off_rank[0]) if len(off_rank) > 0 else 0,
+                    'def_rank': int(def_rank[0]) if len(def_rank) > 0 else 0
+                }
             
-            # Find ranks
-            off_rank = df_sorted_off[df_sorted_off['TEAM_NAME'] == team_name]['OFF_RANK'].values
-            def_rank = df_sorted_def[df_sorted_def['TEAM_NAME'] == team_name]['DEF_RANK'].values
-            
-            result[abbrev] = {
-                'off_rtg': off_rtg,
-                'def_rtg': def_rtg,
-                'off_rank': int(off_rank[0]) if len(off_rank) > 0 else 0,
-                'def_rank': int(def_rank[0]) if len(def_rank) > 0 else 0
-            }
-        
-        return result
-    except Exception as e:
-        return {}
+            return result
+        except Exception as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                continue
+    
+    return {}
 
 
 
+@st.cache_data(ttl=900)  # 15 minute cache
 def get_league_standings(season="2025-26"):
-    """Fetch current NBA standings for all teams."""
-    try:
-        time.sleep(0.6)
-        standings = leaguestandings.LeagueStandings(
-            season=season,
-            season_type="Regular Season"
-        )
-        
-        df = standings.get_data_frames()[0]
-        
-        # Get relevant columns
-        standings_data = []
-        for _, row in df.iterrows():
-            team_data = {
-                'TeamID': row.get('TeamID'),
-                'TeamAbbrev': get_team_abbrev(row.get('TeamCity', '')),
-                'TeamName': row.get('TeamName', ''),
-                'TeamCity': row.get('TeamCity', ''),
-            }
-            # Fix Clippers name for display consistency
-            if team_data['TeamCity'] == 'LA' and team_data['TeamName'] == 'Clippers':
-                team_data['TeamCity'] = 'Los Angeles Clippers'
-                team_data['TeamName'] = 'Clippers'
+    """Fetch current NBA standings for all teams with retry logic."""
+    max_retries = 3
+    last_error = None
+    
+    for attempt in range(max_retries):
+        try:
+            if attempt > 0:
+                time.sleep(2 * attempt)
+            
+            time.sleep(0.6)
+            standings = leaguestandings.LeagueStandings(
+                season=season,
+                season_type="Regular Season"
+            )
+            
+            df = standings.get_data_frames()[0]
+            
+            # Get relevant columns
+            standings_data = []
+            for _, row in df.iterrows():
+                team_data = {
+                    'TeamID': row.get('TeamID'),
+                    'TeamAbbrev': get_team_abbrev(row.get('TeamCity', '')),
+                    'TeamName': row.get('TeamName', ''),
+                    'TeamCity': row.get('TeamCity', ''),
+                }
+                # Fix Clippers name for display consistency
+                if team_data['TeamCity'] == 'LA' and team_data['TeamName'] == 'Clippers':
+                    team_data['TeamCity'] = 'Los Angeles Clippers'
+                    team_data['TeamName'] = 'Clippers'
 
-            team_data.update({
-                'Conference': row.get('Conference', ''),
-                'Division': row.get('Division', ''),
-                'ConferenceRecord': row.get('ConferenceRecord', ''),
-                'DivisionRecord': row.get('DivisionRecord', ''),
-                'DivisionRank': row.get('DivisionRank', 0),
-                'PlayoffRank': row.get('PlayoffRank', 0),
-                'Wins': row.get('WINS', 0),
-                'Losses': row.get('LOSSES', 0),
-                'WinPct': row.get('WinPCT', 0),
-                'Record': f"{row.get('WINS', 0)}-{row.get('LOSSES', 0)}",
-                'HOME': row.get('HOME', ''),
-                'ROAD': row.get('ROAD', ''),
-                'L10': row.get('L10', ''),
-                'strCurrentStreak': str(row.get('strCurrentStreak', '')).replace(' ', ''),
-                'PointsPG': row.get('PointsPG', 0),
-                'OppPointsPG': row.get('OppPointsPG', 0),
-                'GB': row.get('ConferenceGamesBack', '-'),
-            })
-            standings_data.append(team_data)
-        
-        return pd.DataFrame(standings_data)
-    except Exception as e:
-        st.error(f"Error fetching standings: {str(e)}")
-        return pd.DataFrame()
+                team_data.update({
+                    'Conference': row.get('Conference', ''),
+                    'Division': row.get('Division', ''),
+                    'ConferenceRecord': row.get('ConferenceRecord', ''),
+                    'DivisionRecord': row.get('DivisionRecord', ''),
+                    'DivisionRank': row.get('DivisionRank', 0),
+                    'PlayoffRank': row.get('PlayoffRank', 0),
+                    'Wins': row.get('WINS', 0),
+                    'Losses': row.get('LOSSES', 0),
+                    'WinPct': row.get('WinPCT', 0),
+                    'Record': f"{row.get('WINS', 0)}-{row.get('LOSSES', 0)}",
+                    'HOME': row.get('HOME', ''),
+                    'ROAD': row.get('ROAD', ''),
+                    'L10': row.get('L10', ''),
+                    'strCurrentStreak': str(row.get('strCurrentStreak', '')).replace(' ', ''),
+                    'PointsPG': row.get('PointsPG', 0),
+                    'OppPointsPG': row.get('OppPointsPG', 0),
+                    'GB': row.get('ConferenceGamesBack', '-'),
+                    'LastUpdated': datetime.now().strftime("%I:%M %p")
+                })
+                standings_data.append(team_data)
+            
+            return pd.DataFrame(standings_data)
+        except Exception as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                continue
+    
+    st.error(f"Error fetching standings after {max_retries} attempts: {str(last_error)}")
+    return pd.DataFrame()
 
 
 @st.cache_data(ttl=3600)
@@ -602,8 +626,8 @@ def get_team_roster(team_abbrev):
 
 
 @st.cache_data(ttl=1800)
-def get_team_game_log(team_abbrev, season="2025-26", num_games=5):
-    """Fetch recent game log for a team with PLUS_MINUS for score calculation."""
+def get_team_game_log(team_abbrev, season="2025-26"):
+    """Fetch full season game log for a team. Result is cached to avoid heavy repeated fetches."""
     try:
         # Get team ID from abbreviation
         all_teams = teams.get_teams()
@@ -631,8 +655,8 @@ def get_team_game_log(team_abbrev, season="2025-26", num_games=5):
         # Rename GAME_DATE to match expected format
         df['GAME_DATE'] = df['GAME_DATE']
         
-        # Return last N games
-        return df.head(num_games)
+        # Return all games
+        return df
     except Exception as e:
         return None
 
@@ -5204,20 +5228,6 @@ elif page == "Standings":
     
     # Display current date and refresh button
     col_date, col_refresh = st.columns([3, 1])
-    with col_date:
-        current_date = get_local_now().strftime("%B %d, %Y")
-        st.markdown(f"**As of: {current_date}**")
-    with col_refresh:
-        if st.button("🔄 Refresh Standings", key="refresh_standings_btn"):
-            # Clear cached standings and ratings data
-            st.cache_data.clear()
-            st.rerun()
-    st.markdown("---")
-    
-    # Get user's favorite teams for highlighting
-    user_favorite_teams = []
-    if is_authenticated:
-        user_favorite_teams = auth.get_favorite_teams() or []
     
     # Fetch standings and team ratings
     with st.spinner("Loading standings..."):
@@ -5225,7 +5235,29 @@ elif page == "Standings":
         team_ratings = get_team_ratings_with_ranks(season)
         nba_schedule = get_nba_schedule()
 
+    with col_date:
+        update_time = ""
+        if not standings_df.empty and 'LastUpdated' in standings_df.columns:
+            update_time = f" at {standings_df['LastUpdated'].iloc[0]}"
+        current_date = get_local_now().strftime("%B %d, %Y")
+        st.markdown(f"**As of: {current_date}{update_time}**")
+        
+    with col_refresh:
+        if st.button("🔄 Refresh Standings", key="refresh_standings_btn"):
+            # Surgically clear only standings-related caches
+            get_league_standings.clear()
+            get_team_ratings_with_ranks.clear()
+            get_nba_schedule.clear()
+            st.toast("✅ Standings cache cleared!")
+            st.rerun()
+    st.markdown("---")
+
     
+    # Get user's favorite teams for highlighting
+    user_favorite_teams = []
+    if is_authenticated:
+        user_favorite_teams = auth.get_favorite_teams() or []
+
     if standings_df.empty:
         st.error("Could not load standings. Please try again later.")
     else:
