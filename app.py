@@ -626,7 +626,7 @@ def get_team_roster(team_abbrev):
 
 
 @st.cache_data(ttl=1800)
-def get_team_game_log(team_abbrev, season="2025-26"):
+def get_team_game_log(team_abbrev, season="2025-26", num_games=None):
     """Fetch full season game log for a team. Result is cached to avoid heavy repeated fetches."""
     try:
         # Get team ID from abbreviation
@@ -655,7 +655,8 @@ def get_team_game_log(team_abbrev, season="2025-26"):
         # Rename GAME_DATE to match expected format
         df['GAME_DATE'] = df['GAME_DATE']
         
-        # Return all games
+        if num_games:
+            return df.head(num_games)
         return df
     except Exception as e:
         return None
