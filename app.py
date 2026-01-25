@@ -4409,7 +4409,9 @@ elif page == "Compare Players":
     # Compare button
     trigger_compare = st.session_state.get('trigger_compare', False)
     if selected_player1 and selected_player2:
-        if st.button("🔍 Compare Players", type="primary", use_container_width=True) or trigger_compare:
+        if selected_player1 == selected_player2:
+            st.error("Error: Cannot compare player to themselves")
+        elif st.button("🔍 Compare Players", type="primary", use_container_width=True) or trigger_compare:
             if trigger_compare:
                 if 'trigger_compare' in st.session_state:
                     del st.session_state['trigger_compare']
