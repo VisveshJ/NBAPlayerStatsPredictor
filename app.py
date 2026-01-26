@@ -5325,9 +5325,9 @@ elif page == "Standings":
                     reason = "Tiebreaker Rule applied"
                     
                     # 1. H2H check
-                    h2h = check_h2h_winner(t1_abbr, t2_abbr)
-                    if h2h and "Better" in h2h:
-                        reason = h2h
+                    h2h_reason = check_h2h_winner(t1_abbr, t2_abbr)
+                    if h2h_reason and "Better" in h2h_reason:
+                        reason = h2h_reason
                     else:
                         # 2. Conference Record check
                         try:
@@ -5342,17 +5342,43 @@ elif page == "Standings":
                             if c1 > c2:
                                 reason = f"Better Conference Record ({team1['ConferenceRecord']} vs {team2.get('ConferenceRecord','')})"
                             elif c1 < c2:
-                                reason = f"Division Leader or other rule" # Should be team2 higher?
+                                reason = f"Division Leader or other rule"
                             else:
                                 # 3. Division Record
-                                d1_slug = get_team_division(t1_abbr)
-                                d2_slug = get_team_division(t2_abbr)
-                                if d1_slug == d2_slug:
-                                    reason = f"Better Division Record ({team1.get('DivisionRecord','')} vs {team2.get('DivisionRecord','')})"
+                                try:
+                                    d1_slug = get_team_division(t1_abbr)
+                                    d2_slug = get_team_division(t2_abbr)
+                                    if d1_slug == d2_slug:
+                                        reason = f"Better Division Record ({team1.get('DivisionRecord','')} vs {team2.get('DivisionRecord','')})"
+                                except:
+                                    pass
                         except:
                             pass
                     
-                    tiebreaker_notes.append(f"*{rank} {t1_name} over {t2_name}: {reason}")
+                    # Find next game between these two
+                    next_info = ""
+                    if schedule:
+                        try:
+                            today = get_local_now().date()
+                            found_next = False
+                            for game in schedule:
+                                g_home = game.get('home_team', '')
+                                g_away = game.get('away_team', '')
+                                if (g_home == t1_abbr and g_away == t2_abbr) or (g_home == t2_abbr and g_away == t1_abbr):
+                                    try:
+                                        g_date = pd.to_datetime(game.get('game_date', '')).date()
+                                        if g_date >= today:
+                                            next_info = f" Next: {g_date.strftime('%b %d')} ({g_away} @ {g_home})"
+                                            found_next = True
+                                            break
+                                    except:
+                                        continue
+                            if not found_next:
+                                next_info = " Season series complete"
+                        except:
+                            pass
+                    
+                    tiebreaker_notes.append(f"*{rank} {t1_name} over {t2_name}: {reason}.{next_info}")
 
             for idx, row in conference_df.iterrows():
                 team_abbrev = get_team_abbrev(row['TeamCity'])
