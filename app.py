@@ -352,7 +352,7 @@ def get_league_standings(season="2025-26"):
                     'PointsPG': row.get('PointsPG', 0),
                     'OppPointsPG': row.get('OppPointsPG', 0),
                     'GB': row.get('ConferenceGamesBack', '-'),
-                    'LastUpdated': datetime.now().strftime("%I:%M %p")
+                    'LastUpdated': datetime.now(timezone.utc).isoformat()
                 })
                 standings_data.append(team_data)
             
@@ -5241,7 +5241,15 @@ elif page == "Standings":
     with col_date:
         update_time = ""
         if not standings_df.empty and 'LastUpdated' in standings_df.columns:
-            update_time = f" at {standings_df['LastUpdated'].iloc[0]}"
+            try:
+                # Convert the stored UTC ISO time to the user's selected timezone
+                utc_time = datetime.fromisoformat(standings_df['LastUpdated'].iloc[0])
+                local_update_time = utc_time.astimezone(user_tz)
+                update_time = f" at {local_update_time.strftime('%I:%M %p')}"
+            except Exception as e:
+                # Fallback to the raw string if parsing fails
+                update_time = f" at {standings_df['LastUpdated'].iloc[0]}"
+                
         current_date = get_local_now().strftime("%B %d, %Y")
         st.markdown(f"**As of: {current_date}{update_time}**")
         
