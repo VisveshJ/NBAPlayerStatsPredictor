@@ -1236,17 +1236,17 @@ def get_mvp_ladder():
     import re
     from datetime import datetime, timedelta
     
-    # Fallback data (Jan 16, 2026 article)
+    # Updated fallback data (Jan 23, 2026 article)
     fallback_players = [
-        {'rank': '1', 'name': 'Shai Gilgeous-Alexander', 'team': 'Oklahoma City Thunder', 'team_abbrev': 'OKC', 'stats': '31.9 PPG, 4.5 RPG, 6.4 APG', 'games_played': '40', 'player_id': '1628983'},
-        {'rank': '2', 'name': 'Nikola Jokić', 'team': 'Denver Nuggets', 'team_abbrev': 'DEN', 'stats': '29.6 PPG, 12.2 RPG, 11.0 APG', 'games_played': '39', 'player_id': '203999'},
-        {'rank': '3', 'name': 'Luka Dončić', 'team': 'Los Angeles Lakers', 'team_abbrev': 'LAL', 'stats': '33.4 PPG, 7.9 RPG, 8.8 APG', 'games_played': '38', 'player_id': '1629029'},
-        {'rank': '4', 'name': 'Victor Wembanyama', 'team': 'San Antonio Spurs', 'team_abbrev': 'SAS', 'stats': '23.9 PPG, 10.9 RPG, 3.0 APG', 'games_played': '37', 'player_id': '1641705'},
-        {'rank': '5', 'name': 'Jaylen Brown', 'team': 'Boston Celtics', 'team_abbrev': 'BOS', 'stats': '28.2 PPG, 3.2 RPG, 6.1 APG', 'games_played': '41', 'player_id': '1627759'},
-        {'rank': '6', 'name': 'Cade Cunningham', 'team': 'Detroit Pistons', 'team_abbrev': 'DET', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1630595'},
-        {'rank': '7', 'name': 'Anthony Edwards', 'team': 'Minnesota Timberwolves', 'team_abbrev': 'MIN', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1630162'},
-        {'rank': '8', 'name': 'Tyrese Maxey', 'team': 'Philadelphia 76ers', 'team_abbrev': 'PHI', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1630178'},
-        {'rank': '9', 'name': 'Jalen Brunson', 'team': 'New York Knicks', 'team_abbrev': 'NYK', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1628973'},
+        {'rank': '1', 'name': 'Shai Gilgeous-Alexander', 'team': 'Oklahoma City Thunder', 'team_abbrev': 'OKC', 'stats': '31.1 PPG, 4.8 RPG, 6.3 APG', 'games_played': '44', 'player_id': '1628983'},
+        {'rank': '2', 'name': 'Nikola Jokić', 'team': 'Denver Nuggets', 'team_abbrev': 'DEN', 'stats': '29.7 PPG, 12.3 RPG, 10.8 APG', 'games_played': '45', 'player_id': '203999'},
+        {'rank': '3', 'name': 'Luka Dončić', 'team': 'Los Angeles Lakers', 'team_abbrev': 'LAL', 'stats': '33.6 PPG, 8.2 RPG, 9.1 APG', 'games_played': '43', 'player_id': '1629029'},
+        {'rank': '4', 'name': 'Victor Wembanyama', 'team': 'San Antonio Spurs', 'team_abbrev': 'SAS', 'stats': '24.1 PPG, 11.2 RPG, 3.2 BPG', 'games_played': '42', 'player_id': '1641705'},
+        {'rank': '5', 'name': 'Tyrese Maxey', 'team': 'Philadelphia 76ers', 'team_abbrev': 'PHI', 'stats': '28.1 PPG, 4.5 RPG, 6.8 APG', 'games_played': '44', 'player_id': '1630178'},
+        {'rank': '6', 'name': 'Jaylen Brown', 'team': 'Boston Celtics', 'team_abbrev': 'BOS', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1627759'},
+        {'rank': '7', 'name': 'Cade Cunningham', 'team': 'Detroit Pistons', 'team_abbrev': 'DET', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1630595'},
+        {'rank': '8', 'name': 'Anthony Edwards', 'team': 'Minnesota Timberwolves', 'team_abbrev': 'MIN', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1630162'},
+        {'rank': '9', 'name': 'Alperen Şengün', 'team': 'Houston Rockets', 'team_abbrev': 'HOU', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1630578'},
         {'rank': '10', 'name': 'Jamal Murray', 'team': 'Denver Nuggets', 'team_abbrev': 'DEN', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1627750'}
     ]
     
@@ -1262,7 +1262,7 @@ def get_mvp_ladder():
         # Try URLs for the past 14 days to find the latest article
         article_url = None
         article_date = None
-        for days_back in range(7):  # Check up to 1 week back
+        for days_back in range(14):  # Check up to 2 weeks back
             check_date = today - timedelta(days=days_back)
             month_abbrev = check_date.strftime('%b').lower()
             day = check_date.day
@@ -1270,8 +1270,10 @@ def get_mvp_ladder():
             url = f"https://www.nba.com/news/kia-mvp-ladder-{month_abbrev}-{day}-{year}"
             
             try:
-                resp = requests.head(url, headers=headers, timeout=2, allow_redirects=True)
-                if resp.status_code == 200:
+                # Use GET with timeout or HEAD if supported. GET is more reliable for checking content.
+                # NBA.com sometimes returns 200 for missing pages, so we check title if possible.
+                resp = requests.get(url, headers=headers, timeout=5)
+                if resp.status_code == 200 and "Kia MVP Ladder" in resp.text:
                     article_url = url
                     article_date = check_date
                     break
@@ -1279,7 +1281,7 @@ def get_mvp_ladder():
                 continue
         
         if not article_url:
-            return fallback_players, "January 16, 2026"
+            return fallback_players, "January 23, 2026"
             
         # Scrape the article
         art_resp = requests.get(article_url, headers=headers, timeout=10)
@@ -1410,7 +1412,7 @@ def get_rookie_ladder():
         # Try URLs for the past 14 days to find the latest article
         article_url = None
         article_date = None
-        for days_back in range(7):  # Check up to 1 week back
+        for days_back in range(14):  # Check up to 2 weeks back
             check_date = today - timedelta(days=days_back)
             month_abbrev = check_date.strftime('%b').lower()
             day = check_date.day
@@ -1418,8 +1420,9 @@ def get_rookie_ladder():
             url = f"https://www.nba.com/news/kia-rookie-ladder-{month_abbrev}-{day}-{year}"
             
             try:
-                resp = requests.head(url, headers=headers, timeout=2, allow_redirects=True)
-                if resp.status_code == 200:
+                # Use GET with timeout or HEAD if supported. GET is more reliable for checking content.
+                resp = requests.get(url, headers=headers, timeout=5)
+                if resp.status_code == 200 and "Rookie Ladder" in resp.text:
                     article_url = url
                     article_date = check_date
                     break
