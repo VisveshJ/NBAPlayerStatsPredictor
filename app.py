@@ -6782,10 +6782,12 @@ elif st.session_state.current_page == "Awards":
                     with col_text:
                         st.markdown(f"**{p1}**{p1_team_info} is tied with **{p2}**{p2_team_info} for {tie['award']} at **{tie['odds']}**")
                     with col_btn:
-                        # Use unique key for button
-                        btn_key = f"compare_{p1}_{p2}_{tie['award']}".replace(" ", "_")
-                        st.button(f"Compare Players", key=btn_key, type="secondary", use_container_width=True,
-                                  on_click=nav_to_compare, args=(p1, p2))
+                        # Only show compare button for players, not coaches
+                        if not tie.get('is_coach'):
+                            # Use unique key for button
+                            btn_key = f"compare_{p1}_{p2}_{tie['award']}".replace(" ", "_")
+                            st.button(f"Compare Players", key=btn_key, type="secondary", use_container_width=True,
+                                      on_click=nav_to_compare, args=(p1, p2))
             
             st.markdown("---")
             # st.info("💡 To update odds, run `python scripts/update_awards_odds.py`")
