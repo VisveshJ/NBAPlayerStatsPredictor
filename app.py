@@ -1831,11 +1831,11 @@ elif page == "Predictions":
     
     # Fetch defensive ratings and schedule data
     with st.spinner("Fetching latest data..."):
-        team_def_ratings = get_current_defensive_ratings(season)
+        team_ratings_data = get_team_ratings_with_ranks(season)
         nba_schedule = get_nba_schedule()
         standings_df = get_league_standings(season)
     
-    if not team_def_ratings:
+    if not team_ratings_data:
         st.error("Could not fetch defensive ratings. Please try again later.")
         st.stop()
     
@@ -2396,7 +2396,7 @@ elif page == "Predictions":
 
         # Opponent selection - filter out player's own team
         st.markdown("### Select Opponent")
-        available_teams = sorted(team_def_ratings.keys())
+        available_teams = sorted(team_ratings_data.keys())
 
         # Remove player's own team from available opponents
         if player_team in available_teams:
@@ -2455,8 +2455,12 @@ elif page == "Predictions":
                 if opp_logo:
                     st.image(opp_logo, width=50)
             
-            opp_rating = team_def_ratings.get(selected_opponent, 0)
-            st.caption(f"Defensive Rating: **{opp_rating}** (Lower is better defense)")
+            opp_info = team_ratings_data.get(selected_opponent, {})
+            opp_rating = opp_info.get('def_rtg', 'N/A')
+            opp_rank = opp_info.get('def_rank', 'N/A')
+            opp_full_name = TEAM_NAME_MAP.get(selected_opponent, selected_opponent)
+            
+            st.caption(f"{opp_full_name} ({opp_rating}, #{opp_rank})")
             
             # Calculate player's averages against this opponent this season
             st.markdown("### Games vs " + selected_opponent + " This Season")
@@ -3411,16 +3415,15 @@ elif page == "Player Stats":
                         st.info("Could not determine team win percentages.")
                 else:
                     st.info("Standings data not available for winning team splits.")
-                
-                # Stats vs Specific Team
+                               # Stats vs Specific Team
                 st.markdown("---")
                 st.markdown("### Stats vs Specific Teams")
                 
-                # Fetch def ratings for consistency with Predictions page
+                # Fetch team ratings with ranks
                 with st.spinner("Fetching team ratings..."):
-                    team_def_ratings = get_current_defensive_ratings(season)
+                    team_ratings_data = get_team_ratings_with_ranks(season)
                 
-                all_teams_list = sorted(list(team_def_ratings.keys())) if team_def_ratings else ["ATL", "BOS", "BKN", "CHA", "CHI", "CLE", "DAL", "DEN", "DET", "GSW", "HOU", "IND", "LAC", "LAL", "MEM", "MIA", "MIL", "MIN", "NOP", "NYK", "OKC", "ORL", "PHI", "PHX", "POR", "SAC", "SAS", "TOR", "UTA", "WAS"]
+                all_teams_list = sorted(list(team_ratings_data.keys())) if team_ratings_data else ["ATL", "BOS", "BKN", "CHA", "CHI", "CLE", "DAL", "DEN", "DET", "GSW", "HOU", "IND", "LAC", "LAL", "MEM", "MIA", "MIL", "MIN", "NOP", "NYK", "OKC", "ORL", "PHI", "PHX", "POR", "SAC", "SAS", "TOR", "UTA", "WAS"]
                 
                 available_opponents = [t for t in all_teams_list if t != player_team]
                 
@@ -3438,8 +3441,12 @@ elif page == "Player Stats":
                         st.image(opp_logo, width=50)
                 
                 if selected_opp:
-                    opp_rating = team_def_ratings.get(selected_opp, "N/A")
-                    st.caption(f"Defensive Rating: **{opp_rating}** (Lower is better defense)")
+                    opp_info = team_ratings_data.get(selected_opp, {})
+                    opp_rating = opp_info.get('def_rtg', 'N/A')
+                    opp_rank = opp_info.get('def_rank', 'N/A')
+                    opp_full_name = TEAM_NAME_MAP.get(selected_opp, selected_opp)
+                    
+                    st.caption(f"{opp_full_name} ({opp_rating}, #{opp_rank})")
                     
                     # Ensure opponent column exists (it should from conference splits logic above)
                     if 'Opponent' not in player_df.columns and 'MATCHUP' in player_df.columns:
