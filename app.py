@@ -2460,7 +2460,7 @@ elif page == "Predictions":
             opp_rank = opp_info.get('def_rank', 'N/A')
             opp_full_name = TEAM_NAME_MAP.get(selected_opponent, selected_opponent)
             
-            st.caption(f"{opp_full_name} ({opp_rating}, #{opp_rank})")
+            st.caption(f"Defensive Rating: **{opp_rating}** (#{opp_rank})")
             
             # Calculate player's averages against this opponent this season
             st.markdown("### Games vs " + selected_opponent + " This Season")
@@ -3446,7 +3446,7 @@ elif page == "Player Stats":
                     opp_rank = opp_info.get('def_rank', 'N/A')
                     opp_full_name = TEAM_NAME_MAP.get(selected_opp, selected_opp)
                     
-                    st.caption(f"{opp_full_name} ({opp_rating}, #{opp_rank})")
+                    st.caption(f"Defensive Rating: **{opp_rating}** (#{opp_rank})")
                     
                     # Ensure opponent column exists (it should from conference splits logic above)
                     if 'Opponent' not in player_df.columns and 'MATCHUP' in player_df.columns:
