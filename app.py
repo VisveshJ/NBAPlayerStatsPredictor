@@ -1058,7 +1058,15 @@ def analyze_team_injuries(injuries, team_abbrev):
         player_name = inj.get('player', 'Unknown')
         
         # Determine actual game status by checking both status and description
-        # ESPN description often contains "is questionable" or "is probable" etc.
+        # NBA team injury status rules:
+        # 1. 'Out' -> Out
+        # 2. 'Doubtful' (or in description) -> Doubtful
+        # 3. 'Questionable' (or in description) -> Questionable
+        # 4. 'Probable' (or in description) -> Skip
+        # 5. 'Day-to-Day' -> Check description for (2) or (3), else GTD
+        
+        game_status = None
+        
         if 'out' in raw_status:
             game_status = 'Out'
             impact_score += 2.0
@@ -1069,21 +1077,36 @@ def analyze_team_injuries(injuries, team_abbrev):
             game_status = 'Questionable'
             impact_score += 0.8
         elif 'probable' in raw_status or 'probable' in description:
-            # Skip probable players - they're likely playing
+            # Skip probable players 
             continue
         elif 'day-to-day' in raw_status:
-            # If day-to-day with no specific game status, treat as Questionable
-            game_status = 'Questionable'
-            impact_score += 0.8
+            # Check description for a more specific status first
+            if 'doubtful' in description:
+                game_status = 'Doubtful'
+                impact_score += 1.5
+            elif 'questionable' in description:
+                game_status = 'Questionable'
+                impact_score += 0.8
+            elif 'out' in description:
+                game_status = 'Out'
+                impact_score += 2.0
+            elif 'probable' in description:
+                # Skip if description clarifies as probable
+                continue
+            else:
+                # Treated as Questionable for impact, but displayed as GTD
+                game_status = 'GTD'
+                impact_score += 0.8
         else:
-            # Skip players with unclear status (likely not impactful)
+            # Skip players with unclear status 
             continue
         
-        injured_players.append({
-            'name': player_name,
-            'status': game_status,
-            'description': inj.get('description', '')
-        })
+        if game_status:
+            injured_players.append({
+                'name': player_name,
+                'status': game_status,
+                'description': inj.get('description', '')
+            })
     
     # Cap at 10
     return min(round(impact_score, 1), 10), injured_players
@@ -1838,6 +1861,9 @@ elif page == "Predictions":
     if not team_ratings_data:
         st.error("Could not fetch defensive ratings. Please try again later.")
         st.stop()
+    
+    # Extract just defensive ratings for the model
+    team_def_ratings = {k: v['def_rtg'] for k, v in team_ratings_data.items()}
     
     # Today's Games Section
     st.markdown("### Today's Games")
@@ -2678,19 +2704,10 @@ elif page == "Predictions":
                             
                             def format_injury_status(status):
                                 """Format injury status with parentheses."""
-                                s = status.lower()
-                                if 'out' in s:
-                                    return "(Out)"
-                                elif 'doubtful' in s:
-                                    return "(Doubtful)"
-                                elif 'questionable' in s:
-                                    return "(Questionable)"
-                                elif 'day-to-day' in s:
-                                    return "(GTD)"
-                                elif 'probable' in s or 'available' in s or 'active' in s:
-                                    return "(Active)"
-                                else:
-                                    return ""
+                                # Return as is, wrapped in parentheses
+                                if status:
+                                    return f"({status})"
+                                return ""
                             
                             inj_col1, inj_col2 = st.columns(2)
                             
@@ -2699,18 +2716,18 @@ elif page == "Predictions":
                                 st.markdown(f"**{opp_full_name}**")
                                 if opp_injured_players:
                                     for p in opp_injured_players[:6]:
-                                        st.markdown(f"{p['name']} {format_injury_status(p['status'])}")
+                                        st.markdown(f"<div style='font-size: 0.85rem;'>{p['name']} <span style='color: #6B7280;'>{format_injury_status(p['status'])}</span></div>", unsafe_allow_html=True)
                                 else:
-                                    st.caption("No injuries")
+                                    st.markdown("<div style='color: #9CA3AF; font-size: 0.8rem;'>None</div>", unsafe_allow_html=True)
                             
                             with inj_col2:
                                 team_full_name = TEAM_NAME_MAP.get(player_team, player_team) if player_team else "Player's Team"
                                 st.markdown(f"**{team_full_name}**")
                                 if team_injured_players:
                                     for p in team_injured_players[:6]:
-                                        st.markdown(f"{p['name']} {format_injury_status(p['status'])}")
+                                        st.markdown(f"<div style='font-size: 0.85rem;'>{p['name']} <span style='color: #6B7280;'>{format_injury_status(p['status'])}</span></div>", unsafe_allow_html=True)
                                 else:
-                                    st.caption("No injuries")
+                                    st.markdown("<div style='color: #9CA3AF; font-size: 0.8rem;'>None</div>", unsafe_allow_html=True)
                         
                         
                         st.markdown("---")
