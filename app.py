@@ -1862,9 +1862,6 @@ elif page == "Predictions":
         st.error("Could not fetch defensive ratings. Please try again later.")
         st.stop()
     
-    # Extract just defensive ratings for the model
-    team_def_ratings = {k: v['def_rtg'] for k, v in team_ratings_data.items()}
-    
     # Today's Games Section
     st.markdown("### Today's Games")
     # Pass the user_tz defined in sidebar
@@ -2650,6 +2647,9 @@ elif page == "Predictions":
             
             # Generate Prediction Button
             if st.button("Generate Prediction", type="primary", use_container_width=True):
+                # Ensure team_def_ratings is available for the prediction model
+                team_def_ratings = {k: v['def_rtg'] for k, v in team_ratings_data.items()}
+                
                 with st.spinner("Training prediction model..."):
                     model, stat_cols, scaler, filtered_df = train_hmm_with_drtg(
                         player_df, 
