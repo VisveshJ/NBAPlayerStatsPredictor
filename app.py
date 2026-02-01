@@ -1315,45 +1315,58 @@ def get_mvp_ladder():
         
         # Parse TOP 5 from h2/h3/h4 headings (e.g., "1. Shai Gilgeous-Alexander, Oklahoma City Thunder")
         rankings = art_soup.find_all(['h2', 'h3', 'h4'])
+        found_ranks = set()
         for r in rankings:
             text = r.get_text(strip=True)
             # Match pattern like "1. Player Name, Team Name"
-            match = re.match(r'^(\d+)\.?\s+(.+)', text)
-            if match and int(match.group(1)) <= 5:
-                rank = match.group(1)
-                rest = match.group(2)
-                
-                # Split name and team
-                if ',' in rest:
-                    parts = rest.split(',', 1)
-                    name = parts[0].strip()
-                    team = parts[1].strip() if len(parts) > 1 else "N/A"
-                else:
-                    name = rest
-                    team = "N/A"
-                
-                # Get stats from following paragraph
-                stats = "N/A"
-                current = r.find_next()
-                while current and current.name not in ['h2', 'h3', 'h4']:
-                    if current.name == 'p':
-                        p_text = current.get_text(strip=True)
-                        if "stats:" in p_text.lower():
-                            stats = p_text.split('stats:')[-1].split('|')[0].strip()
-                            break
-                    current = current.find_next()
-                
-                team_abbrev = get_team_abbrev(team)
-                
-                players.append({
-                    'rank': rank,
-                    'name': name,
-                    'team': team,
-                    'team_abbrev': team_abbrev,
-                    'stats': stats,
-                    'games_played': 'N/A',
-                    'player_id': None
-                })
+            # Require rank followed by a period to distinguish from general headlines
+            match = re.match(r'^(\d+)\.\s+(.+)', text)
+            if match:
+                rank_num = int(match.group(1))
+                if rank_num <= 5 and rank_num not in found_ranks:
+                    rank = match.group(1)
+                    rest = match.group(2)
+                    
+                    # Validate: avoid headlines or generic info sections
+                    if any(kw in rest.upper() for kw in ["THINGS TO KNOW", "DOUBLEHEADER", "WATCH", "SCENARIOS", "LATEST"]):
+                        continue
+                    
+                    # Also skip if it seems too long for a name + team
+                    if len(rest) > 100:
+                        continue
+                        
+                    # Split name and team
+                    if ',' in rest:
+                        parts = rest.split(',', 1)
+                        name = parts[0].strip()
+                        team = parts[1].strip() if len(parts) > 1 else "N/A"
+                    else:
+                        name = rest
+                        team = "N/A"
+                    
+                    # Get stats from following paragraph
+                    stats = "N/A"
+                    current = r.find_next()
+                    while current and current.name not in ['h2', 'h3', 'h4']:
+                        if current.name == 'p':
+                            p_text = current.get_text(strip=True)
+                            if "stats:" in p_text.lower():
+                                stats = p_text.split('stats:')[-1].split('|')[0].strip()
+                                break
+                        current = current.find_next()
+                    
+                    team_abbrev = get_team_abbrev(team)
+                    
+                    players.append({
+                        'rank': rank,
+                        'name': name,
+                        'team': team,
+                        'team_abbrev': team_abbrev,
+                        'stats': stats,
+                        'games_played': 'N/A',
+                        'player_id': None
+                    })
+                    found_ranks.add(rank_num)
         
         # Parse "The Next 5" section - look for the text pattern
         # Format: "6. Jaylen Brown, Boston Celtics ⬇️"
