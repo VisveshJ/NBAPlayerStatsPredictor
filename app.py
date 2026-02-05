@@ -5074,7 +5074,7 @@ elif page == "Around the NBA":
     
     # Fetch data
     with st.spinner("Fetching latest NBA updates..."):
-        mvp_ladder, mvp_date = get_mvp_ladder(get_local_now().strftime("%Y-%m-%d"))
+        mvp_ladder, mvp_date = get_mvp_ladder(get_local_now().strftime("%Y-%m-%d"), cache_version=2)
         nba_schedule = get_nba_schedule()
         standings_df = get_league_standings(season)
         nba_news = get_nba_news()
@@ -6235,7 +6235,7 @@ elif st.session_state.current_page == "Awards":
     
     # Get required data for MVP Ladder
     standings_df = get_league_standings(season)
-    mvp_ladder, mvp_date = get_mvp_ladder(get_local_now().strftime("%Y-%m-%d"))
+    mvp_ladder, mvp_date = get_mvp_ladder(get_local_now().strftime("%Y-%m-%d"), cache_version=2)
     
     # Pre-fetch stats for MVP candidates (and later awards)
     bulk_player_stats = get_bulk_player_stats()
@@ -6386,8 +6386,9 @@ elif st.session_state.current_page == "Awards":
     
     # ===== SECTION 2: ROOKIE OF THE YEAR LADDER =====
     st.markdown("## 🌟 Rookie of the Year Ladder")
-    rookie_ladder, rookie_date = get_rookie_ladder(get_local_now().strftime("%Y-%m-%d"))
-    st.caption(f"The latest rankings in the race for the 2025-26 Kia ROY award (as of {rookie_date}). Updated weekly. ")
+    rookie_ladder, rookie_date = get_rookie_ladder(get_local_now().strftime("%Y-%m-%d"), cache_version=2)
+    # Debug: Show version to confirm new code is deployed
+    st.caption(f"The latest rankings in the race for the 2025-26 Kia ROY award (as of {rookie_date}). Updated weekly. [v2.1]")
     
     if rookie_ladder:
         def render_rookie_card(player, rank_idx):
