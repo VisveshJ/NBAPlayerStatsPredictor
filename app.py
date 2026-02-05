@@ -1429,7 +1429,7 @@ def get_mvp_ladder(current_date_str=None, cache_version=2):
 
 
 @st.cache_data(ttl=3600*12)  # 12-hour cache for Rookie Ladder
-def get_rookie_ladder(current_date_str=None, cache_version=2):
+def get_rookie_ladder(current_date_str=None, cache_version=3):
     """Fetch the latest Kia Rookie Ladder rankings from NBA.com with dynamic URL calculation.
     
     Args:
@@ -1441,18 +1441,19 @@ def get_rookie_ladder(current_date_str=None, cache_version=2):
     import re
     from datetime import datetime, timedelta
     
-    # Updated fallback data based on Jan 21, 2026 article
+    # Updated fallback data based on Feb 4, 2026 article
+    # Source: https://www.nba.com/news/kia-rookie-ladder-feb-4-2026
     fallback_players = [
-        {'rank': '1', 'name': 'Kon Knueppel', 'team': 'Charlotte Hornets', 'team_abbrev': 'CHA', 'stats': '19 ppg, 5.3 rpg, 3.5 apg', 'draft_pick': '4', 'games_played': 'N/A', 'player_id': None},
-        {'rank': '2', 'name': 'Cooper Flagg', 'team': 'Dallas Mavericks', 'team_abbrev': 'DAL', 'stats': '18.8 ppg, 6.3 rpg, 4.1 apg', 'draft_pick': '1', 'games_played': 'N/A', 'player_id': None},
-        {'rank': '3', 'name': 'VJ Edgecombe', 'team': 'Philadelphia 76ers', 'team_abbrev': 'PHI', 'stats': '15.8 ppg, 5.3 rpg, 4.2 apg', 'draft_pick': '3', 'games_played': 'N/A', 'player_id': None},
-        {'rank': '4', 'name': 'Derik Queen', 'team': 'New Orleans Pelicans', 'team_abbrev': 'NOP', 'stats': '12.6 ppg, 7.5 rpg, 4.3 apg', 'draft_pick': '13', 'games_played': 'N/A', 'player_id': None},
-        {'rank': '5', 'name': 'Cedric Coward', 'team': 'Memphis Grizzlies', 'team_abbrev': 'MEM', 'stats': '14 ppg, 6.5 rpg, 2.9 apg', 'draft_pick': '11', 'games_played': 'N/A', 'player_id': None},
-        {'rank': '6', 'name': 'Maxime Raynaud', 'team': 'Sacramento Kings', 'team_abbrev': 'SAC', 'stats': '10.1 ppg, 6.6 rpg, 1.1 apg', 'draft_pick': '42', 'games_played': 'N/A', 'player_id': None},
-        {'rank': '7', 'name': 'Egor Demin', 'team': 'Brooklyn Nets', 'team_abbrev': 'BKN', 'stats': '10.4 ppg, 3 rpg, 3.4 apg', 'draft_pick': '8', 'games_played': 'N/A', 'player_id': None},
-        {'rank': '8', 'name': 'Caleb Love', 'team': 'Portland Trail Blazers', 'team_abbrev': 'POR', 'stats': '11.1 ppg, 2.7 rpg, 2.6 apg', 'draft_pick': 'Undrafted', 'games_played': 'N/A', 'player_id': None},
-        {'rank': '9', 'name': 'Jeremiah Fears', 'team': 'New Orleans Pelicans', 'team_abbrev': 'NOP', 'stats': '13.9 ppg, 3.7 rpg, 3.2 apg', 'draft_pick': '7', 'games_played': 'N/A', 'player_id': None},
-        {'rank': '10', 'name': 'Dylan Harper', 'team': 'San Antonio Spurs', 'team_abbrev': 'SAS', 'stats': '10.6 ppg, 3.2 rpg, 3.6 apg', 'draft_pick': '2', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '1', 'name': 'Cooper Flagg', 'team': 'Dallas Mavericks', 'team_abbrev': 'DAL', 'stats': '21.8 ppg, 7.4 rpg, 4.1 apg', 'draft_pick': '1', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '2', 'name': 'Kon Knueppel', 'team': 'Charlotte Hornets', 'team_abbrev': 'CHA', 'stats': '19.7 ppg, 5.5 rpg, 3.7 apg', 'draft_pick': '4', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '3', 'name': 'VJ Edgecombe', 'team': 'Philadelphia 76ers', 'team_abbrev': 'PHI', 'stats': '16.2 ppg, 5.4 rpg, 4.3 apg', 'draft_pick': '3', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '4', 'name': 'Cedric Coward', 'team': 'Memphis Grizzlies', 'team_abbrev': 'MEM', 'stats': '14.8 ppg, 6.7 rpg, 3.1 apg', 'draft_pick': '11', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '5', 'name': 'Derik Queen', 'team': 'New Orleans Pelicans', 'team_abbrev': 'NOP', 'stats': '13.1 ppg, 7.8 rpg, 4.5 apg', 'draft_pick': '13', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '6', 'name': 'Maxime Raynaud', 'team': 'Sacramento Kings', 'team_abbrev': 'SAC', 'stats': '10.4 ppg, 6.8 rpg, 1.2 apg', 'draft_pick': '42', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '7', 'name': 'Egor Demin', 'team': 'Brooklyn Nets', 'team_abbrev': 'BKN', 'stats': '10.7 ppg, 3.1 rpg, 3.6 apg', 'draft_pick': '8', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '8', 'name': 'Jeremiah Fears', 'team': 'New Orleans Pelicans', 'team_abbrev': 'NOP', 'stats': '14.2 ppg, 3.9 rpg, 3.4 apg', 'draft_pick': '7', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '9', 'name': 'Caleb Love', 'team': 'Portland Trail Blazers', 'team_abbrev': 'POR', 'stats': '11.3 ppg, 2.8 rpg, 2.7 apg', 'draft_pick': 'Undrafted', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '10', 'name': 'Dylan Harper', 'team': 'San Antonio Spurs', 'team_abbrev': 'SAS', 'stats': '10.9 ppg, 3.3 rpg, 3.8 apg', 'draft_pick': '2', 'games_played': 'N/A', 'player_id': None},
     ]
     
     headers = {
@@ -1497,7 +1498,7 @@ def get_rookie_ladder(current_date_str=None, cache_version=2):
                 continue
         
         if not article_url:
-            return fallback_players, "January 21, 2026"
+            return fallback_players, "February 4, 2026"
             
         # Scrape the article
         art_resp = requests.get(article_url, headers=headers, timeout=10)
@@ -1582,11 +1583,11 @@ def get_rookie_ladder(current_date_str=None, cache_version=2):
             return players[:10], as_of_date
         else:
             # Use fallback if parsing failed
-            return fallback_players, "January 21, 2026"
+            return fallback_players, "February 4, 2026"
             
     except Exception as e:
         print(f"Error fetching Rookie ladder: {e}")
-        return fallback_players, "January 21, 2026"
+        return fallback_players, "February 4, 2026"
 
 
 def get_today_game_slate():
@@ -6386,9 +6387,9 @@ elif st.session_state.current_page == "Awards":
     
     # ===== SECTION 2: ROOKIE OF THE YEAR LADDER =====
     st.markdown("## 🌟 Rookie of the Year Ladder")
-    rookie_ladder, rookie_date = get_rookie_ladder(get_local_now().strftime("%Y-%m-%d"), cache_version=2)
+    rookie_ladder, rookie_date = get_rookie_ladder(get_local_now().strftime("%Y-%m-%d"), cache_version=3)
     # Debug: Show version to confirm new code is deployed
-    st.caption(f"The latest rankings in the race for the 2025-26 Kia ROY award (as of {rookie_date}). Updated weekly. [v2.1]")
+    st.caption(f"The latest rankings in the race for the 2025-26 Kia ROY award (as of {rookie_date}). Updated weekly. [v2.2]")
     
     if rookie_ladder:
         def render_rookie_card(player, rank_idx):
