@@ -1252,11 +1252,12 @@ def get_nba_news():
 
 
 @st.cache_data(ttl=3600*12)  # 12-hour cache for MVP ladder (refreshes twice daily to catch weekly updates)
-def get_mvp_ladder(current_date_str=None):
+def get_mvp_ladder(current_date_str=None, cache_version=2):
     """Fetch the latest Kia MVP Ladder rankings from NBA.com with dynamic URL calculation.
     
     Args:
         current_date_str: String representation of current date to prevent cache staleness
+        cache_version: Version number to force cache invalidation (increment to bust cache)
     """
     import requests
     from bs4 import BeautifulSoup
@@ -1428,11 +1429,12 @@ def get_mvp_ladder(current_date_str=None):
 
 
 @st.cache_data(ttl=3600*12)  # 12-hour cache for Rookie Ladder
-def get_rookie_ladder(current_date_str=None):
+def get_rookie_ladder(current_date_str=None, cache_version=2):
     """Fetch the latest Kia Rookie Ladder rankings from NBA.com with dynamic URL calculation.
     
     Args:
         current_date_str: String representation of current date to prevent cache staleness
+        cache_version: Version number to force cache invalidation (increment to bust cache)
     """
     import requests
     from bs4 import BeautifulSoup
