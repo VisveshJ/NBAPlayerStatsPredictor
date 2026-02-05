@@ -1252,8 +1252,12 @@ def get_nba_news():
 
 
 @st.cache_data(ttl=3600*12)  # 12-hour cache for MVP ladder (refreshes twice daily to catch weekly updates)
-def get_mvp_ladder():
-    """Fetch the latest Kia MVP Ladder rankings from NBA.com with dynamic URL calculation."""
+def get_mvp_ladder(current_date_str=None):
+    """Fetch the latest Kia MVP Ladder rankings from NBA.com with dynamic URL calculation.
+    
+    Args:
+        current_date_str: String representation of current date to prevent cache staleness
+    """
     import requests
     from bs4 import BeautifulSoup
     import re
@@ -1415,8 +1419,12 @@ def get_mvp_ladder():
 
 
 @st.cache_data(ttl=3600*12)  # 12-hour cache for Rookie Ladder
-def get_rookie_ladder():
-    """Fetch the latest Kia Rookie Ladder rankings from NBA.com with dynamic URL calculation."""
+def get_rookie_ladder(current_date_str=None):
+    """Fetch the latest Kia Rookie Ladder rankings from NBA.com with dynamic URL calculation.
+    
+    Args:
+        current_date_str: String representation of current date to prevent cache staleness
+    """
     import requests
     from bs4 import BeautifulSoup
     import re
@@ -5043,7 +5051,7 @@ elif page == "Around the NBA":
     
     # Fetch data
     with st.spinner("Fetching latest NBA updates..."):
-        mvp_ladder, mvp_date = get_mvp_ladder()
+        mvp_ladder, mvp_date = get_mvp_ladder(get_local_now().strftime("%Y-%m-%d"))
         nba_schedule = get_nba_schedule()
         standings_df = get_league_standings(season)
         nba_news = get_nba_news()
@@ -6204,7 +6212,7 @@ elif st.session_state.current_page == "Awards":
     
     # Get required data for MVP Ladder
     standings_df = get_league_standings(season)
-    mvp_ladder, mvp_date = get_mvp_ladder()
+    mvp_ladder, mvp_date = get_mvp_ladder(get_local_now().strftime("%Y-%m-%d"))
     
     # Pre-fetch stats for MVP candidates (and later awards)
     bulk_player_stats = get_bulk_player_stats()
@@ -6355,7 +6363,7 @@ elif st.session_state.current_page == "Awards":
     
     # ===== SECTION 2: ROOKIE OF THE YEAR LADDER =====
     st.markdown("## 🌟 Rookie of the Year Ladder")
-    rookie_ladder, rookie_date = get_rookie_ladder()
+    rookie_ladder, rookie_date = get_rookie_ladder(get_local_now().strftime("%Y-%m-%d"))
     st.caption(f"The latest rankings in the race for the 2025-26 Kia ROY award (as of {rookie_date}). Updated weekly. ")
     
     if rookie_ladder:
