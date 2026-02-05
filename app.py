@@ -1278,7 +1278,16 @@ def get_mvp_ladder(current_date_str=None):
     ]
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Cache-Control': 'max-age=0'
     }
     
     try:
@@ -1445,7 +1454,16 @@ def get_rookie_ladder(current_date_str=None):
     ]
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Cache-Control': 'max-age=0'
     }
     
     try:
@@ -1466,11 +1484,14 @@ def get_rookie_ladder(current_date_str=None):
             try:
                 # Use GET with timeout or HEAD if supported. GET is more reliable for checking content.
                 resp = requests.get(url, headers=headers, timeout=5)
+                print(f"ROY Ladder: Checking {url} -> Status: {resp.status_code}, Contains 'Rookie Ladder': {'Rookie Ladder' in resp.text}")
                 if resp.status_code == 200 and "Rookie Ladder" in resp.text:
                     article_url = url
                     article_date = check_date
+                    print(f"ROY Ladder: Found article at {url}")
                     break
-            except:
+            except Exception as e:
+                print(f"ROY Ladder: Error checking {url}: {str(e)[:100]}")
                 continue
         
         if not article_url:
