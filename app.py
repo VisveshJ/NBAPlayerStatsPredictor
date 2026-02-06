@@ -1332,9 +1332,10 @@ def get_mvp_ladder(current_date_str=None, cache_version=2):
         found_ranks = set()
         for r in rankings:
             text = r.get_text(strip=True)
-            # Match pattern like "1. Player Name, Team Name"
+            # Match pattern like "1. Player Name, Team Name" or "1.Player Name, Team Name"
             # Require rank followed by a period to distinguish from general headlines
-            match = re.match(r'^(\d+)\.\s+(.+)', text)
+            # Use \s* to allow zero or more spaces (handles both "4. Name" and "4.Name")
+            match = re.match(r'^(\d+)\.\s*(.+)', text)
             if match:
                 rank_num = int(match.group(1))
                 if rank_num <= 5 and rank_num not in found_ranks:
@@ -1393,8 +1394,9 @@ def get_mvp_ladder(current_date_str=None, cache_version=2):
             # Parse each line that starts with a number
             for line in next5_text.split('\n'):
                 line = line.strip()
-                # Match pattern: "6. Player Name, Team Name emoji"
-                rank_match = re.match(r'^(\d+)\.?\s+([^,]+),\s*([^↔️⬆️⬇️↗️↘️\n]+)', line)
+                # Match pattern: "6. Player Name, Team Name emoji" or "6.Player Name, Team Name emoji"
+                # Use \s* to allow zero or more spaces after period
+                rank_match = re.match(r'^(\d+)\.?\s*([^,]+),\s*([^↔️⬆️⬇️↗️↘️\n]+)', line)
                 if rank_match:
                     rank = rank_match.group(1)
                     name = rank_match.group(2).strip()
