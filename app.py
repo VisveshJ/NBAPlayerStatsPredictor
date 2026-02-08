@@ -5449,7 +5449,8 @@ elif page == "Standings":
                                 if (g_home == t1_abbr and g_away == t2_abbr) or (g_home == t2_abbr and g_away == t1_abbr):
                                     try:
                                         g_date = pd.to_datetime(game.get('game_date', '')).date()
-                                        if g_date >= today:
+                                        # Only show games AFTER today (not today's games which may be completed)
+                                        if g_date > today:
                                             next_info = f" Next: {g_date.strftime('%b %d')} ({g_away} @ {g_home})"
                                             found_next = True
                                             break
