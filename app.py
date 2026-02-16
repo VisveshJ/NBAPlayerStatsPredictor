@@ -4867,19 +4867,73 @@ elif page == "Compare Players":
                     if next_matchup:
                         st.markdown(f"<p style='text-align: center; color: #F59E0B; font-size: 1.1rem;'>📅 <strong>Next Matchup:</strong> {next_matchup['date']} — {player1_team} {next_matchup['location']}</p>", unsafe_allow_html=True)
                     
-                    # Find games where player 1 played vs player 2's team
-                    p1_vs_p2_team = player1_df[player1_df['Opponent'] == player2_team].copy()
-                    # Find games where player 2 played vs player 1's team
-                    p2_vs_p1_team = player2_df[player2_df['Opponent'] == player1_team].copy()
+                    # Extract all teams each player has played for this season from MATCHUP
+                    # MATCHUP format: "LAC vs. GSW" or "LAC @ GSW" where first team is player's team
+                    def extract_player_teams(df):
+                        """Extract all unique teams a player has played for based on MATCHUP field."""
+                        teams = set()
+                        if 'MATCHUP' in df.columns:
+                            for matchup in df['MATCHUP']:
+                                # Extract player's team (first 3 characters before vs. or @)
+                                if isinstance(matchup, str) and len(matchup) >= 3:
+                                    teams.add(matchup[:3].strip())
+                        return teams
+                    
+                    player1_teams = extract_player_teams(player1_df)
+                    player2_teams = extract_player_teams(player2_df)
+                    
+                    # Find games where player1 faced ANY team that player2 played for
+                    # This handles trades - e.g., Harden on LAC facing GSW, even after trade to CLE
+                    p1_vs_p2_teams = player1_df[player1_df['Opponent'].isin(player2_teams)].copy()
+                    p2_vs_p1_teams = player2_df[player2_df['Opponent'].isin(player1_teams)].copy()
                     
                     # Filter to only TRUE head-to-head games (both players played on the same date)
-                    p1_dates = set(p1_vs_p2_team['GAME_DATE'].tolist()) if len(p1_vs_p2_team) > 0 else set()
-                    p2_dates = set(p2_vs_p1_team['GAME_DATE'].tolist()) if len(p2_vs_p1_team) > 0 else set()
-                    common_dates = p1_dates & p2_dates  # Games where both played
+                    # AND verify they actually faced each other (not just played same opponent on different dates)
+                    p1_games = {}
+                    for _, row in p1_vs_p2_teams.iterrows():
+                        game_date = row['GAME_DATE']
+                        matchup = row.get('MATCHUP', '')
+                        # Extract both teams from matchup
+                        if 'vs.' in matchup:
+                            p1_team_in_game = matchup.split('vs.')[0].strip()
+                            opponent = matchup.split('vs.')[1].strip()
+                        elif '@' in matchup:
+                            p1_team_in_game = matchup.split('@')[0].strip()
+                            opponent = matchup.split('@')[1].strip()
+                        else:
+                            continue
+                        p1_games[game_date] = {'player_team': p1_team_in_game, 'opponent': opponent}
+                    
+                    p2_games = {}
+                    for _, row in p2_vs_p1_teams.iterrows():
+                        game_date = row['GAME_DATE']
+                        matchup = row.get('MATCHUP', '')
+                        # Extract both teams from matchup
+                        if 'vs.' in matchup:
+                            p2_team_in_game = matchup.split('vs.')[0].strip()
+                            opponent = matchup.split('vs.')[1].strip()
+                        elif '@' in matchup:
+                            p2_team_in_game = matchup.split('@')[0].strip()
+                            opponent = matchup.split('@')[1].strip()
+                        else:
+                            continue
+                        p2_games[game_date] = {'player_team': p2_team_in_game, 'opponent': opponent}
+                    
+                    # Find common dates where they actually faced each other
+                    # (one player's team matches the other player's opponent on the same date)
+                    common_dates = set()
+                    for date in p1_games:
+                        if date in p2_games:
+                            p1_info = p1_games[date]
+                            p2_info = p2_games[date]
+                            # Check if they faced each other: p1's team = p2's opponent OR p1's opponent = p2's team
+                            if (p1_info['player_team'] == p2_info['opponent'] or 
+                                p1_info['opponent'] == p2_info['player_team']):
+                                common_dates.add(date)
                     
                     # Filter to only common dates for display
-                    p1_h2h = p1_vs_p2_team[p1_vs_p2_team['GAME_DATE'].isin(common_dates)].copy() if len(p1_vs_p2_team) > 0 else p1_vs_p2_team
-                    p2_h2h = p2_vs_p1_team[p2_vs_p1_team['GAME_DATE'].isin(common_dates)].copy() if len(p2_vs_p1_team) > 0 else p2_vs_p1_team
+                    p1_h2h = p1_vs_p2_teams[p1_vs_p2_teams['GAME_DATE'].isin(common_dates)].copy() if len(p1_vs_p2_teams) > 0 else p1_vs_p2_teams
+                    p2_h2h = p2_vs_p1_teams[p2_vs_p1_teams['GAME_DATE'].isin(common_dates)].copy() if len(p2_vs_p1_teams) > 0 else p2_vs_p1_teams
                     
                     if len(p1_h2h) == 0 and len(p2_h2h) == 0:
                         st.info(f"No head-to-head matchups found between {player1_name} and {player2_name} this season.")
@@ -4887,17 +4941,20 @@ elif page == "Compare Players":
                         # Display both players' game logs vs each other's teams (stacked for more columns)
                         
                         # Helper to calculate Score if not present
-                        def add_score_column(df, team_abbrev):
+                        def add_score_column(df, player_teams_set):
+                            """Add score column by fetching game logs for all teams the player played for."""
                             if 'Score' not in df.columns:
                                 score_lookup = {}
-                                team_game_data = get_team_game_log(team_abbrev, season, num_games=82)
-                                if team_game_data is not None and len(team_game_data) > 0:
-                                    for _, trow in team_game_data.iterrows():
-                                        game_id = str(trow.get('GAME_ID', ''))
-                                        if 'PTS' in trow and 'PLUS_MINUS' in trow:
-                                            team_pts = int(trow['PTS'])
-                                            opp_pts = int(trow['PTS'] - trow['PLUS_MINUS'])
-                                            score_lookup[game_id] = f"{team_pts} - {opp_pts}"
+                                # Fetch game logs for ALL teams the player played for
+                                for team_abbrev in player_teams_set:
+                                    team_game_data = get_team_game_log(team_abbrev, season, num_games=82)
+                                    if team_game_data is not None and len(team_game_data) > 0:
+                                        for _, trow in team_game_data.iterrows():
+                                            game_id = str(trow.get('GAME_ID', ''))
+                                            if 'PTS' in trow and 'PLUS_MINUS' in trow:
+                                                team_pts = int(trow['PTS'])
+                                                opp_pts = int(trow['PTS'] - trow['PLUS_MINUS'])
+                                                score_lookup[game_id] = f"{team_pts} - {opp_pts}"
                                 if score_lookup:
                                     df['Score'] = df.apply(
                                         lambda row: score_lookup.get(str(row.get('Game_ID', row.get('GAME_ID', ''))), 'N/A'),
@@ -4911,7 +4968,7 @@ elif page == "Compare Players":
                         st.markdown(f"#### {player1_name} vs {player2_name}")
                         if len(p1_h2h) > 0:
                             # Add Score if not present
-                            p1_h2h = add_score_column(p1_h2h, player1_team)
+                            p1_h2h = add_score_column(p1_h2h, player1_teams)
                             
                             # Select all game log columns (use correct names)
                             display_cols = ['GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN', 'Points', 'Rebounds', 'Assists', 'Steals', 'Blocks', 'Turnovers', 'PF', 'FG', '3P', 'FT', 'FG%', '3P%', 'FT%', 'TS%']
@@ -4988,7 +5045,7 @@ elif page == "Compare Players":
                         st.markdown(f"#### {player2_name} vs {player1_name}")
                         if len(p2_h2h) > 0:
                             # Add Score if not present
-                            p2_h2h = add_score_column(p2_h2h, player2_team)
+                            p2_h2h = add_score_column(p2_h2h, player2_teams)
                             
                             # Select all game log columns (use correct names)
                             display_cols = ['GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN', 'Points', 'Rebounds', 'Assists', 'Steals', 'Blocks', 'Turnovers', 'PF', 'FG', '3P', 'FT', 'FG%', '3P%', 'FT%', 'TS%']
