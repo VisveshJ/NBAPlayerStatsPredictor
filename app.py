@@ -1431,7 +1431,7 @@ def get_mvp_ladder(current_date_str=None, cache_version=2):
 
 
 @st.cache_data(ttl=3600*12)  # 12-hour cache for Rookie Ladder
-def get_rookie_ladder(current_date_str=None, cache_version=3):
+def get_rookie_ladder(current_date_str=None, cache_version=4):
     """Fetch the latest Kia Rookie Ladder rankings from NBA.com with dynamic URL calculation.
     
     Args:
@@ -6381,7 +6381,10 @@ elif st.session_state.current_page == "Awards":
                     pass
             
             if not standings_df.empty and team_name:
-                matching = standings_df[standings_df['TeamCity'].str.contains(team_name.split()[0], case=False, na=False)]
+                # Use team abbreviation for more accurate matching
+                # This handles "LA Clippers" vs "Los Angeles Clippers" properly
+                team_abbrev_lookup = get_team_abbrev(team_name)
+                matching = standings_df[standings_df['TeamAbbrev'] == team_abbrev_lookup]
                 if not matching.empty:
                     team_record = matching.iloc[0]['Record']
                     team_rank = matching.iloc[0].get('PlayoffRank', 'N/A')
