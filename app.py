@@ -1431,7 +1431,7 @@ def get_mvp_ladder(current_date_str=None, cache_version=2):
 
 
 @st.cache_data(ttl=3600*12)  # 12-hour cache for Rookie Ladder
-def get_rookie_ladder(current_date_str=None, cache_version=4):
+def get_rookie_ladder(current_date_str=None, cache_version=5):
     """Fetch the latest Kia Rookie Ladder rankings from NBA.com with dynamic URL calculation.
     
     Args:
@@ -1489,8 +1489,9 @@ def get_rookie_ladder(current_date_str=None, cache_version=4):
             try:
                 # Use GET with timeout or HEAD if supported. GET is more reliable for checking content.
                 resp = requests.get(url, headers=headers, timeout=5)
-                print(f"ROY Ladder: Checking {url} -> Status: {resp.status_code}, Contains 'Rookie Ladder': {'Rookie Ladder' in resp.text}")
-                if resp.status_code == 200 and "Rookie Ladder" in resp.text:
+                print(f"ROY Ladder: Checking {url} -> Status: {resp.status_code}, Contains 'Kia Rookie Ladder': {'Kia Rookie Ladder' in resp.text}")
+                # Use more specific search to avoid false positives (like MVP ladder does)
+                if resp.status_code == 200 and "Kia Rookie Ladder" in resp.text:
                     article_url = url
                     article_date = check_date
                     print(f"ROY Ladder: Found article at {url}")
@@ -6450,7 +6451,7 @@ elif st.session_state.current_page == "Awards":
     
     # ===== SECTION 2: ROOKIE OF THE YEAR LADDER =====
     st.markdown("## 🌟 Rookie of the Year Ladder")
-    rookie_ladder, rookie_date = get_rookie_ladder(get_local_now().strftime("%Y-%m-%d"), cache_version=4)
+    rookie_ladder, rookie_date = get_rookie_ladder(get_local_now().strftime("%Y-%m-%d"), cache_version=5)
     # Debug: Show version to confirm new code is deployed
     st.caption(f"The latest rankings in the race for the 2025-26 Kia ROY award (as of {rookie_date}). Updated weekly. [v2.2]")
     
