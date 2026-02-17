@@ -6450,7 +6450,7 @@ elif st.session_state.current_page == "Awards":
     
     # ===== SECTION 2: ROOKIE OF THE YEAR LADDER =====
     st.markdown("## 🌟 Rookie of the Year Ladder")
-    rookie_ladder, rookie_date = get_rookie_ladder(get_local_now().strftime("%Y-%m-%d"), cache_version=3)
+    rookie_ladder, rookie_date = get_rookie_ladder(get_local_now().strftime("%Y-%m-%d"), cache_version=4)
     # Debug: Show version to confirm new code is deployed
     st.caption(f"The latest rankings in the race for the 2025-26 Kia ROY award (as of {rookie_date}). Updated weekly. [v2.2]")
     
