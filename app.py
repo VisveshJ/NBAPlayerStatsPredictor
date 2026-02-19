@@ -166,20 +166,21 @@ def nav_to_predictions(player_name):
 @st.cache_data(ttl=900)
 def get_current_defensive_ratings(season="2025-26"):
     """Fetch current defensive ratings for all NBA teams with retry logic."""
-    max_retries = 3
+    max_retries = 2
     last_error = None
     
     for attempt in range(max_retries):
         try:
-            # Add delay between retries with exponential backoff
+            # Add delay between retries
             if attempt > 0:
-                time.sleep(2 * attempt)  # 2s, 4s delay
+                time.sleep(1)
             
             team_stats = leaguedashteamstats.LeagueDashTeamStats(
                 season=season,
                 season_type_all_star="Regular Season",
                 measure_type_detailed_defense="Advanced",
-                per_mode_detailed="PerGame"
+                per_mode_detailed="PerGame",
+                timeout=10
             )
             
             df = team_stats.get_data_frames()[0]
@@ -225,28 +226,29 @@ def get_current_defensive_ratings(season="2025-26"):
             if attempt < max_retries - 1:
                 continue  # Try again
     
-    # All retries failed
-    st.error(f"Error fetching defensive ratings after {max_retries} attempts: {str(last_error)}")
+    # All retries failed - return empty gracefully (don't block page render)
+    print(f"Warning: Could not fetch defensive ratings after {max_retries} attempts: {str(last_error)}")
     return {}
 
 
 @st.cache_data(ttl=900)
 def get_team_ratings_with_ranks(season="2025-26"):
     """Get offensive and defensive ratings with league rankings for all teams with retry logic."""
-    max_retries = 3
+    max_retries = 2
     last_error = None
     
     for attempt in range(max_retries):
         try:
             if attempt > 0:
-                time.sleep(2 * attempt)
+                time.sleep(1)
             
-            time.sleep(0.6)
+            time.sleep(0.3)
             team_stats = leaguedashteamstats.LeagueDashTeamStats(
                 season=season,
                 season_type_all_star="Regular Season",
                 measure_type_detailed_defense="Advanced",
-                per_mode_detailed="PerGame"
+                per_mode_detailed="PerGame",
+                timeout=10
             )
             
             df = team_stats.get_data_frames()[0]
@@ -297,6 +299,7 @@ def get_team_ratings_with_ranks(season="2025-26"):
             if attempt < max_retries - 1:
                 continue
     
+    print(f"Warning: Could not fetch team ratings: {str(last_error)}")
     return {}
 
 
@@ -304,18 +307,19 @@ def get_team_ratings_with_ranks(season="2025-26"):
 @st.cache_data(ttl=900)  # 15 minute cache
 def get_league_standings(season="2025-26"):
     """Fetch current NBA standings for all teams with retry logic."""
-    max_retries = 3
+    max_retries = 2
     last_error = None
     
     for attempt in range(max_retries):
         try:
             if attempt > 0:
-                time.sleep(2 * attempt)
+                time.sleep(1)
             
-            time.sleep(0.6)
+            time.sleep(0.3)
             standings = leaguestandings.LeagueStandings(
                 season=season,
-                season_type="Regular Season"
+                season_type="Regular Season",
+                timeout=10
             )
             
             df = standings.get_data_frames()[0]
@@ -362,7 +366,7 @@ def get_league_standings(season="2025-26"):
             if attempt < max_retries - 1:
                 continue
     
-    st.error(f"Error fetching standings after {max_retries} attempts: {str(last_error)}")
+    print(f"Warning: Could not fetch standings after {max_retries} attempts: {str(last_error)}")
     return pd.DataFrame()
 
 
@@ -607,8 +611,8 @@ def get_team_roster(team_abbrev):
         
         team_id = team[0]['id']
         
-        time.sleep(0.6)
-        roster = commonteamroster.CommonTeamRoster(team_id=team_id)
+        time.sleep(0.3)
+        roster = commonteamroster.CommonTeamRoster(team_id=team_id, timeout=10)
         
         df = roster.get_data_frames()[0]
         
@@ -638,13 +642,14 @@ def get_team_game_log(team_abbrev, season="2025-26", num_games=None):
         
         team_id = team[0]['id']
         
-        time.sleep(0.6)
+        time.sleep(0.3)
         # Use leaguegamefinder instead of teamgamelog to get PLUS_MINUS
         from nba_api.stats.endpoints import leaguegamefinder
         gamefinder = leaguegamefinder.LeagueGameFinder(
             team_id_nullable=team_id,
             season_nullable=season,
-            season_type_nullable="Regular Season"
+            season_type_nullable="Regular Season",
+            timeout=10
         )
         
         df = gamefinder.get_data_frames()[0]
@@ -728,11 +733,12 @@ def get_player_game_log(player_name, season="2025-26"):
     player_id = str(player[0]['id'])
     
     try:
-        time.sleep(0.6)
+        time.sleep(0.3)
         gamelog = playergamelog.PlayerGameLog(
             player_id=player_id,
             season=season,
-            season_type_all_star="Regular Season"
+            season_type_all_star="Regular Season",
+            timeout=10
         )
         
         df = gamelog.get_data_frames()[0]
@@ -780,7 +786,8 @@ def get_bulk_player_stats(season="2025-26"):
         stats = leaguedashplayerstats.LeagueDashPlayerStats(
             season=season,
             season_type_all_star="Regular Season",
-            per_mode_detailed="PerGame"
+            per_mode_detailed="PerGame",
+            timeout=10
         )
         df = stats.get_data_frames()[0]
         return df
@@ -838,6 +845,7 @@ def abbreviate_position(pos, player_name=None):
     return pos
 
 
+@st.cache_data(ttl=86400)  # 24-hour cache for bio info (rarely changes)
 def fetch_player_bio(player_name):
     """Get player bio info including height, weight, and draft year."""
     from nba_api.stats.endpoints import commonplayerinfo
@@ -852,8 +860,8 @@ def fetch_player_bio(player_name):
         
         player_id = str(player[0]['id'])
         
-        time.sleep(0.6)
-        player_info = commonplayerinfo.CommonPlayerInfo(player_id=player_id)
+        time.sleep(0.3)
+        player_info = commonplayerinfo.CommonPlayerInfo(player_id=player_id, timeout=10)
         df = player_info.get_data_frames()[0]
         
         if len(df) == 0:
@@ -899,7 +907,8 @@ def get_active_players_list(season="2025-26"):
         player_stats = leaguedashplayerstats.LeagueDashPlayerStats(
             season=season,
             season_type_all_star="Regular Season",
-            per_mode_detailed="Totals"
+            per_mode_detailed="Totals",
+            timeout=10
         )
         
         df = player_stats.get_data_frames()[0]
@@ -1844,11 +1853,9 @@ if page == "Home":
             render_section_header("Your Favorite Teams", "")
             
             favorite_teams = auth.get_favorite_teams()
-            team_def_ratings = get_current_defensive_ratings(season)
             
             if favorite_teams:
                 for team_abbrev in favorite_teams[:6]:
-                    rating = team_def_ratings.get(team_abbrev, "N/A")
                     logo = get_team_logo_url(team_abbrev)
                     
                     l_col, t_col, b_col = st.columns([0.2, 0.4, 0.4])
