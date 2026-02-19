@@ -166,6 +166,8 @@ def nav_to_predictions(player_name):
 @st.cache_data(ttl=900)
 def get_current_defensive_ratings(season="2025-26"):
     """Fetch current defensive ratings for all NBA teams with retry logic."""
+    if not _is_nba_api_available():
+        return {}
     max_retries = 2
     last_error = None
     
@@ -228,12 +230,15 @@ def get_current_defensive_ratings(season="2025-26"):
     
     # All retries failed - return empty gracefully (don't block page render)
     print(f"Warning: Could not fetch defensive ratings after {max_retries} attempts: {str(last_error)}")
+    _mark_nba_api_failed()
     return {}
 
 
 @st.cache_data(ttl=900)
 def get_team_ratings_with_ranks(season="2025-26"):
     """Get offensive and defensive ratings with league rankings for all teams with retry logic."""
+    if not _is_nba_api_available():
+        return {}
     max_retries = 2
     last_error = None
     
@@ -300,6 +305,7 @@ def get_team_ratings_with_ranks(season="2025-26"):
                 continue
     
     print(f"Warning: Could not fetch team ratings: {str(last_error)}")
+    _mark_nba_api_failed()
     return {}
 
 
@@ -307,6 +313,8 @@ def get_team_ratings_with_ranks(season="2025-26"):
 @st.cache_data(ttl=900)  # 15 minute cache
 def get_league_standings(season="2025-26"):
     """Fetch current NBA standings for all teams with retry logic."""
+    if not _is_nba_api_available():
+        return pd.DataFrame()
     max_retries = 2
     last_error = None
     
@@ -367,6 +375,7 @@ def get_league_standings(season="2025-26"):
                 continue
     
     print(f"Warning: Could not fetch standings after {max_retries} attempts: {str(last_error)}")
+    _mark_nba_api_failed()
     return pd.DataFrame()
 
 
@@ -601,6 +610,8 @@ def get_team_roster(team_abbrev):
     """Fetch roster for a team."""
     from nba_api.stats.endpoints import commonteamroster
     
+    if not _is_nba_api_available():
+        return None
     try:
         # Get team ID from abbreviation
         all_teams = teams.get_teams()
@@ -626,12 +637,15 @@ def get_team_roster(team_abbrev):
         return roster_data
         
     except Exception as e:
+        _mark_nba_api_failed()
         return None
 
 
 @st.cache_data(ttl=1800)
 def get_team_game_log(team_abbrev, season="2025-26", num_games=None):
     """Fetch full season game log for a team. Result is cached to avoid heavy repeated fetches."""
+    if not _is_nba_api_available():
+        return None
     try:
         # Get team ID from abbreviation
         all_teams = teams.get_teams()
@@ -664,6 +678,7 @@ def get_team_game_log(team_abbrev, season="2025-26", num_games=None):
             return df.head(num_games)
         return df
     except Exception as e:
+        _mark_nba_api_failed()
         return None
 
 
@@ -733,6 +748,8 @@ def get_player_game_log(player_name, season="2025-26"):
     player_id = str(player[0]['id'])
     
     try:
+        if not _is_nba_api_available():
+            return None, None
         time.sleep(0.3)
         gamelog = playergamelog.PlayerGameLog(
             player_id=player_id,
@@ -773,7 +790,8 @@ def get_player_game_log(player_name, season="2025-26"):
         return df, player_team
         
     except Exception as e:
-        st.error(f"Error fetching game log: {str(e)}")
+        print(f"Error fetching game log: {str(e)}")
+        _mark_nba_api_failed()
         return None, None
 
 
@@ -781,6 +799,8 @@ def get_player_game_log(player_name, season="2025-26"):
 def get_bulk_player_stats(season="2025-26"):
     """Fetch stats for ALL players in one go to optimize loading."""
     from nba_api.stats.endpoints import leaguedashplayerstats
+    if not _is_nba_api_available():
+        return None
     try:
         # PerGame for averages
         stats = leaguedashplayerstats.LeagueDashPlayerStats(
@@ -793,6 +813,7 @@ def get_bulk_player_stats(season="2025-26"):
         return df
     except Exception as e:
         print(f"Error fetching bulk stats: {e}")
+        _mark_nba_api_failed()
         return None
 
 
@@ -844,28 +865,60 @@ def abbreviate_position(pos, player_name=None):
         
     return pos
 
+# Circuit breaker for NBA API - prevents cascading timeouts when API is down
+# After first timeout, skip all remaining API calls this session
+_nba_api_last_failure = None  # timestamp of last failure
+_NBA_API_COOLDOWN = 60  # seconds to wait before retrying after failure
+
+def _is_nba_api_available():
+    """Check if NBA API is likely available (circuit breaker pattern)."""
+    global _nba_api_last_failure
+    if _nba_api_last_failure is None:
+        return True
+    # Allow retry after cooldown period
+    if time.time() - _nba_api_last_failure > _NBA_API_COOLDOWN:
+        _nba_api_last_failure = None
+        return True
+    return False
+
+def _mark_nba_api_failed():
+    """Mark NBA API as unavailable."""
+    global _nba_api_last_failure
+    _nba_api_last_failure = time.time()
 
 @st.cache_data(ttl=86400)  # 24-hour cache for bio info (rarely changes)
 def fetch_player_bio(player_name):
     """Get player bio info including height, weight, and draft year."""
     from nba_api.stats.endpoints import commonplayerinfo
     
+    all_players = players.get_players()
+    norm_input = normalize_name(player_name).lower()
+    player = [p for p in all_players if normalize_name(p['full_name']).lower() == norm_input]
+    
+    if not player:
+        return None
+    
+    player_id = str(player[0]['id'])
+    
+    # Basic fallback result (no API call needed - uses static data)
+    basic_result = {
+        'player_id': player_id,
+        'height': '', 'weight': '', 'draft_year': '', 'draft_round': '',
+        'draft_number': '', 'position': '', 'jersey': '', 'country': '',
+        'team_abbrev': '', 'age': 'N/A'
+    }
+    
+    # Check circuit breaker - skip API call if NBA API is known to be down
+    if not _is_nba_api_available():
+        return basic_result
+    
     try:
-        all_players = players.get_players()
-        norm_input = normalize_name(player_name).lower()
-        player = [p for p in all_players if normalize_name(p['full_name']).lower() == norm_input]
-        
-        if not player:
-            return None
-        
-        player_id = str(player[0]['id'])
-        
         time.sleep(0.3)
         player_info = commonplayerinfo.CommonPlayerInfo(player_id=player_id, timeout=10)
         df = player_info.get_data_frames()[0]
         
         if len(df) == 0:
-            return None
+            return basic_result
         
         row = df.iloc[0]
         age = row.get('AGE')
@@ -893,14 +946,18 @@ def fetch_player_bio(player_name):
             'age': age
         }
     except Exception as e:
-        # st.error(f"Bio Error for {player_name}: {e}") # Uncomment for debug
-        print(f"Bio Error for {player_name}: {e}")
-        return None
+        print(f"Bio API timeout for {player_name}: {e}")
+        _mark_nba_api_failed()
+        return basic_result
 
 
 @st.cache_data(ttl=86400)
 def get_active_players_list(season="2025-26"):
     """Get list of players who have actually played games this season."""
+    if not _is_nba_api_available():
+        # Fallback to static player list when API is down
+        all_players = players.get_players()
+        return sorted([p['full_name'] for p in all_players if p.get('is_active', False)])
     try:
         from nba_api.stats.endpoints import leaguedashplayerstats
         
@@ -916,7 +973,10 @@ def get_active_players_list(season="2025-26"):
         
         return sorted(active_players)
     except Exception:
-        return None
+        _mark_nba_api_failed()
+        # Fallback to static player list
+        all_players = players.get_players()
+        return sorted([p['full_name'] for p in all_players if p.get('is_active', False)])
 
 
 def search_players(query, season="2025-26"):
@@ -1798,7 +1858,15 @@ if page == "Home":
                         st.session_state['player_bio_cache'] = {}
                     
                     if player_name not in st.session_state['player_bio_cache']:
-                        st.session_state['player_bio_cache'][player_name] = fetch_player_bio(player_name)
+                        # If API was already failing this session, skip fetching
+                        if not st.session_state.get('_bio_api_failed', False):
+                            bio_result = fetch_player_bio(player_name)
+                            if bio_result is None and not st.session_state.get('_bio_api_failed'):
+                                # First failure - mark API as down so we skip remaining players
+                                st.session_state['_bio_api_failed'] = True
+                            st.session_state['player_bio_cache'][player_name] = bio_result
+                        else:
+                            st.session_state['player_bio_cache'][player_name] = None
                     
                     bio = st.session_state['player_bio_cache'][player_name]
                     
