@@ -209,7 +209,7 @@ def nav_to_predictions(player_name):
     st.session_state.auto_load_player = player_name
 
 # ==================== DATA FETCHING FUNCTIONS ====================
-@st.cache_data(ttl=900)
+@st.cache_data(ttl=3600)
 def get_current_defensive_ratings(season="2025-26"):
     """Fetch current defensive ratings for all NBA teams with retry logic."""
     if not _is_nba_api_available():
@@ -228,7 +228,7 @@ def get_current_defensive_ratings(season="2025-26"):
                 season_type_all_star="Regular Season",
                 measure_type_detailed_defense="Advanced",
                 per_mode_detailed="PerGame",
-                timeout=45
+                timeout=5
             )
             
             df = team_stats.get_data_frames()[0]
@@ -280,7 +280,7 @@ def get_current_defensive_ratings(season="2025-26"):
     return {}
 
 
-@st.cache_data(ttl=900)
+@st.cache_data(ttl=3600)
 def get_team_ratings_with_ranks(season="2025-26"):
     """Get offensive and defensive ratings with league rankings for all teams with retry logic."""
     if not _is_nba_api_available():
@@ -299,7 +299,7 @@ def get_team_ratings_with_ranks(season="2025-26"):
                 season_type_all_star="Regular Season",
                 measure_type_detailed_defense="Advanced",
                 per_mode_detailed="PerGame",
-                timeout=45
+                timeout=5
             )
             
             df = team_stats.get_data_frames()[0]
@@ -356,7 +356,7 @@ def get_team_ratings_with_ranks(season="2025-26"):
 
 
 
-@st.cache_data(ttl=900)  # 15 minute cache
+@st.cache_data(ttl=3600)  # 15 minute cache
 def get_league_standings(season="2025-26"):
     """Fetch current NBA standings for all teams with retry logic."""
     if not _is_nba_api_available():
@@ -373,7 +373,7 @@ def get_league_standings(season="2025-26"):
             standings = leaguestandings.LeagueStandings(
                 season=season,
                 season_type="Regular Season",
-                timeout=45
+                timeout=5
             )
             
             df = standings.get_data_frames()[0]
@@ -1302,7 +1302,7 @@ def get_team_streaks(standings_df):
     return {'hot': hot_teams, 'cold': cold_teams}
 
 
-@st.cache_data(ttl=900)  # 15 minute cache
+@st.cache_data(ttl=3600)  # 15 minute cache
 def get_nba_news():
     """Fetch latest NBA news headlines from NBA.com."""
     import requests
@@ -5522,16 +5522,18 @@ elif page == "Standings":
     col_date, col_refresh = st.columns([3, 1])
     
     # Fetch standings and team ratings
-    loading_placeholder = st.empty()
-    with loading_placeholder.container():
-        st.info("🕒 NBA Stats API is currently slow. Standings may take 20-30 seconds to load.")
-        with st.spinner("Step 1/3: Fetching League Standings..."):
-            standings_df = get_league_standings(season)
-        with st.spinner("Step 2/3: Fetching Team Advanced Ratings..."):
-            team_ratings = get_team_ratings_with_ranks(season)
-        with st.spinner("Step 3/3: Synchronizing Schedule..."):
-            nba_schedule = get_nba_schedule()
-    loading_placeholder.empty()
+    # Fetch only essential data one by one with fast failure
+    standings_df = pd.DataFrame()
+    nba_schedule = {}
+    
+    with st.spinner("Step 1/2: Fetching Standings..."):
+        standings_df = get_league_standings(season)
+    
+    with st.spinner("Step 2/2: Updating Schedule..."):
+        nba_schedule = get_nba_schedule()
+        
+    # We skip Advanced Ratings (Step 3) for now as the NBA API is timing out on them
+    team_ratings = {} 
 
     with col_date:
         update_time = ""
