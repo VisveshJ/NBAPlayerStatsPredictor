@@ -19,50 +19,14 @@ import pytz
 import requests
 from datetime import datetime, timezone, timedelta
 
-# ==================== NBA API MONKEY PATCH ====================
-# Enforce browser-like headers globally across all nba_api requests 
-# to bypass new bot detection/outages (Ref: github.com/swar/nba_api/issues/633)
-NBA_STATS_HEADERS = {
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Cache-Control": "no-cache",
-    "Connection": "keep-alive",
-    "Host": "stats.nba.com",
-    "Origin": "https://www.nba.com",
-    "Pragma": "no-cache",
-    "Referer": "https://www.nba.com/",
-    "Sec-Ch-Ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-    "Sec-Ch-Ua-Mobile": "?0",
-    "Sec-Ch-Ua-Platform": '"Windows"',
-    "Sec-Fetch-Dest": "empty",
-    "Sec-Fetch-Mode": "cors",
-    "Sec-Fetch-Site": "same-site",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-}
-
-def patch_nba_api_headers() -> None:
-    """Patch nba_api's global headers and reset sessions."""
-    try:
-        from nba_api.stats.library import http as stats_http
-        from nba_api.library import http as base_http
-
-        stats_http.STATS_HEADERS = NBA_STATS_HEADERS.copy()
-        stats_http.NBAStatsHTTP.headers = NBA_STATS_HEADERS.copy()
-        # Reset any existing session
-        stats_http.NBAStatsHTTP._session = None
-        base_http.NBAHTTP._session = None
-        
-        # Pre-initialize a session with working headers to ensure permanence
-        session = requests.Session()
-        session.headers.update(NBA_STATS_HEADERS)
-        stats_http.NBAStatsHTTP._session = session
-        print("✅ nba_api headers monkey-patched and session initialized")
-    except Exception as e:
-        print(f"⚠️ Failed to patch nba_api headers: {e}")
-
-# Apply patch immediately at import time
-patch_nba_api_headers()
+# ==================== NBA API SETUP ====================
+# Using nba_api v1.11.4+ which contains official fixes for NBA.com header issues.
+# (Ref: github.com/swar/nba_api/releases/tag/v1.11.4)
+try:
+    import nba_api
+    # No manual patching needed as of v1.11.4
+except ImportError:
+    pass
 
 # Import our custom modules
 from src.auth.google_oauth import get_auth_manager
@@ -5522,18 +5486,11 @@ elif page == "Standings":
     col_date, col_refresh = st.columns([3, 1])
     
     # Fetch standings and team ratings
-    # Fetch only essential data one by one with fast failure
-    standings_df = pd.DataFrame()
-    nba_schedule = {}
-    
-    with st.spinner("Step 1/2: Fetching Standings..."):
+    # Fetch standings and team ratings
+    with st.spinner("🚀 Syncing with NBA Stats API..."):
         standings_df = get_league_standings(season)
-    
-    with st.spinner("Step 2/2: Updating Schedule..."):
+        team_ratings = get_team_ratings_with_ranks(season)
         nba_schedule = get_nba_schedule()
-        
-    # We skip Advanced Ratings (Step 3) for now as the NBA API is timing out on them
-    team_ratings = {} 
 
     with col_date:
         update_time = ""
@@ -5567,9 +5524,8 @@ elif page == "Standings":
         user_favorite_teams = auth.get_favorite_teams() or []
 
     if standings_df.empty:
-        st.error("❌ Could not load live standings from NBA Stats API.")
-        st.info("The NBA Stats API is experiencing a partial outage or heavy traffic. You can check the official standings here: [NBA.com Standings](https://www.nba.com/standings)")
-        if st.button("Retry Loading", type="primary"):
+        st.error("Could not load live standings. The NBA Stats API may be temporarily unavailable.")
+        if st.button("🔄 Try Again", type="primary"):
             st.cache_data.clear()
             st.rerun()
     else:
