@@ -228,7 +228,7 @@ def get_current_defensive_ratings(season="2025-26"):
                 season_type_all_star="Regular Season",
                 measure_type_detailed_defense="Advanced",
                 per_mode_detailed="PerGame",
-                timeout=10
+                timeout=45
             )
             
             df = team_stats.get_data_frames()[0]
@@ -299,7 +299,7 @@ def get_team_ratings_with_ranks(season="2025-26"):
                 season_type_all_star="Regular Season",
                 measure_type_detailed_defense="Advanced",
                 per_mode_detailed="PerGame",
-                timeout=10
+                timeout=45
             )
             
             df = team_stats.get_data_frames()[0]
@@ -373,7 +373,7 @@ def get_league_standings(season="2025-26"):
             standings = leaguestandings.LeagueStandings(
                 season=season,
                 season_type="Regular Season",
-                timeout=10
+                timeout=45
             )
             
             df = standings.get_data_frames()[0]
