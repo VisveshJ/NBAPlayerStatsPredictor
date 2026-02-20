@@ -228,7 +228,7 @@ def get_current_defensive_ratings(season="2025-26"):
                 season_type_all_star="Regular Season",
                 measure_type_detailed_defense="Advanced",
                 per_mode_detailed="PerGame",
-                timeout=15
+                timeout=10
             )
             
             df = team_stats.get_data_frames()[0]
@@ -299,7 +299,7 @@ def get_team_ratings_with_ranks(season="2025-26"):
                 season_type_all_star="Regular Season",
                 measure_type_detailed_defense="Advanced",
                 per_mode_detailed="PerGame",
-                timeout=15
+                timeout=10
             )
             
             df = team_stats.get_data_frames()[0]
@@ -373,7 +373,7 @@ def get_league_standings(season="2025-26"):
             standings = leaguestandings.LeagueStandings(
                 season=season,
                 season_type="Regular Season",
-                timeout=15
+                timeout=10
             )
             
             df = standings.get_data_frames()[0]
@@ -693,7 +693,7 @@ def get_team_roster(team_abbrev):
         return None
 
 
-@st.cache_data(ttl=1800)
+@st.cache_data(ttl=3600) # Cache for 1 hour
 def get_team_game_log(team_abbrev, season="2025-26", num_games=None):
     """Fetch full season game log for a team. Result is cached to avoid heavy repeated fetches."""
     if not _is_nba_api_available():
@@ -5522,10 +5522,16 @@ elif page == "Standings":
     col_date, col_refresh = st.columns([3, 1])
     
     # Fetch standings and team ratings
-    with st.spinner("Loading standings..."):
-        standings_df = get_league_standings(season)
-        team_ratings = get_team_ratings_with_ranks(season)
-        nba_schedule = get_nba_schedule()
+    loading_placeholder = st.empty()
+    with loading_placeholder.container():
+        st.info("🕒 NBA Stats API is currently slow. Standings may take 20-30 seconds to load.")
+        with st.spinner("Step 1/3: Fetching League Standings..."):
+            standings_df = get_league_standings(season)
+        with st.spinner("Step 2/3: Fetching Team Advanced Ratings..."):
+            team_ratings = get_team_ratings_with_ranks(season)
+        with st.spinner("Step 3/3: Synchronizing Schedule..."):
+            nba_schedule = get_nba_schedule()
+    loading_placeholder.empty()
 
     with col_date:
         update_time = ""
@@ -5559,7 +5565,11 @@ elif page == "Standings":
         user_favorite_teams = auth.get_favorite_teams() or []
 
     if standings_df.empty:
-        st.error("Could not load standings. Please try again later.")
+        st.error("❌ Could not load live standings from NBA Stats API.")
+        st.info("The NBA Stats API is experiencing a partial outage or heavy traffic. You can check the official standings here: [NBA.com Standings](https://www.nba.com/standings)")
+        if st.button("Retry Loading", type="primary"):
+            st.cache_data.clear()
+            st.rerun()
     else:
         # Create tabs for conferences, divisions, and playoff picture
         tab_west, tab_east, tab_divisions, tab_playoffs = st.tabs(["Western Conference", "Eastern Conference", "Divisions", "Playoff Picture"])
