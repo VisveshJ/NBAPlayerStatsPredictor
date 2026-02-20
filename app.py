@@ -833,6 +833,87 @@ def get_bulk_player_stats(season="2025-26"):
         return None
 
 
+def add_score_to_df(df, player_teams, season="2025-26", secondary_teams=None):
+    """
+    Add a 'Score' column to a player's game log dataframe by fetching team scores.
+    Handles trades by accepting a list of teams.
+    """
+    if df is None or len(df) == 0:
+        return df
+        
+    if 'Score' in df.columns:
+        # Check if contains any actual data or just N/As
+        if not (df['Score'] == 'N/A').all() or len(df) == 0:
+            return df
+        
+    score_lookup = {}
+    
+    # Normalize team sets
+    if isinstance(player_teams, str):
+        teams_to_check = {player_teams}
+    else:
+        teams_to_check = set(player_teams)
+        
+    if secondary_teams:
+        if isinstance(secondary_teams, str):
+            teams_to_check.add(secondary_teams)
+        else:
+            teams_to_check.update(secondary_teams)
+            
+    # Fetch team data
+    for team_abbrev in teams_to_check:
+        try:
+            # get_team_game_log is already cached
+            team_game_data = get_team_game_log(team_abbrev, season, num_games=82)
+            if team_game_data is not None and not team_game_data.empty:
+                for _, trow in team_game_data.iterrows():
+                    game_id = str(trow.get('GAME_ID', ''))
+                    if not game_id:
+                        continue
+                        
+                    # Use pd.to_numeric for safety
+                    pts = pd.to_numeric(trow.get('PTS'), errors='coerce')
+                    pm = pd.to_numeric(trow.get('PLUS_MINUS'), errors='coerce')
+                    
+                    if pd.notnull(pts) and pd.notnull(pm):
+                        t_pts = int(pts)
+                        o_pts = int(pts - pm)
+                        if game_id not in score_lookup:
+                            score_lookup[game_id] = {}
+                        score_lookup[game_id][team_abbrev] = f"{t_pts} - {o_pts}"
+        except:
+            continue
+            
+    if score_lookup:
+        def find_score_row(row):
+            gid = str(row.get('Game_ID', row.get('GAME_ID', '')))
+            if not gid or gid not in score_lookup:
+                return "N/A"
+            
+            # Matchup first 3 chars is usually the player's team
+            matchup = str(row.get('MATCHUP', ''))
+            row_team = matchup[:3].strip() if len(matchup) >= 3 else ""
+            
+            if row_team in score_lookup[gid]:
+                return score_lookup[gid][row_team]
+            
+            # Fallback to any found data for this game
+            keys = list(score_lookup[gid].keys())
+            if keys:
+                base_score = score_lookup[gid][keys[0]]
+                if keys[0] != row_team and " - " in base_score:
+                    p = base_score.split(" - ")
+                    return f"{p[1]} - {p[0]}"
+                return base_score
+            return "N/A"
+            
+        df['Score'] = df.apply(find_score_row, axis=1)
+    else:
+        df['Score'] = 'N/A'
+        
+    return df
+
+
 @st.cache_data(ttl=86400)
 def abbreviate_position(pos, player_name=None):
     """Abbreviate position names for UI compact display."""
@@ -2353,40 +2434,16 @@ elif page == "Predictions":
         
         # Get actual team game scores by fetching team game log
         if 'Score' not in player_df.columns:
-            # Find all unique teams the player has played for this season explicitly from their matchups
-            # Matchup format is usually "ATL vs ..." or "ATL @ ..."
+            # Extract teams player has played for
             unique_teams = set()
             if 'MATCHUP' in player_df.columns:
                 for match in player_df['MATCHUP']:
                     if len(match) >= 3:
                         unique_teams.add(match[:3])
-            
-            # If for some reason we couldn't parse matchups, fallback to current team
             if not unique_teams:
                 unique_teams.add(player_team)
             
-            score_lookup = {}
-            
-            # Fetch game data for ALL teams
-            for team_abbrev in unique_teams:
-                team_game_data = get_team_game_log(team_abbrev, season, num_games=82)
-                
-                if team_game_data is not None and len(team_game_data) > 0:
-                    for _, trow in team_game_data.iterrows():
-                        game_id = str(trow.get('GAME_ID', ''))
-                        if 'PTS' in trow and 'PLUS_MINUS' in trow:
-                            team_pts = int(trow['PTS'])
-                            opp_pts = int(trow['PTS'] - trow['PLUS_MINUS'])
-                            score_lookup[game_id] = f"{team_pts} - {opp_pts}"
-            
-            if score_lookup:
-                # Apply to player df using GAME_ID
-                player_df['Score'] = player_df.apply(
-                    lambda row: score_lookup.get(str(row.get('Game_ID', row.get('GAME_ID', ''))), 'N/A'),
-                    axis=1
-                )
-            else:
-                player_df['Score'] = 'N/A'
+            player_df = add_score_to_df(player_df, unique_teams, season)
         
         # Filter to only include columns that exist
         available_cols = [col for col in recent_cols if col in player_df.columns]
@@ -3128,38 +3185,15 @@ elif page == "Player Stats":
                 
                 # Calculate Score column if not present
                 if 'Score' not in player_df.columns:
-                    # Find all unique teams the player has played for this season explicitly from their matchups
                     unique_teams = set()
                     if 'MATCHUP' in player_df.columns:
                         for match in player_df['MATCHUP']:
                             if len(match) >= 3:
                                 unique_teams.add(match[:3])
-                    
-                    # Fallback to current team
                     if not unique_teams:
                         unique_teams.add(player_team)
                     
-                    score_lookup = {}
-                    
-                    # Fetch game data for ALL teams
-                    for team_abbrev in unique_teams:
-                        team_game_data = get_team_game_log(team_abbrev, season, num_games=82)
-                        
-                        if team_game_data is not None and len(team_game_data) > 0:
-                            for _, trow in team_game_data.iterrows():
-                                game_id = str(trow.get('GAME_ID', ''))
-                                if 'PTS' in trow and 'PLUS_MINUS' in trow:
-                                    team_pts = int(trow['PTS'])
-                                    opp_pts = int(trow['PTS'] - trow['PLUS_MINUS'])
-                                    score_lookup[game_id] = f"{team_pts} - {opp_pts}"
-                    
-                    if score_lookup:
-                        player_df['Score'] = player_df.apply(
-                            lambda row: score_lookup.get(str(row.get('Game_ID', row.get('GAME_ID', ''))), 'N/A'),
-                            axis=1
-                        )
-                    else:
-                        player_df['Score'] = 'N/A'
+                    player_df = add_score_to_df(player_df, unique_teams, season)
                 
                 display_cols = ['GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN', 'Points', 'Rebounds', 'Assists', 
                                'FG', 'FG%', '3P', '3P%', 'FT', 'FT%', 'TS%',
@@ -3966,7 +4000,6 @@ elif page == "Favorites":
                             if player_df is not None and not player_df.empty:
                                 # Calculate Score column if missing (same as Live Predictions)
                                 if 'Score' not in player_df.columns:
-                                    # Get unique teams player has played for
                                     unique_teams = set()
                                     if 'MATCHUP' in player_df.columns:
                                         for match in player_df['MATCHUP']:
@@ -3975,24 +4008,7 @@ elif page == "Favorites":
                                     if not unique_teams and player_team:
                                         unique_teams.add(player_team)
                                     
-                                    score_lookup = {}
-                                    for team_abbrev in unique_teams:
-                                        team_game_data = get_team_game_log(team_abbrev, season, num_games=82)
-                                        if team_game_data is not None and len(team_game_data) > 0:
-                                            for _, trow in team_game_data.iterrows():
-                                                game_id = str(trow.get('GAME_ID', ''))
-                                                if 'PTS' in trow and 'PLUS_MINUS' in trow:
-                                                    team_pts = int(trow['PTS'])
-                                                    opp_pts = int(trow['PTS'] - trow['PLUS_MINUS'])
-                                                    score_lookup[game_id] = f"{team_pts} - {opp_pts}"
-                                    
-                                    if score_lookup:
-                                        player_df['Score'] = player_df.apply(
-                                            lambda row: score_lookup.get(str(row.get('Game_ID', row.get('GAME_ID', ''))), 'N/A'),
-                                            axis=1
-                                        )
-                                    else:
-                                        player_df['Score'] = 'N/A'
+                                    player_df = add_score_to_df(player_df, unique_teams, season)
                                 
                                 # Get MOST RECENT 5 games (tail, then reverse for newest first)
                                 recent = player_df.tail(5).iloc[::-1].copy()
@@ -5047,35 +5063,13 @@ elif page == "Compare Players":
                     else:
                         # Display both players' game logs vs each other's teams (stacked for more columns)
                         
-                        # Helper to calculate Score if not present
-                        def add_score_column(df, player_teams_set):
-                            """Add score column by fetching game logs for all teams the player played for."""
-                            if 'Score' not in df.columns:
-                                score_lookup = {}
-                                # Fetch game logs for ALL teams the player played for
-                                for team_abbrev in player_teams_set:
-                                    team_game_data = get_team_game_log(team_abbrev, season, num_games=82)
-                                    if team_game_data is not None and len(team_game_data) > 0:
-                                        for _, trow in team_game_data.iterrows():
-                                            game_id = str(trow.get('GAME_ID', ''))
-                                            if 'PTS' in trow and 'PLUS_MINUS' in trow:
-                                                team_pts = int(trow['PTS'])
-                                                opp_pts = int(trow['PTS'] - trow['PLUS_MINUS'])
-                                                score_lookup[game_id] = f"{team_pts} - {opp_pts}"
-                                if score_lookup:
-                                    df['Score'] = df.apply(
-                                        lambda row: score_lookup.get(str(row.get('Game_ID', row.get('GAME_ID', ''))), 'N/A'),
-                                        axis=1
-                                    )
-                                else:
-                                    df['Score'] = 'N/A'
-                            return df
+                        # add_score_to_df is defined globally
                         
                         # Player 1 vs Player 2
                         st.markdown(f"#### {player1_name} vs {player2_name}")
                         if len(p1_h2h) > 0:
                             # Add Score if not present
-                            p1_h2h = add_score_column(p1_h2h, player1_teams)
+                            p1_h2h = add_score_to_df(p1_h2h, player1_teams, season, secondary_teams=player2_teams)
                             
                             # Select all game log columns (use correct names)
                             display_cols = ['GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN', 'Points', 'Rebounds', 'Assists', 'Steals', 'Blocks', 'Turnovers', 'PF', 'FG', '3P', 'FT', 'FG%', '3P%', 'FT%', 'TS%']
@@ -5152,7 +5146,7 @@ elif page == "Compare Players":
                         st.markdown(f"#### {player2_name} vs {player1_name}")
                         if len(p2_h2h) > 0:
                             # Add Score if not present
-                            p2_h2h = add_score_column(p2_h2h, player2_teams)
+                            p2_h2h = add_score_to_df(p2_h2h, player2_teams, season, secondary_teams=player1_teams)
                             
                             # Select all game log columns (use correct names)
                             display_cols = ['GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN', 'Points', 'Rebounds', 'Assists', 'Steals', 'Blocks', 'Turnovers', 'PF', 'FG', '3P', 'FT', 'FG%', '3P%', 'FT%', 'TS%']
