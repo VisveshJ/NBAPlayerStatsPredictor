@@ -28,7 +28,6 @@ NBA_STATS_HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
     "Cache-Control": "no-cache",
     "Connection": "keep-alive",
-    "Host": "stats.nba.com",
     "Origin": "https://www.nba.com",
     "Pragma": "no-cache",
     "Referer": "https://www.nba.com/",
@@ -38,11 +37,7 @@ NBA_STATS_HEADERS = {
     "Sec-Fetch-Dest": "empty",
     "Sec-Fetch-Mode": "cors",
     "Sec-Fetch-Site": "same-site",
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/131.0.0.0 Safari/537.36"
-    ),
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
 }
 
 def patch_nba_api_headers() -> None:
@@ -51,12 +46,17 @@ def patch_nba_api_headers() -> None:
         from nba_api.stats.library import http as stats_http
         from nba_api.library import http as base_http
 
-        stats_http.STATS_HEADERS = NBA_STATS_HEADERS          # global constant
-        stats_http.NBAStatsHTTP.headers = NBA_STATS_HEADERS    # class default
-        # Reset any existing session so stale connections are dropped
+        stats_http.STATS_HEADERS = NBA_STATS_HEADERS.copy()
+        stats_http.NBAStatsHTTP.headers = NBA_STATS_HEADERS.copy()
+        # Reset any existing session
         stats_http.NBAStatsHTTP._session = None
         base_http.NBAHTTP._session = None
-        print("✅ nba_api headers monkey-patched successfully")
+        
+        # Pre-initialize a session with working headers to ensure permanence
+        session = requests.Session()
+        session.headers.update(NBA_STATS_HEADERS)
+        stats_http.NBAStatsHTTP._session = session
+        print("✅ nba_api headers monkey-patched and session initialized")
     except Exception as e:
         print(f"⚠️ Failed to patch nba_api headers: {e}")
 
@@ -213,7 +213,7 @@ def get_current_defensive_ratings(season="2025-26"):
     """Fetch current defensive ratings for all NBA teams with retry logic."""
     if not _is_nba_api_available():
         return {}
-    max_retries = 2
+    max_retries = 3
     last_error = None
     
     for attempt in range(max_retries):
@@ -227,7 +227,7 @@ def get_current_defensive_ratings(season="2025-26"):
                 season_type_all_star="Regular Season",
                 measure_type_detailed_defense="Advanced",
                 per_mode_detailed="PerGame",
-                timeout=10
+                timeout=60
             )
             
             df = team_stats.get_data_frames()[0]
@@ -284,7 +284,7 @@ def get_team_ratings_with_ranks(season="2025-26"):
     """Get offensive and defensive ratings with league rankings for all teams with retry logic."""
     if not _is_nba_api_available():
         return {}
-    max_retries = 2
+    max_retries = 3
     last_error = None
     
     for attempt in range(max_retries):
@@ -298,7 +298,7 @@ def get_team_ratings_with_ranks(season="2025-26"):
                 season_type_all_star="Regular Season",
                 measure_type_detailed_defense="Advanced",
                 per_mode_detailed="PerGame",
-                timeout=10
+                timeout=60
             )
             
             df = team_stats.get_data_frames()[0]
@@ -360,7 +360,7 @@ def get_league_standings(season="2025-26"):
     """Fetch current NBA standings for all teams with retry logic."""
     if not _is_nba_api_available():
         return pd.DataFrame()
-    max_retries = 2
+    max_retries = 3
     last_error = None
     
     for attempt in range(max_retries):
@@ -372,7 +372,7 @@ def get_league_standings(season="2025-26"):
             standings = leaguestandings.LeagueStandings(
                 season=season,
                 season_type="Regular Season",
-                timeout=10
+                timeout=60
             )
             
             df = standings.get_data_frames()[0]
@@ -922,15 +922,8 @@ _nba_api_last_failure = None  # timestamp of last failure
 _NBA_API_COOLDOWN = 60  # seconds to wait before retrying after failure
 
 def _is_nba_api_available():
-    """Check if NBA API is likely available (circuit breaker pattern)."""
-    global _nba_api_last_failure
-    if _nba_api_last_failure is None:
-        return True
-    # Allow retry after cooldown period
-    if time.time() - _nba_api_last_failure > _NBA_API_COOLDOWN:
-        _nba_api_last_failure = None
-        return True
-    return False
+    """Circuit breaker disabled for debugging."""
+    return True
 
 def _mark_nba_api_failed():
     """Mark NBA API as unavailable."""
@@ -2027,14 +2020,15 @@ elif page == "Predictions":
     st.markdown("Predict any NBA player's next game stats using real-time data")
     
     # Fetch defensive ratings and schedule data
-    with st.spinner("Fetching latest data..."):
-        team_ratings_data = get_team_ratings_with_ranks(season)
+    with st.spinner("Fetching games and standings..."):
         nba_schedule = get_nba_schedule()
         standings_df = get_league_standings(season)
     
+    with st.spinner("Fetching defensive ratings..."):
+        team_ratings_data = get_team_ratings_with_ranks(season)
+    
     if not team_ratings_data:
-        st.error("Could not fetch defensive ratings. Please try again later.")
-        st.stop()
+        st.warning("⚠️ Could not fetch real-time defensive ratings. Predictions will use neutral defaults.")
     
     # Today's Games Section
     st.markdown("### Today's Games")
