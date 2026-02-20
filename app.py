@@ -443,6 +443,12 @@ def get_todays_scoreboard():
                 'away_team': away_team.get('teamTricode', ''),
                 'period': game.get('period', 0),
                 'game_clock': game.get('gameClock', ''),
+                'home_wins': home_team.get('wins', 0),
+                'home_losses': home_team.get('losses', 0),
+                'home_seed': home_team.get('seed', 0),
+                'away_wins': away_team.get('wins', 0),
+                'away_losses': away_team.get('losses', 0),
+                'away_seed': away_team.get('seed', 0),
             }
         
         return scoreboard
@@ -2014,9 +2020,19 @@ elif page == "Predictions":
                         # Add channel display to top right if available
                         channel_html = f"<div style='position: absolute; top: 12px; right: 12px; color: #9CA3AF; font-size: 0.72rem; font-weight: 600;'>{channel_display}</div>" if channel_display else ""
                         
-                        # Format seeds and conference
-                        away_seed = f"#{game['away_rank']}" if game['away_rank'] else ""
-                        home_seed = f"#{game['home_rank']}" if game['home_rank'] else ""
+                        # Get live score from scoreboard (needed early for fallback data)
+                        game_id = game.get('game_id')
+                        live_data = scoreboard.get(game_id, {})
+                        game_status = live_data.get('game_status', 1)
+                        status_text = live_data.get('game_status_text', '')
+                        home_score = live_data.get('home_score', 0)
+                        away_score = live_data.get('away_score', 0)
+                        
+                        # Format seeds and conference (fallback to CDN scoreboard seed when standings API is down)
+                        away_rank = game.get('away_rank') or live_data.get('away_seed', 0)
+                        home_rank = game.get('home_rank') or live_data.get('home_seed', 0)
+                        away_seed = f"#{away_rank}" if away_rank else ""
+                        home_seed = f"#{home_rank}" if home_rank else ""
                         def fmt_cs(conf, streak):
                             if not conf: return ""
                             c = conf.replace("ern", "")
@@ -2030,17 +2046,21 @@ elif page == "Predictions":
                         if not game_time:
                             game_time = 'TBD'
                         
-                        # Get records
+                        # Get records - use standings data, fallback to scoreboard CDN
                         away_record = game.get('away_record', '')
                         home_record = game.get('home_record', '')
                         
-                        # Get live score from scoreboard
-                        game_id = game.get('game_id')
-                        live_data = scoreboard.get(game_id, {})
-                        game_status = live_data.get('game_status', 1)
-                        status_text = live_data.get('game_status_text', '')
-                        home_score = live_data.get('home_score', 0)
-                        away_score = live_data.get('away_score', 0)
+                        # Fallback: if records are empty (standings API down), use CDN scoreboard data
+                        if not away_record and live_data:
+                            aw = live_data.get('away_wins', 0)
+                            al = live_data.get('away_losses', 0)
+                            if aw or al:
+                                away_record = f"{aw}-{al}"
+                        if not home_record and live_data:
+                            hw = live_data.get('home_wins', 0)
+                            hl = live_data.get('home_losses', 0)
+                            if hw or hl:
+                                home_record = f"{hw}-{hl}"
                         
                         # Determine display based on game status
                         if game_status == 3:  # Final
