@@ -2094,7 +2094,7 @@ elif page == "Predictions":
                                     <img src="{away_logo}" width="38" height="38" style="filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.5));" onerror="this.style.display='none'"/>
                                     <div style="text-align: left;">
                                         <div style="font-weight: bold; color: #FAFAFA;">{game['away_team']}</div>
-                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{away_record}, {away_seed} {away_conf}</div>
+                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{", ".join(filter(None, [away_record, f"{away_seed} {away_conf}".strip()])) }</div>
                                     </div>
                                 </div>
                                 <div>{away_score_display}</div>
@@ -2104,7 +2104,7 @@ elif page == "Predictions":
                                     <img src="{home_logo}" width="38" height="38" style="filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.5));" onerror="this.style.display='none'"/>
                                     <div style="text-align: left;">
                                         <div style="font-weight: bold; color: #FAFAFA;">{game['home_team']}</div>
-                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{home_record}, {home_seed} {home_conf}</div>
+                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{", ".join(filter(None, [home_record, f"{home_seed} {home_conf}".strip()])) }</div>
                                     </div>
                                 </div>
                                 <div>{home_score_display}</div>
@@ -5285,8 +5285,19 @@ white-space: nowrap; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
                         home_logo = get_team_logo_url(game['home_team'])
                         
                         # Format seeds and conference
-                        away_seed = f"#{game['away_rank']}" if game['away_rank'] else ""
-                        home_seed = f"#{game['home_rank']}" if game['home_rank'] else ""
+                        # Get live score from scoreboard (needed early for fallback data)
+                        game_id = game.get('game_id')
+                        live_data = scoreboard.get(game_id, {})
+                        game_status = live_data.get('game_status', 1)
+                        status_text = live_data.get('game_status_text', '')
+                        home_score = live_data.get('home_score', 0)
+                        away_score = live_data.get('away_score', 0)
+                        
+                        # Seeds (fallback to CDN scoreboard when standings API is down)
+                        away_rank = game.get('away_rank') or live_data.get('away_seed', 0)
+                        home_rank = game.get('home_rank') or live_data.get('home_seed', 0)
+                        away_seed = f"#{away_rank}" if away_rank else ""
+                        home_seed = f"#{home_rank}" if home_rank else ""
                         
                         def fmt_cs(conf, streak):
                             if not conf: return ""
@@ -5301,17 +5312,21 @@ white-space: nowrap; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
                         if not game_time:
                             game_time = 'TBD'
                         
-                        # Get records
+                        # Get records - use standings data, fallback to scoreboard CDN
                         away_record = game.get('away_record', '')
                         home_record = game.get('home_record', '')
                         
-                        # Get live score from scoreboard
-                        game_id = game.get('game_id')
-                        live_data = scoreboard.get(game_id, {})
-                        game_status = live_data.get('game_status', 1)
-                        status_text = live_data.get('game_status_text', '')
-                        home_score = live_data.get('home_score', 0)
-                        away_score = live_data.get('away_score', 0)
+                        # Fallback: if records are empty (standings API down), use CDN scoreboard data
+                        if not away_record and live_data:
+                            aw = live_data.get('away_wins', 0)
+                            al = live_data.get('away_losses', 0)
+                            if aw or al:
+                                away_record = f"{aw}-{al}"
+                        if not home_record and live_data:
+                            hw = live_data.get('home_wins', 0)
+                            hl = live_data.get('home_losses', 0)
+                            if hw or hl:
+                                home_record = f"{hw}-{hl}"
                         
                         # Determine display based on game status
                         if game_status == 3:  # Final
@@ -5345,7 +5360,7 @@ white-space: nowrap; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
                                     <img src="{away_logo}" width="38" height="38" style="filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.5));" onerror="this.style.display='none'"/>
                                     <div style="text-align: left;">
                                         <div style="font-weight: bold; color: #FAFAFA;">{game['away_team']}</div>
-                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{away_record}, {away_seed} {away_conf}</div>
+                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{", ".join(filter(None, [away_record, f"{away_seed} {away_conf}".strip()])) }</div>
                                     </div>
                                 </div>
                                 <div>{away_score_display}</div>
@@ -5355,7 +5370,7 @@ white-space: nowrap; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
                                     <img src="{home_logo}" width="38" height="38" style="filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.5));" onerror="this.style.display='none'"/>
                                     <div style="text-align: left;">
                                         <div style="font-weight: bold; color: #FAFAFA;">{game['home_team']}</div>
-                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{home_record}, {home_seed} {home_conf}</div>
+                                        <div style="color: #9CA3AF; font-size: 0.75rem;">{", ".join(filter(None, [home_record, f"{home_seed} {home_conf}".strip()])) }</div>
                                     </div>
                                 </div>
                                 <div>{home_score_display}</div>
