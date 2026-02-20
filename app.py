@@ -28,6 +28,7 @@ NBA_STATS_HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
     "Cache-Control": "no-cache",
     "Connection": "keep-alive",
+    "Host": "stats.nba.com",
     "Origin": "https://www.nba.com",
     "Pragma": "no-cache",
     "Referer": "https://www.nba.com/",
@@ -213,7 +214,7 @@ def get_current_defensive_ratings(season="2025-26"):
     """Fetch current defensive ratings for all NBA teams with retry logic."""
     if not _is_nba_api_available():
         return {}
-    max_retries = 3
+    max_retries = 2
     last_error = None
     
     for attempt in range(max_retries):
@@ -227,7 +228,7 @@ def get_current_defensive_ratings(season="2025-26"):
                 season_type_all_star="Regular Season",
                 measure_type_detailed_defense="Advanced",
                 per_mode_detailed="PerGame",
-                timeout=60
+                timeout=15
             )
             
             df = team_stats.get_data_frames()[0]
@@ -284,7 +285,7 @@ def get_team_ratings_with_ranks(season="2025-26"):
     """Get offensive and defensive ratings with league rankings for all teams with retry logic."""
     if not _is_nba_api_available():
         return {}
-    max_retries = 3
+    max_retries = 2
     last_error = None
     
     for attempt in range(max_retries):
@@ -298,7 +299,7 @@ def get_team_ratings_with_ranks(season="2025-26"):
                 season_type_all_star="Regular Season",
                 measure_type_detailed_defense="Advanced",
                 per_mode_detailed="PerGame",
-                timeout=60
+                timeout=15
             )
             
             df = team_stats.get_data_frames()[0]
@@ -360,7 +361,7 @@ def get_league_standings(season="2025-26"):
     """Fetch current NBA standings for all teams with retry logic."""
     if not _is_nba_api_available():
         return pd.DataFrame()
-    max_retries = 3
+    max_retries = 2
     last_error = None
     
     for attempt in range(max_retries):
@@ -372,7 +373,7 @@ def get_league_standings(season="2025-26"):
             standings = leaguestandings.LeagueStandings(
                 season=season,
                 season_type="Regular Season",
-                timeout=60
+                timeout=15
             )
             
             df = standings.get_data_frames()[0]
@@ -922,8 +923,15 @@ _nba_api_last_failure = None  # timestamp of last failure
 _NBA_API_COOLDOWN = 60  # seconds to wait before retrying after failure
 
 def _is_nba_api_available():
-    """Circuit breaker disabled for debugging."""
-    return True
+    """Check if NBA API is likely available (circuit breaker pattern)."""
+    global _nba_api_last_failure
+    if _nba_api_last_failure is None:
+        return True
+    # Allow retry after 1-minute cooldown period
+    if time.time() - _nba_api_last_failure > _NBA_API_COOLDOWN:
+        _nba_api_last_failure = None
+        return True
+    return False
 
 def _mark_nba_api_failed():
     """Mark NBA API as unavailable."""
