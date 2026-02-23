@@ -694,8 +694,95 @@ def get_team_game_log(team_abbrev, season="2025-26", num_games=None):
             return df.head(num_games)
         return df
     except Exception as e:
-        _mark_nba_api_failed()
+        # Do NOT call _mark_nba_api_failed() here - score fetching is non-critical
+        # and should not poison the circuit breaker for the whole app
         return None
+
+
+@st.cache_data(ttl=3600)
+def _fetch_team_scores_raw(team_abbrev, season="2025-26"):
+    """Fetch team game log specifically for score calculation.
+    Bypasses circuit breaker, tries teamgamelog first (faster), falls back to leaguegamefinder.
+    Returns a dict: {normalized_game_id: score_string} or empty dict on failure.
+    """
+    all_teams_list = teams.get_teams()
+    team = [t for t in all_teams_list if t['abbreviation'] == team_abbrev]
+    if not team:
+        return {}
+    team_id = team[0]['id']
+    
+    df = None
+    has_plus_minus = False
+    
+    # Try 1: teamgamelog endpoint (simpler, faster, often succeeds when leaguegamefinder fails)
+    for attempt in range(2):
+        try:
+            if attempt > 0:
+                time.sleep(2)
+            time.sleep(0.3)
+            tgl = teamgamelog.TeamGameLog(
+                team_id=team_id,
+                season=season,
+                season_type_all_star="Regular Season",
+                timeout=25
+            )
+            df = tgl.get_data_frames()[0]
+            if len(df) > 0:
+                has_plus_minus = 'PLUS_MINUS' in df.columns
+                break
+        except Exception:
+            df = None
+            continue
+    
+    # Try 2: leaguegamefinder (has PLUS_MINUS but slower)
+    if df is None or len(df) == 0:
+        for attempt in range(2):
+            try:
+                if attempt > 0:
+                    time.sleep(2)
+                time.sleep(0.3)
+                from nba_api.stats.endpoints import leaguegamefinder
+                gf = leaguegamefinder.LeagueGameFinder(
+                    team_id_nullable=team_id,
+                    season_nullable=season,
+                    season_type_nullable="Regular Season",
+                    timeout=30
+                )
+                df = gf.get_data_frames()[0]
+                if len(df) > 0:
+                    has_plus_minus = 'PLUS_MINUS' in df.columns
+                    break
+            except Exception:
+                df = None
+                continue
+    
+    if df is None or len(df) == 0:
+        return {}
+    
+    scores = {}
+    for _, row in df.iterrows():
+        game_id_raw = str(row.get('GAME_ID', ''))
+        if not game_id_raw or game_id_raw == 'nan':
+            continue
+        game_id = game_id_raw.lstrip('0')
+        
+        pts = pd.to_numeric(row.get('PTS'), errors='coerce')
+        
+        if has_plus_minus:
+            pm = pd.to_numeric(row.get('PLUS_MINUS'), errors='coerce')
+            if pd.notnull(pts) and pd.notnull(pm):
+                t_pts = int(pts)
+                o_pts = int(pts - pm)
+                scores[game_id] = {team_abbrev: f"{t_pts} - {o_pts}"}
+        else:
+            # teamgamelog has WL and PTS but no PLUS_MINUS
+            # Use MATCHUP to determine home/away and try to get opponent score
+            matchup = str(row.get('MATCHUP', ''))
+            # Store pts with matchup so we can match later
+            if pd.notnull(pts):
+                scores[game_id] = {team_abbrev: f"{int(pts)} - ?"}
+    
+    return scores
 
 
 def get_team_logo_url(team_abbrev):
@@ -837,6 +924,7 @@ def add_score_to_df(df, player_teams, season="2025-26", secondary_teams=None):
     """
     Add a 'Score' column to a player's game log dataframe by fetching team scores.
     Handles trades by accepting a list of teams.
+    Uses dedicated score-fetching helper that bypasses the circuit breaker.
     """
     if df is None or len(df) == 0:
         return df
@@ -861,60 +949,58 @@ def add_score_to_df(df, player_teams, season="2025-26", secondary_teams=None):
             teams_to_check.add(secondary_teams)
         else:
             teams_to_check.update(secondary_teams)
+    
+    # Remove empty/None entries
+    teams_to_check = {t for t in teams_to_check if t and len(str(t)) >= 2}
             
-    # Fetch team data
+    # Fetch team data using the dedicated score helper (bypasses circuit breaker)
     for team_abbrev in teams_to_check:
         try:
-            # get_team_game_log is already cached
-            team_game_data = get_team_game_log(team_abbrev, season, num_games=82)
-            if team_game_data is not None and not team_game_data.empty:
-                for _, trow in team_game_data.iterrows():
-                    # Normalize GAME_ID by stripping leading zeros (robust against numeric conversions)
-                    game_id_raw = str(trow.get('GAME_ID', ''))
-                    if not game_id_raw:
-                        continue
-                    game_id = game_id_raw.lstrip('0')
-                        
-                    # Use pd.to_numeric for safety
-                    pts = pd.to_numeric(trow.get('PTS'), errors='coerce')
-                    pm = pd.to_numeric(trow.get('PLUS_MINUS'), errors='coerce')
-                    
-                    if pd.notnull(pts) and pd.notnull(pm):
-                        t_pts = int(pts)
-                        o_pts = int(pts - pm)
-                        if game_id not in score_lookup:
-                            score_lookup[game_id] = {}
-                        score_lookup[game_id][team_abbrev] = f"{t_pts} - {o_pts}"
-        except:
+            team_scores = _fetch_team_scores_raw(team_abbrev, season)
+            for game_id, team_dict in team_scores.items():
+                if game_id not in score_lookup:
+                    score_lookup[game_id] = {}
+                score_lookup[game_id].update(team_dict)
+        except Exception:
             continue
             
     if score_lookup:
         def find_score_row(row):
             # Normalize Game_ID for lookup
             gid_raw = str(row.get('Game_ID', row.get('GAME_ID', '')))
-            if not gid_raw:
+            if not gid_raw or gid_raw == 'nan':
                 return "N/A"
             gid = gid_raw.lstrip('0')
             
             if not gid or gid not in score_lookup:
                 return "N/A"
             
+            entry = score_lookup[gid]
+            
             # Matchup first 3 chars is usually the player's team
             matchup = str(row.get('MATCHUP', ''))
             row_team = matchup[:3].strip() if len(matchup) >= 3 else ""
             
-            if row_team in score_lookup[gid]:
-                return score_lookup[gid][row_team]
+            if row_team in entry:
+                score = entry[row_team]
+                # Skip scores with unknown opponent (? placeholder from teamgamelog fallback)
+                if '?' not in score:
+                    return score
             
-            # Fallback to any found data for this game
-            keys = list(score_lookup[gid].keys())
-            if keys:
-                base_score = score_lookup[gid][keys[0]]
-                # If we're using the other team's score, invert it
-                if keys[0] != row_team and " - " in base_score:
+            # Fallback: use any score for this game and invert if needed
+            for key, base_score in entry.items():
+                if '?' in base_score:
+                    continue  # Skip incomplete scores
+                if key == row_team:
+                    return base_score
+                # Invert: we have the opponent's score
+                if " - " in base_score:
                     p = base_score.split(" - ")
                     if len(p) == 2:
-                        return f"{p[1]} - {p[0]}"
+                        try:
+                            return f"{p[1].strip()} - {p[0].strip()}"
+                        except Exception:
+                            pass
                 return base_score
             return "N/A"
             
