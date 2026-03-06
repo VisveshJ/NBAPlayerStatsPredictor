@@ -1446,8 +1446,8 @@ def get_nba_news():
         return []
 
 
-@st.cache_data(ttl=3600*12)  # 12-hour cache for MVP ladder (refreshes twice daily to catch weekly updates)
-def get_mvp_ladder(current_date_str=None, cache_version=2):
+@st.cache_data(ttl=3600*12)  # 12-hour cache for MVP ladder
+def get_mvp_ladder(current_date_str=None, cache_version=3):
     """Fetch the latest Kia MVP Ladder rankings from NBA.com with dynamic URL calculation.
     
     Args:
@@ -1459,18 +1459,18 @@ def get_mvp_ladder(current_date_str=None, cache_version=2):
     import re
     from datetime import datetime, timedelta
     
-    # Updated fallback data (Jan 23, 2026 article)
+    # Updated fallback data (March 6, 2026 article)
     fallback_players = [
-        {'rank': '1', 'name': 'Shai Gilgeous-Alexander', 'team': 'Oklahoma City Thunder', 'team_abbrev': 'OKC', 'stats': '31.1 PPG, 4.8 RPG, 6.3 APG', 'games_played': '44', 'player_id': '1628983'},
-        {'rank': '2', 'name': 'Nikola Jokić', 'team': 'Denver Nuggets', 'team_abbrev': 'DEN', 'stats': '29.7 PPG, 12.3 RPG, 10.8 APG', 'games_played': '45', 'player_id': '203999'},
-        {'rank': '3', 'name': 'Luka Dončić', 'team': 'Los Angeles Lakers', 'team_abbrev': 'LAL', 'stats': '33.6 PPG, 8.2 RPG, 9.1 APG', 'games_played': '43', 'player_id': '1629029'},
-        {'rank': '4', 'name': 'Victor Wembanyama', 'team': 'San Antonio Spurs', 'team_abbrev': 'SAS', 'stats': '24.1 PPG, 11.2 RPG, 3.2 BPG', 'games_played': '42', 'player_id': '1641705'},
-        {'rank': '5', 'name': 'Tyrese Maxey', 'team': 'Philadelphia 76ers', 'team_abbrev': 'PHI', 'stats': '28.1 PPG, 4.5 RPG, 6.8 APG', 'games_played': '44', 'player_id': '1630178'},
-        {'rank': '6', 'name': 'Jaylen Brown', 'team': 'Boston Celtics', 'team_abbrev': 'BOS', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1627759'},
-        {'rank': '7', 'name': 'Cade Cunningham', 'team': 'Detroit Pistons', 'team_abbrev': 'DET', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1630595'},
-        {'rank': '8', 'name': 'Anthony Edwards', 'team': 'Minnesota Timberwolves', 'team_abbrev': 'MIN', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1630162'},
-        {'rank': '9', 'name': 'Alperen Şengün', 'team': 'Houston Rockets', 'team_abbrev': 'HOU', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1630578'},
-        {'rank': '10', 'name': 'Jamal Murray', 'team': 'Denver Nuggets', 'team_abbrev': 'DEN', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1627750'}
+        {'rank': '1', 'name': 'Shai Gilgeous-Alexander', 'team': 'Oklahoma City Thunder', 'team_abbrev': 'OKC', 'stats': '31.1 PPG, 4.8 RPG, 6.3 APG', 'games_played': 'N/A', 'player_id': '1628983'},
+        {'rank': '2', 'name': 'Nikola Jokić', 'team': 'Denver Nuggets', 'team_abbrev': 'DEN', 'stats': '29.7 PPG, 12.3 RPG, 10.8 APG', 'games_played': 'N/A', 'player_id': '203999'},
+        {'rank': '3', 'name': 'Cade Cunningham', 'team': 'Detroit Pistons', 'team_abbrev': 'DET', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1630595'},
+        {'rank': '4', 'name': 'Victor Wembanyama', 'team': 'San Antonio Spurs', 'team_abbrev': 'SAS', 'stats': '24.1 PPG, 11.2 RPG, 3.2 BPG', 'games_played': 'N/A', 'player_id': '1641705'},
+        {'rank': '5', 'name': 'Jaylen Brown', 'team': 'Boston Celtics', 'team_abbrev': 'BOS', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1627759'},
+        {'rank': '6', 'name': 'Luka Dončić', 'team': 'Los Angeles Lakers', 'team_abbrev': 'LAL', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1629029'},
+        {'rank': '7', 'name': 'Anthony Edwards', 'team': 'Minnesota Timberwolves', 'team_abbrev': 'MIN', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1630162'},
+        {'rank': '8', 'name': 'Donovan Mitchell', 'team': 'Cleveland Cavaliers', 'team_abbrev': 'CLE', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1628378'},
+        {'rank': '9', 'name': 'Kevin Durant', 'team': 'Houston Rockets', 'team_abbrev': 'HOU', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '201142'},
+        {'rank': '10', 'name': 'Jalen Brunson', 'team': 'New York Knicks', 'team_abbrev': 'NYK', 'stats': 'N/A', 'games_played': 'N/A', 'player_id': '1628973'}
     ]
     
     headers = {
@@ -1496,24 +1496,32 @@ def get_mvp_ladder(current_date_str=None, cache_version=2):
         article_date = None
         for days_back in range(14):  # Check up to 2 weeks back
             check_date = today - timedelta(days=days_back)
-            month_abbrev = check_date.strftime('%b').lower()
             day = check_date.day
             year = check_date.year
-            url = f"https://www.nba.com/news/kia-mvp-ladder-{month_abbrev}-{day}-{year}"
             
-            try:
-                # Use GET with timeout or HEAD if supported. GET is more reliable for checking content.
-                # NBA.com sometimes returns 200 for missing pages, so we check title if possible.
-                resp = requests.get(url, headers=headers, timeout=5)
-                if resp.status_code == 200 and "Kia MVP Ladder" in resp.text:
-                    article_url = url
-                    article_date = check_date
-                    break
-            except:
-                continue
+            # NBA.com uses either abbreviated (mar) or full (march) month names
+            month_formats = [
+                check_date.strftime('%b').lower(),  # e.g. 'mar'
+                check_date.strftime('%B').lower()   # e.g. 'march'
+            ]
+            
+            for month_name in month_formats:
+                url = f"https://www.nba.com/news/kia-mvp-ladder-{month_name}-{day}-{year}"
+                try:
+                    # Use GET with timeout or HEAD if supported. GET is more reliable for checking content.
+                    # NBA.com sometimes returns 200 for missing pages, so we check title if possible.
+                    resp = requests.get(url, headers=headers, timeout=5)
+                    if resp.status_code == 200 and "Kia MVP Ladder" in resp.text:
+                        article_url = url
+                        article_date = check_date
+                        break
+                except:
+                    continue
+            if article_url:
+                break
         
         if not article_url:
-            return fallback_players, "January 23, 2026"
+            return fallback_players, "March 6, 2026"
             
         # Scrape the article
         art_resp = requests.get(article_url, headers=headers, timeout=10)
@@ -1613,12 +1621,12 @@ def get_mvp_ladder(current_date_str=None, cache_version=2):
         players.sort(key=lambda x: int(x['rank']))
         
         # Use the date from the successful article
-        as_of_date = article_date.strftime("%B %d, %Y") if article_date else "January 16, 2026"
+        as_of_date = article_date.strftime("%B %d, %Y") if article_date else "March 6, 2026"
 
         if len(players) >= 5:
             return players[:10], as_of_date  # Return up to 10 if available
         else:
-            return fallback_players, "January 16, 2026"
+            return fallback_players, "March 6, 2026"
             
     except Exception as e:
         print(f"Error fetching MVP ladder: {e}")
@@ -1626,7 +1634,7 @@ def get_mvp_ladder(current_date_str=None, cache_version=2):
 
 
 @st.cache_data(ttl=3600*12)  # 12-hour cache for Rookie Ladder
-def get_rookie_ladder(current_date_str=None, cache_version=5):
+def get_rookie_ladder(current_date_str=None, cache_version=6):
     """Fetch the latest Kia Rookie Ladder rankings from NBA.com with dynamic URL calculation.
     
     Args:
@@ -1638,19 +1646,18 @@ def get_rookie_ladder(current_date_str=None, cache_version=5):
     import re
     from datetime import datetime, timedelta
     
-    # Updated fallback data based on Feb 4, 2026 article
-    # Source: https://www.nba.com/news/kia-rookie-ladder-feb-4-2026
+    # Updated fallback data based on March 4, 2026 article
     fallback_players = [
-        {'rank': '1', 'name': 'Cooper Flagg', 'team': 'Dallas Mavericks', 'team_abbrev': 'DAL', 'stats': '21.8 ppg, 7.4 rpg, 4.1 apg', 'draft_pick': '1', 'games_played': 'N/A', 'player_id': None},
-        {'rank': '2', 'name': 'Kon Knueppel', 'team': 'Charlotte Hornets', 'team_abbrev': 'CHA', 'stats': '19.7 ppg, 5.5 rpg, 3.7 apg', 'draft_pick': '4', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '1', 'name': 'Kon Knueppel', 'team': 'Charlotte Hornets', 'team_abbrev': 'CHA', 'stats': '19.7 ppg, 5.5 rpg, 3.7 apg', 'draft_pick': '4', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '2', 'name': 'Cooper Flagg', 'team': 'Dallas Mavericks', 'team_abbrev': 'DAL', 'stats': '21.8 ppg, 7.4 rpg, 4.1 apg', 'draft_pick': '1', 'games_played': 'N/A', 'player_id': None},
         {'rank': '3', 'name': 'VJ Edgecombe', 'team': 'Philadelphia 76ers', 'team_abbrev': 'PHI', 'stats': '16.2 ppg, 5.4 rpg, 4.3 apg', 'draft_pick': '3', 'games_played': 'N/A', 'player_id': None},
-        {'rank': '4', 'name': 'Cedric Coward', 'team': 'Memphis Grizzlies', 'team_abbrev': 'MEM', 'stats': '14.8 ppg, 6.7 rpg, 3.1 apg', 'draft_pick': '11', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '4', 'name': 'Dylan Harper', 'team': 'San Antonio Spurs', 'team_abbrev': 'SAS', 'stats': '10.9 ppg, 3.3 rpg, 3.8 apg', 'draft_pick': '2', 'games_played': 'N/A', 'player_id': None},
         {'rank': '5', 'name': 'Derik Queen', 'team': 'New Orleans Pelicans', 'team_abbrev': 'NOP', 'stats': '13.1 ppg, 7.8 rpg, 4.5 apg', 'draft_pick': '13', 'games_played': 'N/A', 'player_id': None},
         {'rank': '6', 'name': 'Maxime Raynaud', 'team': 'Sacramento Kings', 'team_abbrev': 'SAC', 'stats': '10.4 ppg, 6.8 rpg, 1.2 apg', 'draft_pick': '42', 'games_played': 'N/A', 'player_id': None},
-        {'rank': '7', 'name': 'Egor Demin', 'team': 'Brooklyn Nets', 'team_abbrev': 'BKN', 'stats': '10.7 ppg, 3.1 rpg, 3.6 apg', 'draft_pick': '8', 'games_played': 'N/A', 'player_id': None},
-        {'rank': '8', 'name': 'Jeremiah Fears', 'team': 'New Orleans Pelicans', 'team_abbrev': 'NOP', 'stats': '14.2 ppg, 3.9 rpg, 3.4 apg', 'draft_pick': '7', 'games_played': 'N/A', 'player_id': None},
-        {'rank': '9', 'name': 'Caleb Love', 'team': 'Portland Trail Blazers', 'team_abbrev': 'POR', 'stats': '11.3 ppg, 2.8 rpg, 2.7 apg', 'draft_pick': 'Undrafted', 'games_played': 'N/A', 'player_id': None},
-        {'rank': '10', 'name': 'Dylan Harper', 'team': 'San Antonio Spurs', 'team_abbrev': 'SAS', 'stats': '10.9 ppg, 3.3 rpg, 3.8 apg', 'draft_pick': '2', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '7', 'name': 'Cedric Coward', 'team': 'Memphis Grizzlies', 'team_abbrev': 'MEM', 'stats': '14.8 ppg, 6.7 rpg, 3.1 apg', 'draft_pick': '11', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '8', 'name': 'Ace Bailey', 'team': 'Utah Jazz', 'team_abbrev': 'UTA', 'stats': 'N/A', 'draft_pick': 'N/A', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '9', 'name': 'Jeremiah Fears', 'team': 'New Orleans Pelicans', 'team_abbrev': 'NOP', 'stats': '14.2 ppg, 3.9 rpg, 3.4 apg', 'draft_pick': '7', 'games_played': 'N/A', 'player_id': None},
+        {'rank': '10', 'name': 'Egor Dëmin', 'team': 'Brooklyn Nets', 'team_abbrev': 'BKN', 'stats': '10.7 ppg, 3.1 rpg, 3.6 apg', 'draft_pick': '8', 'games_played': 'N/A', 'player_id': None},
     ]
     
     headers = {
@@ -1676,27 +1683,35 @@ def get_rookie_ladder(current_date_str=None, cache_version=5):
         article_date = None
         for days_back in range(14):  # Check up to 2 weeks back
             check_date = today - timedelta(days=days_back)
-            month_abbrev = check_date.strftime('%b').lower()
             day = check_date.day
             year = check_date.year
-            url = f"https://www.nba.com/news/kia-rookie-ladder-{month_abbrev}-{day}-{year}"
             
-            try:
-                # Use GET with timeout or HEAD if supported. GET is more reliable for checking content.
-                resp = requests.get(url, headers=headers, timeout=5)
-                print(f"ROY Ladder: Checking {url} -> Status: {resp.status_code}, Contains 'Kia Rookie Ladder': {'Kia Rookie Ladder' in resp.text}")
-                # Use more specific search to avoid false positives (like MVP ladder does)
-                if resp.status_code == 200 and "Kia Rookie Ladder" in resp.text:
-                    article_url = url
-                    article_date = check_date
-                    print(f"ROY Ladder: Found article at {url}")
-                    break
-            except Exception as e:
-                print(f"ROY Ladder: Error checking {url}: {str(e)[:100]}")
-                continue
+            # NBA.com uses either abbreviated (mar) or full (march) month names
+            month_formats = [
+                check_date.strftime('%b').lower(),  # e.g. 'mar'
+                check_date.strftime('%B').lower()   # e.g. 'march'
+            ]
+            
+            for month_name in month_formats:
+                url = f"https://www.nba.com/news/kia-rookie-ladder-{month_name}-{day}-{year}"
+                try:
+                    # Use GET with timeout or HEAD if supported. GET is more reliable for checking content.
+                    resp = requests.get(url, headers=headers, timeout=5)
+                    # print(f"ROY Ladder: Checking {url} -> Status: {resp.status_code}, Contains 'Kia Rookie Ladder': {'Kia Rookie Ladder' in resp.text}")
+                    # Use more specific search to avoid false positives (like MVP ladder does)
+                    if resp.status_code == 200 and "Kia Rookie Ladder" in resp.text:
+                        article_url = url
+                        article_date = check_date
+                        # print(f"ROY Ladder: Found article at {url}")
+                        break
+                except Exception as e:
+                    # print(f"ROY Ladder: Error checking {url}: {str(e)[:100]}")
+                    continue
+            if article_url:
+                break
         
         if not article_url:
-            return fallback_players, "February 4, 2026"
+            return fallback_players, "March 4, 2026"
             
         # Scrape the article
         art_resp = requests.get(article_url, headers=headers, timeout=10)
@@ -1781,7 +1796,7 @@ def get_rookie_ladder(current_date_str=None, cache_version=5):
             return players[:10], as_of_date
         else:
             # Use fallback if parsing failed
-            return fallback_players, "February 4, 2026"
+            return fallback_players, "March 4, 2026"
             
     except Exception as e:
         print(f"Error fetching Rookie ladder: {e}")
@@ -5260,7 +5275,7 @@ elif page == "Around the NBA":
     
     # Fetch data
     with st.spinner("Fetching latest NBA updates..."):
-        mvp_ladder, mvp_date = get_mvp_ladder(get_local_now().strftime("%Y-%m-%d"), cache_version=2)
+        mvp_ladder, mvp_date = get_mvp_ladder(get_local_now().strftime("%Y-%m-%d"), cache_version=3)
         nba_schedule = get_nba_schedule()
         standings_df = get_league_standings(season)
         nba_news = get_nba_news()
@@ -6441,7 +6456,7 @@ elif st.session_state.current_page == "Awards":
     
     # Get required data for MVP Ladder
     standings_df = get_league_standings(season)
-    mvp_ladder, mvp_date = get_mvp_ladder(get_local_now().strftime("%Y-%m-%d"), cache_version=2)
+    mvp_ladder, mvp_date = get_mvp_ladder(get_local_now().strftime("%Y-%m-%d"), cache_version=3)
     
     # Pre-fetch stats for MVP candidates (and later awards)
     bulk_player_stats = get_bulk_player_stats()
@@ -6595,7 +6610,7 @@ elif st.session_state.current_page == "Awards":
     
     # ===== SECTION 2: ROOKIE OF THE YEAR LADDER =====
     st.markdown("## 🌟 Rookie of the Year Ladder")
-    rookie_ladder, rookie_date = get_rookie_ladder(get_local_now().strftime("%Y-%m-%d"), cache_version=5)
+    rookie_ladder, rookie_date = get_rookie_ladder(get_local_now().strftime("%Y-%m-%d"), cache_version=6)
     # Debug: Show version to confirm new code is deployed
     st.caption(f"The latest rankings in the race for the 2025-26 Kia ROY award (as of {rookie_date}). Updated weekly. [v2.2]")
     
