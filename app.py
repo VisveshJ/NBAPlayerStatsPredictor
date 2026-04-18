@@ -465,6 +465,167 @@ def get_todays_scoreboard():
     except Exception as e:
         return {}
 
+
+@st.cache_data(ttl=120)  # Refresh every 2 minutes during playoffs
+def get_playoff_series_data(season='2025-26'):
+    """
+    Fetch live playoff bracket data using nba_api CommonPlayoffSeries endpoint.
+    Returns a dict keyed by series_id with team abbreviations, win counts, and round info.
+    Also scans today's live scoreboard for in-progress/final game results.
+    """
+    import requests
+    from nba_api.stats.endpoints import commonplayoffseries
+    from nba_api.stats.static import teams as nba_static_teams
+    from collections import defaultdict
+
+    # Build team ID → abbreviation map
+    team_id_map = {t['id']: t['abbreviation'] for t in nba_static_teams.get_teams()}
+    # Normalise a few mismatches between nba_api and the rest of the app
+    ABBREV_OVERRIDES = {'NOP': 'NO', 'PHX': 'PHX', 'GSW': 'GSW'}
+
+    try:
+        ps = commonplayoffseries.CommonPlayoffSeries(season=season)
+        raw = ps.get_normalized_dict()
+        games_list = raw.get('PlayoffSeries', [])
+    except Exception:
+        return {}
+
+    if not games_list:
+        return {}
+
+    # ---- Build per-series game list ----
+    series_map = {}   # series_id → {home_id, visitor_id, games: [game_id,...]}
+    for g in games_list:
+        sid = g['SERIES_ID']
+        if sid not in series_map:
+            series_map[sid] = {
+                'home_id': g['HOME_TEAM_ID'],
+                'visitor_id': g['VISITOR_TEAM_ID'],
+                'games': []
+            }
+        series_map[sid]['games'].append(g['GAME_ID'])
+
+    # ---- Fetch completed game results from CDN schedule ----
+    cdn_results = {}  # game_id → {home_score, away_score, status, home_id, away_id}
+    try:
+        url = 'https://cdn.nba.com/static/json/staticData/scheduleLeagueV2_1.json'
+        resp = requests.get(url, timeout=10, headers={'User-Agent': 'nba_api/1.5'})
+        if resp.status_code == 200:
+            sched_data = resp.json()
+            all_playoff_ids = {gid for s in series_map.values() for gid in s['games']}
+            for gd in sched_data.get('leagueSchedule', {}).get('gameDates', []):
+                for g in gd.get('games', []):
+                    gid = g.get('gameId', '')
+                    if gid in all_playoff_ids:
+                        ht = g.get('homeTeam', {})
+                        at = g.get('awayTeam', {})
+                        cdn_results[gid] = {
+                            'status': g.get('gameStatus', 1),
+                            'home_id': ht.get('teamId'),
+                            'away_id': at.get('teamId'),
+                            'home_score': ht.get('score', 0) or 0,
+                            'away_score': at.get('score', 0) or 0,
+                        }
+    except Exception:
+        pass
+
+    # ---- Also pull today's live scoreboard (catches in-progress games) ----
+    try:
+        live_url = 'https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_00.json'
+        live_resp = requests.get(live_url, timeout=8, headers={'User-Agent': 'nba_api/1.5'})
+        if live_resp.status_code == 200:
+            live_data = live_resp.json()
+            for g in live_data.get('scoreboard', {}).get('games', []):
+                gid = g.get('gameId', '')
+                ht = g.get('homeTeam', {})
+                at = g.get('awayTeam', {})
+                # Overwrite CDN entry with real-time data
+                cdn_results[gid] = {
+                    'status': g.get('gameStatus', 1),
+                    'home_id': ht.get('teamId'),
+                    'away_id': at.get('teamId'),
+                    'home_score': ht.get('score', 0) or 0,
+                    'away_score': at.get('score', 0) or 0,
+                }
+    except Exception:
+        pass
+
+    # ---- Tally wins per team per series ----
+    # Series ID encoding: "00425 R C N" where R=round digit, C=conf digit, N=series#
+    # Round: 0=First Round, 1=Conf Semis, 2=Conf Finals, 3=Finals
+    # Conf digit: 1=East (0-3), 1=West (4-7) – actually both use 1, we use series num instead
+    result = {}
+    for sid, info in series_map.items():
+        home_id = info['home_id']
+        visitor_id = info['visitor_id']
+        home_abbr = team_id_map.get(home_id, str(home_id))
+        vis_abbr = team_id_map.get(visitor_id, str(visitor_id))
+
+        home_wins = 0
+        visitor_wins = 0
+        games_played = 0
+        for gid in info['games']:
+            r = cdn_results.get(gid)
+            if r and r['status'] == 3:  # Final
+                games_played += 1
+                if (r['home_score'] or 0) > (r['away_score'] or 0):
+                    # Home team won this game
+                    if r['home_id'] == home_id:
+                        home_wins += 1
+                    else:
+                        visitor_wins += 1
+                else:
+                    if r['away_id'] == home_id:
+                        home_wins += 1
+                    else:
+                        visitor_wins += 1
+
+        # Decode round and conference from Series ID
+        # Format: 00425 [round] [conf/series_index] – last 3 digits are round + 2-digit index
+        # e.g. 004250010: chars 5='0'(round1), chars 6-8='010' where '0'=round,'1'=east,'0'=series#
+        # Actual layout confirmed: position 6 (0-indexed) = round (0=R1,1=R2,2=CF,3=Finals)
+        # Positions 7-8 = conference block & series number
+        try:
+            round_num = int(sid[6]) + 1   # 1-based round number
+            series_idx = int(sid[7:9])    # 0-7 for R1; which 4 are East vs West depends on bracket
+        except Exception:
+            round_num = 1
+            series_idx = 0
+
+        # East = indices 0-3, West = indices 4-7 for Round 1
+        # For later rounds the indices shift but we still use this for initial bracket
+        conference = 'East' if series_idx < 4 else 'West'
+
+        # Series number within the conference (0-3)
+        conf_series_num = series_idx % 4
+
+        # Map conference series number → bracket slot (same as seeding matchups)
+        # Conf series 0 = 1 vs 8, 1 = 2 vs 7, 2 = 3 vs 6, 3 = 4 vs 5  (NBA standard)
+        seed_matchup_map = {0: (1, 8), 1: (2, 7), 2: (3, 6), 3: (4, 5)}
+        seeds = seed_matchup_map.get(conf_series_num, (0, 0))
+
+        series_winner = None
+        if home_wins >= 4:
+            series_winner = home_abbr
+        elif visitor_wins >= 4:
+            series_winner = vis_abbr
+
+        result[sid] = {
+            'home': home_abbr,
+            'visitor': vis_abbr,
+            'home_wins': home_wins,
+            'visitor_wins': visitor_wins,
+            'games_played': games_played,
+            'series_winner': series_winner,
+            'round': round_num,
+            'conference': conference,
+            'conf_series_num': conf_series_num,
+            'seeds': seeds,   # (higher_seed, lower_seed)
+        }
+
+    return result
+
+
 def get_team_upcoming_games(team_abbrev, schedule, standings_df, num_games=5):
     """Get upcoming games for a specific team."""
     from datetime import datetime
@@ -2903,6 +3064,36 @@ elif page == "Predictions":
                 # Ensure team_def_ratings is available for the prediction model
                 team_def_ratings = {k: v['def_rtg'] for k, v in team_ratings_data.items()}
                 
+                # ---- Detect playoff context ----
+                # Check whether today's game (or the selected opponent) is a playoff game
+                # by looking for the opponent in the live playoff series data.
+                try:
+                    _po_series = get_playoff_series_data(season)
+                    is_playoff_matchup = any(
+                        selected_opponent in (s.get('home', ''), s.get('visitor', ''))
+                        for s in _po_series.values()
+                    )
+                except Exception:
+                    _po_series = {}
+                    is_playoff_matchup = False
+                
+                # Extract existing playoff game log for this player (if any)
+                # Playoff game IDs start with '004' (regular season starts with '002')
+                playoff_games_player = None
+                if 'GAME_DATE' in player_df.columns:
+                    try:
+                        # Heuristic: playoff games have IDs beginning with '004'
+                        if 'GAME_ID' in player_df.columns:
+                            playoff_mask = player_df['GAME_ID'].astype(str).str.startswith('004')
+                        else:
+                            # Fallback: games after Apr 18 (typical playoff start)
+                            from datetime import date as _date
+                            PLAYOFF_START = pd.Timestamp('2026-04-18')
+                            playoff_mask = pd.to_datetime(player_df['GAME_DATE'], errors='coerce') >= PLAYOFF_START
+                        playoff_games_player = player_df[playoff_mask].copy() if playoff_mask.any() else None
+                    except Exception:
+                        playoff_games_player = None
+
                 with st.spinner("Training prediction model..."):
                     model, stat_cols, scaler, filtered_df = train_hmm_with_drtg(
                         player_df, 
@@ -2917,7 +3108,6 @@ elif page == "Predictions":
                 else:
                     consistency = calculate_player_consistency(filtered_df, ['Points', 'Assists', 'Rebounds', 'Steals', 'Blocks', 'Turnovers'])
                     consistency_interpretation = "High Variance" if consistency > 0.5 else "Moderate" if consistency > 0.3 else "Very Consistent"
-                    #st.info(f"Player Consistency: **{consistency_interpretation}** (CV: {consistency:.2f})")
                     
                     with st.spinner("Generating prediction..."):
                         # Fetch injuries for display (not used in prediction)
@@ -2928,13 +3118,30 @@ elif page == "Predictions":
                         prediction = predict_with_drtg(
                             model, stat_cols, scaler, filtered_df,
                             team_def_ratings, selected_opponent, 
-                            full_player_df=player_df
+                            full_player_df=player_df,
+                            playoff_games_df=playoff_games_player,
+                            is_playoff_game=is_playoff_matchup
                         )
                     
                     if prediction:
                         st.success("Prediction Complete!")
                         opp_full = TEAM_NAME_MAP.get(selected_opponent, selected_opponent)
+                        
+                        # Show playoff badge when applicable
+                        po_badge = ""
+                        if prediction.get('_is_playoff'):
+                            po_games_used = prediction.get('_playoff_games_used', 0)
+                            po_label = f"{po_games_used} playoff game{'s' if po_games_used != 1 else ''} factored in" if po_games_used > 0 else "playoff baselines applied"
+                            po_badge = f"""
+                                <div style="display:inline-block; background: linear-gradient(135deg,#FF6B35,#f59e0b);
+                                     color:#fff; font-size:0.75rem; font-weight:700; padding:3px 10px;
+                                     border-radius:20px; margin-bottom:10px; letter-spacing:0.5px;">
+                                    🏆 PLAYOFF MODE — {po_label}
+                                </div>"""
+                        
                         st.markdown(f"### Predicted Stats: {selected_player} vs {opp_full}")
+                        if po_badge:
+                            st.markdown(po_badge, unsafe_allow_html=True)
                         
                         # Display metrics
                         metric_col1, metric_col2, metric_col3 = st.columns(3)
@@ -6024,11 +6231,32 @@ elif page == "Standings":
 
 
             # 2. BRACKETS
-            def render_playoff_bracket_html(conference_df, is_flipped=False):
-                """Render a premium interactive playoff bracket for a conference."""
-                teams = {s: get_team_info_by_seed(conference_df, s) for s in range(1, 11)}
-                
-                # CSS for the bracket
+            def render_playoff_bracket_html(conference_df, conf_name, playoff_series, is_flipped=False):
+                """Render a premium interactive playoff bracket for a conference with live series scores."""
+                teams = {s: get_team_info_by_seed(conference_df, s) for s in range(1, 9)}
+
+                # ---- Build lookup: conf_series_num → series data ----
+                series_by_seeds = {}
+                for sid, sdata in playoff_series.items():
+                    if sdata.get('conference') == conf_name:
+                        csn = sdata.get('conf_series_num', -1)
+                        if csn >= 0:
+                            series_by_seeds[csn] = sdata
+
+                def get_series(csn):
+                    return series_by_seeds.get(csn)
+
+                def get_winner(csn):
+                    s = get_series(csn)
+                    if not s or not s.get('series_winner'):
+                        return None
+                    winner_abbr = s['series_winner']
+                    for seed in range(1, 9):
+                        t = teams.get(seed)
+                        if t and t['abbrev'] == winner_abbr:
+                            return t
+                    return {'abbrev': winner_abbr, 'seed': '', 'record': '', 'logo_url': get_team_logo_url(winner_abbr)}
+
                 flip_css = "flex-direction: row-reverse;" if is_flipped else ""
                 align_css = "text-align: right; padding-right: 14px;" if is_flipped else "text-align: left; padding-left: 14px;"
                 order_css = "flex-direction: row-reverse;" if is_flipped else "flex-direction: row;"
@@ -6036,120 +6264,165 @@ elif page == "Standings":
                 bracket_css = f"""
                 <style>
                     .bracket-wrapper {{
-                        display: flex;
-                        flex-direction: column;
-                        align-items: center;
-                        padding: 0;
-                        width: 100%;
-                        background-color: transparent;
+                        display: flex; flex-direction: column; align-items: center;
+                        padding: 0; width: 100%; background-color: transparent;
                         font-family: 'Inter', -apple-system, sans-serif;
                     }}
                     .bracket-container {{
-                        display: flex;
-                        gap: 25px;
-                        align-items: flex-start;
-                        position: relative;
-                        padding: 10px 0;
-                        justify-content: center;
-                        width: 100%;
-                        {flip_css}
+                        display: flex; gap: 22px; align-items: flex-start;
+                        position: relative; padding: 10px 0;
+                        justify-content: center; width: 100%; {flip_css}
                     }}
                     .round {{
-                        display: flex;
-                        flex-direction: column;
-                        gap: 15px;
-                        justify-content: flex-start;
-                        position: relative;
+                        display: flex; flex-direction: column; gap: 12px;
+                        justify-content: flex-start; position: relative;
                     }}
                     .round-title {{
-                        text-align: center;
-                        font-size: 0.65rem;
-                        color: #FF6B35;
-                        font-weight: 700;
-                        margin-bottom: 8px;
-                        text-transform: uppercase;
-                        background: rgba(255, 107, 53, 0.1);
-                        padding: 3px 6px;
-                        border-radius: 4px;
+                        text-align: center; font-size: 0.65rem; color: #FF6B35;
+                        font-weight: 700; margin-bottom: 8px; text-transform: uppercase;
+                        background: rgba(255, 107, 53, 0.1); padding: 3px 6px; border-radius: 4px;
                     }}
                     .matchup {{
-                        width: 200px;
+                        width: 215px;
                         background: linear-gradient(135deg, #1F2937 0%, #111827 100%);
-                        border: 1px solid #374151;
-                        border-radius: 6px;
-                        overflow: hidden;
-                        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+                        border: 1px solid #374151; border-radius: 6px; overflow: hidden;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
                     }}
+                    .matchup.series-done {{ border-color: #10B981; box-shadow: 0 0 8px rgba(16,185,129,0.3); }}
                     .team {{
-                        display: flex;
-                        align-items: center;
-                        padding: 5px 8px;
-                        gap: 8px;
-                        height: 40px;
-                        {order_css}
+                        display: flex; align-items: center; padding: 5px 8px;
+                        gap: 6px; height: 42px; {order_css}
                     }}
-                    .team:first-child {{
-                        border-bottom: 1px solid #374151;
-                    }}
+                    .team:first-child {{ border-bottom: 1px solid #374151; }}
+                    .team.winner {{ background: rgba(16, 185, 129, 0.12); }}
+                    .team.eliminated {{ opacity: 0.42; }}
                     .seed {{
-                        font-size: 0.7rem;
-                        color: #9CA3AF;
-                        width: 12px;
-                        font-weight: bold;
-                        text-align: center;
+                        font-size: 0.7rem; color: #9CA3AF; width: 13px;
+                        font-weight: bold; text-align: center; flex-shrink: 0;
                     }}
-                    .logo-img {{
-                        width: 28px;
-                        height: 28px;
-                        filter: drop-shadow(0px 1px 2px rgba(0,0,0,0.5));
-                    }}
+                    .logo-img {{ width: 26px; height: 26px; filter: drop-shadow(0px 1px 2px rgba(0,0,0,0.5)); flex-shrink:0; }}
                     .team-info {{
-                        display: flex;
-                        justify-content: space-between;
-                        align-items: center;
-                        flex-grow: 1;
-                        {align_css}
+                        display: flex; justify-content: space-between; align-items: center;
+                        flex-grow: 1; {align_css} min-width: 0;
                     }}
-                    .team-name-primary {{
-                        font-weight: 700;
-                        font-size: 0.8rem;
-                        color: #FAFAFA;
+                    .team-name-primary {{ font-weight: 700; font-size: 0.8rem; color: #FAFAFA; }}
+                    .team-name-winner {{ font-weight: 700; font-size: 0.8rem; color: #10B981; }}
+                    .wins-badge {{
+                        font-size: 0.72rem; font-weight: 800; color: #FF6B35;
+                        background: rgba(255,107,53,0.15); border-radius: 3px;
+                        padding: 1px 5px; margin-left: 4px; flex-shrink: 0;
                     }}
-                    .team-rec-small {{
-                        font-size: 0.75rem;
-                        color: #9CA3AF;
-                        margin-left: 5px;
-                    }}
+                    .wins-badge-lead {{ font-size: 0.72rem; font-weight: 800; color: #10B981;
+                        background: rgba(16,185,129,0.15); border-radius: 3px;
+                        padding: 1px 5px; margin-left: 4px; flex-shrink: 0; }}
+                    .wins-badge-done {{ font-size: 0.72rem; font-weight: 800; color: #10B981;
+                        background: rgba(16,185,129,0.25); border-radius: 3px;
+                        padding: 1px 5px; margin-left: 4px; flex-shrink: 0; }}
                     .tbd-team {{ color: #4B5563; font-style: italic; }}
                 </style>
                 """
 
-                def team_html(team, is_tbd=False):
+                def team_html(team, is_tbd=False, wins=0, opp_wins=0, series_done=False):
                     if is_tbd or not team:
-                        return f"""
-                            <div class="team">
-                                <div class="team-info"><span class="team-name-primary tbd-team">TBD</span></div>
-                            </div>
-                        """
-                    logo = f'<img src="{team["logo_url"]}" class="logo-img">' if team['logo_url'] else '🏀'
-                    
-                    return f"""
-                        <div class="team">
-                            <span class="seed">{team['seed']}</span>
+                        return '<div class="team"><div class="team-info"><span class="tbd-team">TBD</span></div></div>'
+                    logo = f'<img src="{team["logo_url"]}" class="logo-img">' if team.get('logo_url') else '🏀'
+                    is_winner = series_done and wins >= 4
+                    is_elim = series_done and wins < 4
+                    name_cls = "team-name-winner" if is_winner else "team-name-primary"
+                    row_cls = "team winner" if is_winner else ("team eliminated" if is_elim else "team")
+                    wins_html = ""
+                    if wins > 0 or opp_wins > 0:
+                        if is_winner:
+                            wins_html = f'<span class="wins-badge-done">{wins}W ✓</span>'
+                        elif wins > opp_wins:
+                            wins_html = f'<span class="wins-badge-lead">{wins}W</span>'
+                        else:
+                            wins_html = f'<span class="wins-badge">{wins}W</span>'
+                    seed_str = team.get("seed", "")
+                    return f"""<div class="{row_cls}">
+                            <span class="seed">{seed_str}</span>
                             <div>{logo}</div>
                             <div class="team-info">
-                                <div><span class="team-name-primary">{team['abbrev']}</span><span class="team-rec-small">({team['record']})</span></div>
+                                <span class="{name_cls}">{team['abbrev']}</span>
+                                {wins_html}
                             </div>
-                        </div>
-                    """
+                        </div>"""
 
-                m1_8 = f'<div class="matchup">{team_html(teams.get(1))}{team_html(teams.get(8))}</div>'
-                m4_5 = f'<div class="matchup">{team_html(teams.get(4))}{team_html(teams.get(5))}</div>'
-                m2_7 = f'<div class="matchup">{team_html(teams.get(2))}{team_html(teams.get(7))}</div>'
-                m3_6 = f'<div class="matchup">{team_html(teams.get(3))}{team_html(teams.get(6))}</div>'
-                m_semi_1 = f'<div class="matchup">{team_html(None, True)}{team_html(None, True)}</div>'
-                m_semi_2 = f'<div class="matchup">{team_html(None, True)}{team_html(None, True)}</div>'
-                m_finals = f'<div class="matchup">{team_html(None, True)}{team_html(None, True)}</div>'
+                def matchup_card(t1, t2, csn=None, is_tbd=False):
+                    s = get_series(csn) if csn is not None else None
+                    done = bool(s and s.get('series_winner'))
+                    done_css = " series-done" if done else ""
+                    if is_tbd or (not t1 and not t2):
+                        return f'<div class="matchup">{team_html(None, True)}{team_html(None, True)}</div>'
+                    t1w = t2w = 0
+                    if s and t1:
+                        if t1['abbrev'] == s['home']:
+                            t1w = s['home_wins']; t2w = s['visitor_wins']
+                        else:
+                            t1w = s['visitor_wins']; t2w = s['home_wins']
+                    h1 = team_html(t1, wins=t1w, opp_wins=t2w, series_done=done)
+                    h2 = team_html(t2, wins=t2w, opp_wins=t1w, series_done=done)
+                    return f'<div class="matchup{done_css}">{h1}{h2}</div>'
+
+                # First Round matchups (NBA bracket standard: 1v8, 4v5, 2v7, 3v6)
+                m1_8 = matchup_card(teams.get(1), teams.get(8), csn=0)
+                m4_5 = matchup_card(teams.get(4), teams.get(5), csn=3)
+                m2_7 = matchup_card(teams.get(2), teams.get(7), csn=1)
+                m3_6 = matchup_card(teams.get(3), teams.get(6), csn=2)
+
+                # Conf Semis – winners advance (csn 4/5 might exist if semis started)
+                w1 = get_winner(0); w4 = get_winner(3)
+                w2 = get_winner(1); w3 = get_winner(2)
+
+                # Check for actual semis series (round 2) in data
+                semi_s1_key = 4 if conf_name == 'East' else 8
+                semi_s2_key = 5 if conf_name == 'East' else 9
+                semi_s1 = series_by_seeds.get(semi_s1_key)
+                semi_s2 = series_by_seeds.get(semi_s2_key)
+
+                m_semi_1 = matchup_card(w1, w4, is_tbd=(not w1 and not w4))
+                m_semi_2 = matchup_card(w2, w3, is_tbd=(not w2 and not w3))
+
+                # Overlay real semis wins if available
+                if semi_s1 and (w1 or w4):
+                    sw1 = sw4 = 0
+                    if w1 and w1['abbrev'] == semi_s1.get('home'):
+                        sw1 = semi_s1['home_wins']; sw4 = semi_s1['visitor_wins']
+                    elif w1:
+                        sw1 = semi_s1['visitor_wins']; sw4 = semi_s1['home_wins']
+                    d1 = bool(semi_s1.get('series_winner'))
+                    m_semi_1 = f'<div class="matchup{"  series-done" if d1 else ""}">{team_html(w1, wins=sw1, opp_wins=sw4, series_done=d1)}{team_html(w4, wins=sw4, opp_wins=sw1, series_done=d1)}</div>'
+
+                if semi_s2 and (w2 or w3):
+                    sw2 = sw3 = 0
+                    if w2 and w2['abbrev'] == semi_s2.get('home'):
+                        sw2 = semi_s2['home_wins']; sw3 = semi_s2['visitor_wins']
+                    elif w2:
+                        sw2 = semi_s2['visitor_wins']; sw3 = semi_s2['home_wins']
+                    d2 = bool(semi_s2.get('series_winner'))
+                    m_semi_2 = f'<div class="matchup{"  series-done" if d2 else ""}">{team_html(w2, wins=sw2, opp_wins=sw3, series_done=d2)}{team_html(w3, wins=sw3, opp_wins=sw2, series_done=d2)}</div>'
+
+                # Conf Finals
+                wf1 = wf2 = None
+                cf_key = 6 if conf_name == 'East' else 10
+                finals_s = series_by_seeds.get(cf_key)
+                if semi_s1 and semi_s1.get('series_winner'):
+                    wa = semi_s1['series_winner']
+                    wf1 = {'abbrev': wa, 'seed': '', 'record': '', 'logo_url': get_team_logo_url(wa)}
+                if semi_s2 and semi_s2.get('series_winner'):
+                    wb = semi_s2['series_winner']
+                    wf2 = {'abbrev': wb, 'seed': '', 'record': '', 'logo_url': get_team_logo_url(wb)}
+
+                if finals_s and (wf1 or wf2):
+                    sfw1 = sfw2 = 0
+                    if wf1 and wf1['abbrev'] == finals_s.get('home'):
+                        sfw1 = finals_s['home_wins']; sfw2 = finals_s['visitor_wins']
+                    elif wf1:
+                        sfw1 = finals_s['visitor_wins']; sfw2 = finals_s['home_wins']
+                    df = bool(finals_s.get('series_winner'))
+                    m_finals = f'<div class="matchup{"  series-done" if df else ""}">{team_html(wf1, wins=sfw1, opp_wins=sfw2, series_done=df)}{team_html(wf2, wins=sfw2, opp_wins=sfw1, series_done=df)}</div>'
+                else:
+                    m_finals = matchup_card(wf1, wf2, is_tbd=(not wf1 and not wf2))
 
                 full_html = f"""
                 <div class="bracket-wrapper">
@@ -6175,12 +6448,16 @@ elif page == "Standings":
 
             # Render Brackets using Streamlit Components for better HTML isolation
             import streamlit.components.v1 as components
-            
+
+            # Fetch live playoff series data
+            with st.spinner("Loading playoff bracket data..."):
+                playoff_series = get_playoff_series_data(season)
+
             # Western Bracket Section
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("<h3 style='text-align: center; color: #FF6B35; letter-spacing: 1px;'>WESTERN CONFERENCE BRACKET</h3>", unsafe_allow_html=True)
-            components.html(render_playoff_bracket_html(west_df, is_flipped=False), height=520, scrolling=False)
-            
+            components.html(render_playoff_bracket_html(west_df, 'West', playoff_series, is_flipped=False), height=570, scrolling=False)
+
             # Western Conference Season Series (on-demand)
             with st.expander("📊 Show Season Series - Western Conference"):
                 west_matchups = [(1, 8), (4, 5), (2, 7), (3, 6)]
@@ -6189,13 +6466,13 @@ elif page == "Standings":
                     team2 = get_team_info_by_seed(west_df, seed2)
                     if team1 and team2:
                         render_h2h_record(team2, team1, nba_schedule)
-            
+
             # Eastern Bracket Section
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("---")
             st.markdown("<h3 style='text-align: center; color: #FF6B35; letter-spacing: 1px;'>EASTERN CONFERENCE BRACKET</h3>", unsafe_allow_html=True)
-            components.html(render_playoff_bracket_html(east_df, is_flipped=True), height=520, scrolling=False)
-            
+            components.html(render_playoff_bracket_html(east_df, 'East', playoff_series, is_flipped=True), height=570, scrolling=False)
+
             # Eastern Conference Season Series (on-demand)
             with st.expander("📊 Show Season Series - Eastern Conference"):
                 east_matchups = [(1, 8), (4, 5), (2, 7), (3, 6)]
