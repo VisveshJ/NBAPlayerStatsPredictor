@@ -6363,11 +6363,11 @@ elif page == "Standings":
                     wins_html = ""
                     if wins > 0 or opp_wins > 0:
                         if is_winner:
-                            wins_html = f'<span class="wins-badge-done">{wins}W ✓</span>'
+                            wins_html = f'<span class="wins-badge-done">{wins} ✓</span>'
                         elif wins > opp_wins:
-                            wins_html = f'<span class="wins-badge-lead">{wins}W</span>'
+                            wins_html = f'<span class="wins-badge-lead">{wins}</span>'
                         else:
-                            wins_html = f'<span class="wins-badge">{wins}W</span>'
+                            wins_html = f'<span class="wins-badge">{wins}</span>'
                     seed_str = team.get("seed", "")
                     return f"""<div class="{row_cls}">
                             <span class="seed">{seed_str}</span>
