@@ -581,26 +581,26 @@ def get_playoff_series_data(season='2025-26'):
                         visitor_wins += 1
 
         # Decode round and conference from Series ID
-        # Format: 00425 [round] [conf/series_index] – last 3 digits are round + 2-digit index
-        # e.g. 004250010: chars 5='0'(round1), chars 6-8='010' where '0'=round,'1'=east,'0'=series#
-        # Actual layout confirmed: position 6 (0-indexed) = round (0=R1,1=R2,2=CF,3=Finals)
-        # Positions 7-8 = conference block & series number
+        # Confirmed layout via live data inspection:
+        #   ID = "00425" + "0" + "0" + "1" + series_index
+        #   e.g. "004250014": sid[5]='0', sid[6]='0', sid[7]='1', sid[8]='4'
+        #   sid[7] = round indicator (1 = First Round, 2 = Conf Semis, ...)
+        #   sid[8] = series index 0-7  (0-3 = East, 4-7 = West)
         try:
-            round_num = int(sid[6]) + 1   # 1-based round number
-            series_idx = int(sid[7:9])    # 0-7 for R1; which 4 are East vs West depends on bracket
+            round_num = int(sid[7])        # 1-based round number directly
+            series_idx = int(sid[8])       # 0-7
         except Exception:
             round_num = 1
             series_idx = 0
 
-        # East = indices 0-3, West = indices 4-7 for Round 1
-        # For later rounds the indices shift but we still use this for initial bracket
+        # East = indices 0-3, West = indices 4-7
         conference = 'East' if series_idx < 4 else 'West'
 
         # Series number within the conference (0-3)
         conf_series_num = series_idx % 4
 
-        # Map conference series number → bracket slot (same as seeding matchups)
-        # Conf series 0 = 1 vs 8, 1 = 2 vs 7, 2 = 3 vs 6, 3 = 4 vs 5  (NBA standard)
+        # Map conference series number → bracket slot (NBA standard)
+        # 0=(1v8), 1=(2v7), 2=(3v6), 3=(4v5)
         seed_matchup_map = {0: (1, 8), 1: (2, 7), 2: (3, 6), 3: (4, 5)}
         seeds = seed_matchup_map.get(conf_series_num, (0, 0))
 
@@ -620,7 +620,7 @@ def get_playoff_series_data(season='2025-26'):
             'round': round_num,
             'conference': conference,
             'conf_series_num': conf_series_num,
-            'seeds': seeds,   # (higher_seed, lower_seed)
+            'seeds': seeds,
         }
 
     return result
@@ -6233,15 +6233,45 @@ elif page == "Standings":
             # 2. BRACKETS
             def render_playoff_bracket_html(conference_df, conf_name, playoff_series, is_flipped=False):
                 """Render a premium interactive playoff bracket for a conference with live series scores."""
+                # Lookup teams by abbreviation (needed for post-play-in seeds)
+                def get_team_by_abbr(abbr):
+                    """Find team info dict from conference_df by abbreviation."""
+                    for _, row in conference_df.iterrows():
+                        if get_team_abbrev(row['TeamCity']) == abbr:
+                            city = row['TeamCity']
+                            name = row['TeamName']
+                            full_name = city if name in city else f"{city} {name}".strip()
+                            return {
+                                'abbrev': abbr,
+                                'name': name,
+                                'full_name': full_name,
+                                'city': city,
+                                'record': row['Record'],
+                                'streak': str(row.get('strCurrentStreak', '')).replace(' ', ''),
+                                'logo_url': get_team_logo_url(abbr),
+                                'seed': int(row['PlayoffRank'])
+                            }
+                    # Fallback: minimal dict for teams that came through play-in
+                    return {'abbrev': abbr, 'name': abbr, 'full_name': abbr,
+                            'city': abbr, 'record': '', 'streak': '',
+                            'logo_url': get_team_logo_url(abbr), 'seed': ''}
+
+                # Standings-based seed lookup (fallback)
                 teams = {s: get_team_info_by_seed(conference_df, s) for s in range(1, 9)}
 
                 # ---- Build lookup: conf_series_num → series data ----
-                series_by_seeds = {}
+                # Round 1 csn = 0-3, Round 2 csn = 0-1 (within round), etc.
+                # We segregate by round to avoid collisions.
+                series_by_round_csn = {}  # (round, csn) → series data
+                series_by_seeds = {}      # kept for backward compat (Round 1 only)
                 for sid, sdata in playoff_series.items():
                     if sdata.get('conference') == conf_name:
+                        r = sdata.get('round', 1)
                         csn = sdata.get('conf_series_num', -1)
                         if csn >= 0:
-                            series_by_seeds[csn] = sdata
+                            series_by_round_csn[(r, csn)] = sdata
+                            if r == 1:
+                                series_by_seeds[csn] = sdata
 
                 def get_series(csn):
                     return series_by_seeds.get(csn)
@@ -6364,21 +6394,37 @@ elif page == "Standings":
                     h2 = team_html(t2, wins=t2w, opp_wins=t1w, series_done=done)
                     return f'<div class="matchup{done_css}">{h1}{h2}</div>'
 
-                # First Round matchups (NBA bracket standard: 1v8, 4v5, 2v7, 3v6)
-                m1_8 = matchup_card(teams.get(1), teams.get(8), csn=0)
-                m4_5 = matchup_card(teams.get(4), teams.get(5), csn=3)
-                m2_7 = matchup_card(teams.get(2), teams.get(7), csn=1)
-                m3_6 = matchup_card(teams.get(3), teams.get(6), csn=2)
+                # ---- Helper: build first-round matchup card from series data ----
+                # Prefer the actual playoff series teams (post-play-in) over standings seeds.
+                def r1_matchup(csn, seed_hi, seed_lo):
+                    """Build first-round matchup. Uses series data if available."""
+                    s = series_by_seeds.get(csn)
+                    if s:
+                        # Use actual series teams from API (post-play-in correct)
+                        t_hi = get_team_by_abbr(s['home'])
+                        t_lo = get_team_by_abbr(s['visitor'])
+                        # Label seeds from bracket slot (not from standings)
+                        t_hi['seed'] = seed_hi
+                        t_lo['seed'] = seed_lo
+                    else:
+                        # Fallback: use standings seeds
+                        t_hi = teams.get(seed_hi)
+                        t_lo = teams.get(seed_lo)
+                    return matchup_card(t_hi, t_lo, csn=csn)
 
-                # Conf Semis – winners advance (csn 4/5 might exist if semis started)
+                # First Round matchups (NBA bracket standard: 1v8, 4v5, 2v7, 3v6)
+                m1_8 = r1_matchup(0, 1, 8)
+                m4_5 = r1_matchup(3, 4, 5)
+                m2_7 = r1_matchup(1, 2, 7)
+                m3_6 = r1_matchup(2, 3, 6)
+
+                # Conf Semis – winners advance
                 w1 = get_winner(0); w4 = get_winner(3)
                 w2 = get_winner(1); w3 = get_winner(2)
 
                 # Check for actual semis series (round 2) in data
-                semi_s1_key = 4 if conf_name == 'East' else 8
-                semi_s2_key = 5 if conf_name == 'East' else 9
-                semi_s1 = series_by_seeds.get(semi_s1_key)
-                semi_s2 = series_by_seeds.get(semi_s2_key)
+                semi_s1 = series_by_round_csn.get((2, 0))
+                semi_s2 = series_by_round_csn.get((2, 1))
 
                 m_semi_1 = matchup_card(w1, w4, is_tbd=(not w1 and not w4))
                 m_semi_2 = matchup_card(w2, w3, is_tbd=(not w2 and not w3))
@@ -6404,8 +6450,7 @@ elif page == "Standings":
 
                 # Conf Finals
                 wf1 = wf2 = None
-                cf_key = 6 if conf_name == 'East' else 10
-                finals_s = series_by_seeds.get(cf_key)
+                finals_s = series_by_round_csn.get((3, 0))
                 if semi_s1 and semi_s1.get('series_winner'):
                     wa = semi_s1['series_winner']
                     wf1 = {'abbrev': wa, 'seed': '', 'record': '', 'logo_url': get_team_logo_url(wa)}
