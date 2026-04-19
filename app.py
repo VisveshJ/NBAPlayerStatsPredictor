@@ -1030,6 +1030,110 @@ def get_player_game_log(player_name, season="2025-26"):
         return None, None
 
 
+@st.cache_data(ttl=120)  # Short TTL — playoff games happen live
+def get_playoff_game_log(player_name, season="2025-26"):
+    """
+    Fetch a player's PLAYOFF game log for the given season.
+    Returns (DataFrame, player_team_abbrev) or (None, None).
+    The DataFrame has the same column schema as get_player_game_log().
+    """
+    all_players = players.get_players()
+    norm_input = normalize_name(player_name).lower()
+    player = [p for p in all_players if normalize_name(p['full_name']).lower() == norm_input]
+
+    if not player:
+        return None, None
+
+    player_id = str(player[0]['id'])
+
+    try:
+        if not _is_nba_api_available():
+            return None, None
+        time.sleep(0.3)
+        gamelog = playergamelog.PlayerGameLog(
+            player_id=player_id,
+            season=season,
+            season_type_all_star="Playoffs",
+            timeout=10
+        )
+
+        df = gamelog.get_data_frames()[0]
+
+        if len(df) == 0:
+            return None, None
+
+        player_team = df['MATCHUP'].iloc[0][:3]
+
+        df['Opponent'] = df['MATCHUP'].apply(lambda x: x.split()[-1])
+        df = df.rename(columns={
+            'PTS': 'Points', 'AST': 'Assists', 'REB': 'Rebounds',
+            'STL': 'Steals', 'BLK': 'Blocks', 'TOV': 'Turnovers',
+            'FGM': 'FGM', 'FGA': 'FGA', 'FG_PCT': 'FG%',
+            'FG3M': '3PM', 'FG3A': '3PA', 'FG3_PCT': '3P%',
+            'FTM': 'FTM', 'FTA': 'FTA', 'FT_PCT': 'FT%',
+            'MIN': 'MIN', 'PF': 'PF', 'WL': 'W/L'
+        })
+
+        df['TS%'] = df.apply(
+            lambda row: round(row['Points'] / (2 * (row['FGA'] + 0.44 * row['FTA'])) * 100, 1)
+            if (row['FGA'] + 0.44 * row['FTA']) > 0 else 0,
+            axis=1
+        )
+
+        df['FG'] = df.apply(lambda row: f"{row['FGM']}/{row['FGA']}", axis=1)
+        df['3P'] = df.apply(lambda row: f"{row['3PM']}/{row['3PA']}", axis=1)
+        df['FT'] = df.apply(lambda row: f"{row['FTM']}/{row['FTA']}", axis=1)
+
+        # Sort chronologically (oldest first, matching regular-season convention)
+        df = df.iloc[::-1].reset_index(drop=True)
+        return df, player_team
+
+    except Exception as e:
+        print(f"Error fetching playoff game log: {str(e)}")
+        return None, None
+
+
+def get_player_current_playoff_series_opponent(player_team_abbrev, season="2025-26"):
+    """
+    Determine the opponent team abbreviation that player_team is currently facing
+    in the active/most-recent playoff series this season.
+    Returns (opponent_abbrev, series_info_dict) or (None, None).
+    """
+    try:
+        series_data = get_playoff_series_data(season)
+        if not series_data:
+            return None, None
+
+        # Normalise the incoming abbrev so it matches what nba_api returns
+        ALIAS = {'PHX': 'PHX', 'GSW': 'GSW', 'NOP': 'NOP', 'BKN': 'BKN'}
+        team = ALIAS.get(player_team_abbrev, player_team_abbrev)
+
+        # Find the series where this team is playing (prefer ongoing series)
+        best = None
+        for sid, info in series_data.items():
+            home = info.get('home', '')
+            visitor = info.get('visitor', '')
+            if team not in (home, visitor):
+                continue
+            # Prefer the series that hasn't been won yet (still active)
+            is_active = info.get('series_winner') is None
+            if best is None:
+                best = (sid, info, is_active)
+            elif is_active and not best[2]:
+                best = (sid, info, True)
+
+        if best is None:
+            return None, None
+
+        sid, info, _ = best
+        opponent = info['visitor'] if info['home'] == team else info['home']
+        return opponent, info
+
+    except Exception as e:
+        print(f"Error detecting playoff series opponent: {e}")
+        return None, None
+
+
 @st.cache_data(ttl=3600)
 def get_bulk_player_stats(season="2025-26"):
     """Fetch stats for ALL players in one go to optimize loading."""
@@ -2431,6 +2535,10 @@ elif page == "Predictions":
     
     # Player search
     st.markdown("### Select Player")
+    
+    # Debug/Test Toggle for Playoff UI
+    test_playoff_mode = st.sidebar.checkbox("🧪 Test Playoff UI (Mock Data)", help="Show mock playoff stats for any player regardless of live data availability.")
+    
     st.caption("Only showing players active in current season")
     
     player_search = st.text_input(
@@ -2569,9 +2677,132 @@ elif page == "Predictions":
                     else:
                         st.toast(f"{player_team} is already being watched!")
 
-        # Season Averages - quick stats summary
-        st.markdown("### Season Averages")
-        
+        # ── Helper: build stats table with AVG row ──────────────────────────────
+        def _build_recent_table(df_src, label_avg, num_games=5):
+            """
+            Given a game-log DataFrame (sorted oldest→newest), return a styled
+            DataFrame ready for st.dataframe() that shows the last `num_games`
+            rows (newest first) followed by an AVG row.
+            """
+            recent_cols = [
+                'GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN', 'Points',
+                'Rebounds', 'Assists', 'Steals', 'Blocks', 'Turnovers',
+                'PF', 'FG', '3P', 'FT', 'TS%'
+            ]
+            avail = [c for c in recent_cols if c in df_src.columns]
+            tail = df_src.tail(num_games)
+            recent = tail[avail].iloc[::-1].copy()
+
+            if 'TS%' in recent.columns:
+                recent['TS%'] = recent['TS%'].apply(
+                    lambda x: f"{x:.1f}%" if pd.notnull(x) else "N/A")
+            if 'PF' in recent.columns:
+                recent['PF'] = recent['PF'].fillna(0).astype(int).astype(str)
+
+            # --- build AVG row ---
+            def _parse_min(v):
+                if pd.isna(v): return 0
+                try:
+                    return int(str(v).split(':')[0]) if ':' in str(v) else float(v)
+                except: return 0
+
+            avg_min = round(tail['MIN'].apply(_parse_min).mean(), 1) if 'MIN' in tail else "N/A"
+
+            def _shoot_pct(m_col, a_col):
+                if m_col in tail and a_col in tail:
+                    tm, ta = tail[m_col].sum(), tail[a_col].sum()
+                    pct = round(tm / ta * 100, 1) if ta > 0 else 0
+                    am = round(tail[m_col].mean(), 1)
+                    aa = round(tail[a_col].mean(), 1)
+                    return f"{am:.1f}/{aa:.1f}", pct
+                return "N/A", "N/A"
+
+            _, fg_pct   = _shoot_pct('FGM', 'FGA')
+            _, thr_pct  = _shoot_pct('3PM', '3PA')
+            _, ft_pct   = _shoot_pct('FTM', 'FTA')
+
+            if 'FGA' in tail and 'FTA' in tail:
+                tp, tfa, tfta = tail['Points'].sum(), tail['FGA'].sum(), tail['FTA'].sum()
+                ts_avg = round(tp / (2 * (tfa + 0.44 * tfta)) * 100, 1) if (tfa + 0.44 * tfta) > 0 else 0
+            else:
+                ts_avg = "N/A"
+
+            avg_row = {
+                'GAME_DATE': label_avg, 'MATCHUP': '', 'W/L': '', 'Score': '',
+                'MIN': f"{avg_min:.1f}" if isinstance(avg_min, float) else avg_min,
+                'Points': f"{round(tail['Points'].mean(), 1):.1f}",
+                'Rebounds': f"{round(tail['Rebounds'].mean(), 1):.1f}",
+                'Assists': f"{round(tail['Assists'].mean(), 1):.1f}",
+                'Steals': f"{round(tail['Steals'].mean(), 1):.1f}",
+                'Blocks': f"{round(tail['Blocks'].mean(), 1):.1f}",
+                'Turnovers': f"{round(tail['Turnovers'].mean(), 1):.1f}",
+                'PF': f"{round(tail['PF'].mean(), 1):.1f}" if 'PF' in tail else "N/A",
+                'FG': f"{fg_pct}%" if fg_pct != "N/A" else "N/A",
+                '3P': f"{thr_pct}%" if thr_pct != "N/A" else "N/A",
+                'FT': f"{ft_pct}%" if ft_pct != "N/A" else "N/A",
+                'TS%': f"{ts_avg:.1f}%" if isinstance(ts_avg, float) else ts_avg,
+            }
+            display = pd.concat([recent, pd.DataFrame([avg_row])], ignore_index=True)
+
+            def _style_row(row):
+                if row['GAME_DATE'] == label_avg:
+                    return ['background-color: #2D3748; font-weight: bold; color: #FF6B35'] * len(row)
+                return [''] * len(row)
+
+            def _style_wl(val):
+                if val == 'W': return 'color: #10B981; font-weight: bold'
+                if val == 'L': return 'color: #EF4444; font-weight: bold'
+                return ''
+
+            styled = display.style.apply(_style_row, axis=1)
+            if 'W/L' in display.columns:
+                styled = styled.applymap(_style_wl, subset=['W/L'])
+            return styled
+
+        # ── Helper: compute season averages dict from a game-log df ─────────────
+        def _season_avg_dict(df):
+            r = {}
+            def safe_sum(col): return df[col].sum() if col in df else 0
+            def safe_mean(col): return df[col].mean() if col in df else 0
+            fgm, fga = safe_sum('FGM'), safe_sum('FGA')
+            tpm, tpa = safe_sum('3PM'), safe_sum('3PA')
+            ftm, fta = safe_sum('FTM'), safe_sum('FTA')
+            pts      = safe_sum('Points')
+            r['PPG'] = f"{safe_mean('Points'):.1f}"
+            r['RPG'] = f"{safe_mean('Rebounds'):.1f}"
+            r['APG'] = f"{safe_mean('Assists'):.1f}"
+            r['SPG'] = f"{safe_mean('Steals'):.1f}"
+            r['BPG'] = f"{safe_mean('Blocks'):.1f}"
+            r['TO']  = f"{safe_mean('Turnovers'):.1f}"
+            r['FG%'] = f"{fgm/fga*100:.1f}%" if fga > 0 else "N/A"
+            r['3P%'] = f"{tpm/tpa*100:.1f}%" if tpa > 0 else "N/A"
+            r['FT%'] = f"{ftm/fta*100:.1f}%" if fta > 0 else "N/A"
+            ts_denom = 2*(fga + 0.44*fta)
+            r['TS%'] = f"{pts/ts_denom*100:.1f}%" if ts_denom > 0 else "N/A"
+            r['Games'] = str(len(df))
+            mpg = f"{safe_mean('MIN'):.1f}" if 'MIN' in df else "N/A"
+            r['MPG'] = mpg
+            return r
+
+        # ── Helper: display a row of metric tiles ───────────────────────────────
+        def _render_avg_metrics(avgs: dict, row1_keys, row2_keys):
+            cols = st.columns(len(row1_keys))
+            for col, k in zip(cols, row1_keys):
+                with col: st.metric(k, avgs.get(k, "N/A"))
+            cols2 = st.columns(len(row2_keys))
+            for col, k in zip(cols2, row2_keys):
+                with col: st.metric(k, avgs.get(k, "N/A"))
+
+        # ════════════════════════════════════════════════════════════════════════
+        # ── REGULAR SEASON section ───────────────────────────────────────────
+        # ════════════════════════════════════════════════════════════════════════
+        st.markdown("""
+        <div style="display:flex; align-items:center; gap:10px; margin:20px 0 10px 0;">
+            <div style="font-size:1.5rem;">🏀</div>
+            <div style="font-size:1.3rem; font-weight:700; color:#FAFAFA;">Regular Season</div>
+        </div>
+        """, unsafe_allow_html=True)
+
         # Calculate shooting percentages for season
         if 'FGM' in player_df.columns and 'FGA' in player_df.columns:
             total_fgm = player_df['FGM'].sum()
@@ -2626,16 +2857,7 @@ elif page == "Predictions":
             st.metric("TS%", format_pct(season_ts_pct))
             st.metric("MPG", f"{player_df['MIN'].mean():.1f}" if 'MIN' in player_df.columns else "N/A")
         
-        st.markdown("---")
-
-        # Show recent games right after loading - ADD MINUTES
-        st.markdown("### Recent Performance")
-        
-        # Define columns to display with minutes, W/L, and score
-        recent_cols = [
-            'GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN', 'Points', 'Rebounds', 'Assists', 
-            'Steals', 'Blocks', 'Turnovers', 'PF', 'FG', '3P', 'FT', 'TS%'
-        ]
+        st.markdown("<div style='margin-top:14px; color:#9CA3AF; font-size:0.9rem; font-weight:600;'>📋 Last 5 Regular Season Games</div>", unsafe_allow_html=True)
         
         # Get actual team game scores
         unique_teams = set()
@@ -2648,143 +2870,8 @@ elif page == "Predictions":
         
         player_df = add_score_to_df(player_df, unique_teams, season)
         
-        # Filter to only include columns that exist
-        available_cols = [col for col in recent_cols if col in player_df.columns]
-        
-        # Get last 5 games (most recent at top)
-        recent_games = player_df.tail(5)[available_cols].iloc[::-1].copy()
-        
-        # Format TS% column
-        if 'TS%' in recent_games.columns:
-            recent_games['TS%'] = recent_games['TS%'].apply(lambda x: f"{x:.1f}%" if pd.notnull(x) else "N/A")
-        
-        # Format PF as integer (convert to string to preserve after concat)
-        if 'PF' in recent_games.columns:
-            recent_games['PF'] = recent_games['PF'].fillna(0).astype(int).astype(str)
-        
-        # Calculate averages for the last 5 games
-        last_5_df = player_df.tail(5).copy()
-        
-        # Calculate averages (use whole numbers for minutes)
-        if 'MIN' in last_5_df.columns:
-            # Convert minutes to numeric (handle MM:SS format if present)
-            def parse_minutes(min_str):
-                if pd.isna(min_str):
-                    return 0
-                try:
-                    if ':' in str(min_str):
-                        parts = str(min_str).split(':')
-                        return int(parts[0])  # Just take the minutes part
-                    else:
-                        return float(min_str)
-                except:
-                    return 0
-            
-            last_5_df['MIN_NUM'] = last_5_df['MIN'].apply(parse_minutes)
-            avg_minutes = round(last_5_df['MIN_NUM'].mean(), 1)
-        else:
-            avg_minutes = "N/A"
-        
-        # Calculate averages for numeric columns
-        avg_points = round(last_5_df['Points'].mean(), 1)
-        avg_rebounds = round(last_5_df['Rebounds'].mean(), 1)
-        avg_assists = round(last_5_df['Assists'].mean(), 1)
-        avg_steals = round(last_5_df['Steals'].mean(), 1)
-        avg_blocks = round(last_5_df['Blocks'].mean(), 1)
-        avg_turnovers = round(last_5_df['Turnovers'].mean(), 1)
-        
-        # Calculate shooting averages
-        if 'FGM' in last_5_df.columns and 'FGA' in last_5_df.columns:
-            avg_fgm = round(last_5_df['FGM'].mean(), 1)
-            avg_fga = round(last_5_df['FGA'].mean(), 1)
-            total_fgm = last_5_df['FGM'].sum()
-            total_fga = last_5_df['FGA'].sum()
-            fg_pct = round((total_fgm / total_fga * 100), 1) if total_fga > 0 else 0
-            avg_fg = f"{avg_fgm:.1f}/{avg_fga:.1f}"
-        else:
-            avg_fg = "N/A"
-            fg_pct = "N/A"
-        
-        # Three pointers
-        if '3PM' in last_5_df.columns and '3PA' in last_5_df.columns:
-            avg_3pm = round(last_5_df['3PM'].mean(), 1)
-            avg_3pa = round(last_5_df['3PA'].mean(), 1)
-            total_3pm = last_5_df['3PM'].sum()
-            total_3pa = last_5_df['3PA'].sum()
-            three_pct = round((total_3pm / total_3pa * 100), 1) if total_3pa > 0 else 0
-            avg_3p = f"{avg_3pm:.1f}/{avg_3pa:.1f}"
-        else:
-            avg_3p = "N/A"
-            three_pct = "N/A"
-        
-        # Free throws
-        if 'FTM' in last_5_df.columns and 'FTA' in last_5_df.columns:
-            avg_ftm = round(last_5_df['FTM'].mean(), 1)
-            avg_fta = round(last_5_df['FTA'].mean(), 1)
-            total_ftm = last_5_df['FTM'].sum()
-            total_fta = last_5_df['FTA'].sum()
-            ft_pct = round((total_ftm / total_fta * 100), 1) if total_fta > 0 else 0
-            avg_ft = f"{avg_ftm:.1f}/{avg_fta:.1f}"
-        else:
-            avg_ft = "N/A"
-            ft_pct = "N/A"
-        
-        # Calculate True Shooting Percentage for last 5 games
-        if 'FGA' in last_5_df.columns and 'FTA' in last_5_df.columns:
-            total_points = last_5_df['Points'].sum()
-            total_fga_l5 = last_5_df['FGA'].sum()
-            total_fta_l5 = last_5_df['FTA'].sum()
-            ts_pct = round((total_points / (2 * (total_fga_l5 + 0.44 * total_fta_l5)) * 100), 1) if (total_fga_l5 + 0.44 * total_fta_l5) > 0 else 0
-        else:
-            ts_pct = "N/A"
-        
-        # Create averages row - leave W/L and Score blank
-        averages_row = {
-            'GAME_DATE': 'AVG (Last 5)',
-            'MATCHUP': '',
-            'W/L': '',  # Leave blank for averages
-            'Score': '',  # Leave blank for averages
-            'MIN': f"{avg_minutes:.1f}" if avg_minutes != "N/A" else "N/A",
-            'Points': f"{avg_points:.1f}",
-            'Rebounds': f"{avg_rebounds:.1f}",
-            'Assists': f"{avg_assists:.1f}",
-            'Steals': f"{avg_steals:.1f}",
-            'Blocks': f"{avg_blocks:.1f}",
-            'Turnovers': f"{avg_turnovers:.1f}",
-            'PF': f"{round(last_5_df['PF'].mean(), 1):.1f}" if 'PF' in last_5_df.columns else "N/A",
-            'FG': f"{fg_pct}%",
-            '3P': f"{three_pct}%",
-            'FT': f"{ft_pct}%",
-            'TS%': f"{ts_pct:.1f}%" if isinstance(ts_pct, (int, float)) else ts_pct
-        }
-        
-        # Add the averages row to the dataframe
-        averages_df_row = pd.DataFrame([averages_row])
-        
-        # Combine with recent games
-        display_df = pd.concat([recent_games, averages_df_row], ignore_index=True)
-        
-        # Highlight the averages row and color W/L
-        def style_row(row):
-            styles = [''] * len(row)
-            if row['GAME_DATE'] == 'AVG (Last 5)':
-                styles = ['background-color: #2D3748; font-weight: bold; color: #FF6B35'] * len(row)
-            return styles
-        
-        def style_wl(val):
-            if val == 'W':
-                return 'color: #10B981; font-weight: bold'
-            elif val == 'L':
-                return 'color: #EF4444; font-weight: bold'
-            return ''
-        
-        # Display the table with styling
-        styled_df = display_df.style.apply(style_row, axis=1)
-        if 'W/L' in display_df.columns:
-            styled_df = styled_df.applymap(style_wl, subset=['W/L'])
-        
         st.dataframe(
-            styled_df,
+            _build_recent_table(player_df, 'AVG (Last 5)'),
             use_container_width=True,
             hide_index=True,
             column_config={
@@ -2803,6 +2890,191 @@ elif page == "Predictions":
                 "TS%": st.column_config.TextColumn("TS%", width="small"),
             }
         )
+
+        # ════════════════════════════════════════════════════════════════════════
+        # ── PLAYOFFS section (conditionally shown) ───────────────────────────
+        # ════════════════════════════════════════════════════════════════════════
+        with st.spinner("Checking for playoff games…"):
+            if test_playoff_mode:
+                # Generate mock playoff data for testing
+                import numpy as np
+                mock_data = []
+                for i in range(1, 4):
+                    mock_data.append({
+                        'GAME_DATE': f'2026-04-{15+i}',
+                        'MATCHUP': f'{player_team} vs. NYK',
+                        'Opponent': 'NYK',
+                        'W/L': 'W' if i % 2 != 0 else 'L',
+                        'Points': 25 + i * 2, 'Assists': 6 + i, 'Rebounds': 5 + i,
+                        'Steals': 1, 'Blocks': 0, 'Turnovers': 2, 'PF': 3,
+                        'FGM': 9, 'FGA': 18, 'FG3M': 3, 'FG3A': 7, 'FTM': 4, 'FTA': 5,
+                        'MIN': '38:00', 'Score': '112-108'
+                    })
+                po_df = pd.DataFrame(mock_data)
+                # Apply same renaming and TS% calc as real fetcher
+                po_df = po_df.rename(columns={
+                    'PTS': 'Points', 'AST': 'Assists', 'REB': 'Rebounds',
+                    'STL': 'Steals', 'BLK': 'Blocks', 'TOV': 'Turnovers',
+                    'FG3M': '3PM', 'FG3A': '3PA', 'WL': 'W/L'
+                })
+                po_df['TS%'] = 62.5 # Mock TS%
+                po_df['FG'] = "9/18"; po_df['3P'] = "3/7"; po_df['FT'] = "4/5"
+                _po_team = player_team
+            else:
+                po_df, _po_team = get_playoff_game_log(selected_player, season)
+
+        if po_df is not None and len(po_df) > 0:
+            # Detect current series opponent
+            po_opponent, po_series_info = get_player_current_playoff_series_opponent(player_team, season)
+
+            st.markdown("<hr style='border-color:#374151; margin:24px 0;'>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="display:flex; align-items:center; gap:10px; margin:4px 0 10px 0;">
+                <div style="font-size:1.5rem;">🏆</div>
+                <div style="font-size:1.3rem; font-weight:700; color:#FFD700;">Playoffs</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Series badge
+            if po_series_info:
+                hw = po_series_info.get('home_wins', 0)
+                vw = po_series_info.get('visitor_wins', 0)
+                home_t = po_series_info.get('home', '')
+                vis_t  = po_series_info.get('visitor', '')
+                round_num = po_series_info.get('round', 1)
+                round_labels = {1: 'First Round', 2: 'Conference Semifinals', 3: 'Conference Finals', 4: 'NBA Finals'}
+                round_label = round_labels.get(round_num, f'Round {round_num}')
+                winner = po_series_info.get('series_winner')
+                series_status = f"🏆 {winner} wins series" if winner else f"{home_t} leads {hw}–{vw}" if hw > vw else f"{vis_t} leads {vw}–{hw}" if vw > hw else f"Series tied {hw}–{vw}"
+                st.markdown(f"""
+                <div style="background:linear-gradient(135deg,#1a1f2e,#111827); border:1px solid #FFD700;
+                            border-radius:10px; padding:10px 16px; margin-bottom:14px; display:inline-block;">
+                    <span style="color:#FFD700; font-weight:700;">{round_label}</span>
+                    <span style="color:#9CA3AF; margin:0 8px;">•</span>
+                    <span style="color:#FAFAFA;">{home_t} vs {vis_t}</span>
+                    <span style="color:#9CA3AF; margin:0 8px;">•</span>
+                    <span style="color:#10B981; font-weight:600;">{series_status}</span>
+                </div>
+                """, unsafe_allow_html=True)
+
+            # -- Playoff season averages --
+            po_avgs = _season_avg_dict(po_df)
+            _render_avg_metrics(po_avgs,
+                row1_keys=['PPG', 'RPG', 'APG', 'SPG', 'BPG', 'TO'],
+                row2_keys=['FG%', '3P%', 'FT%', 'TS%', 'MPG', 'Games'])
+
+            # -- All playoff games table --
+            st.markdown(f"<div style='margin-top:14px; color:#FFD700; font-size:0.9rem; font-weight:600;'>📋 All Playoff Games ({len(po_df)} played)</div>", unsafe_allow_html=True)
+            po_df = add_score_to_df(po_df, {player_team}, season)
+            st.dataframe(
+                _build_recent_table(po_df, 'AVG (Playoffs)', num_games=len(po_df)),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "GAME_DATE": st.column_config.TextColumn("Date", width="medium"),
+                    "MATCHUP": st.column_config.TextColumn("Matchup", width="medium"),
+                    "W/L": st.column_config.TextColumn("W/L", width="small"),
+                    "Score": st.column_config.TextColumn("Score", width="small"),
+                    "MIN": st.column_config.TextColumn("MIN", width="small"),
+                    "Points": st.column_config.TextColumn("PTS", width="small"),
+                    "Rebounds": st.column_config.TextColumn("REB", width="small"),
+                    "Assists": st.column_config.TextColumn("AST", width="small"),
+                    "Steals": st.column_config.TextColumn("STL", width="small"),
+                    "Blocks": st.column_config.TextColumn("BLK", width="small"),
+                    "Turnovers": st.column_config.TextColumn("TO", width="small"),
+                    "PF": st.column_config.TextColumn("PF", width="small"),
+                    "TS%": st.column_config.TextColumn("TS%", width="small"),
+                }
+            )
+
+            # -- Vs. current series opponent --
+            if po_opponent:
+                # Games in po_df where the Opponent column matches po_opponent
+                # (nba_api uses the 3-letter abbrev as the last token of MATCHUP)
+                vs_mask = po_df['Opponent'] == po_opponent
+                # Some nba_api abbreviations differ slightly; try prefix match as fallback
+                if vs_mask.sum() == 0 and 'MATCHUP' in po_df.columns:
+                    vs_mask = po_df['MATCHUP'].str.contains(po_opponent, case=False, na=False)
+                games_vs_po = po_df[vs_mask]
+
+                opp_full = TEAM_NAME_MAP.get(po_opponent, po_opponent)
+                st.markdown(f"""
+                <div style="display:flex; align-items:center; gap:10px; margin:20px 0 8px 0;">
+                    <div style="font-size:1.2rem;">🆚</div>
+                    <div style="font-size:1.1rem; font-weight:700; color:#FFD700;">vs {opp_full} — This Series</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                if len(games_vs_po) > 0:
+                    # W-L record in the series
+                    if 'W/L' in games_vs_po.columns:
+                        wins_po   = (games_vs_po['W/L'] == 'W').sum()
+                        losses_po = (games_vs_po['W/L'] == 'L').sum()
+                        wl_str = f"{wins_po}–{losses_po}"
+                    else:
+                        wl_str = "N/A"
+
+                    st.markdown(f"**Games played: {len(games_vs_po)}** | **Series record: {wl_str}**")
+
+                    # Table for vs-opponent games + AVG row
+                    vs_cols = ['GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN', 'Points',
+                               'Rebounds', 'Assists', 'Steals', 'Blocks', 'Turnovers',
+                               'FG', '3P', 'FT', 'TS%']
+                    avail_vs = [c for c in vs_cols if c in games_vs_po.columns]
+                    vs_display = games_vs_po[avail_vs].iloc[::-1].copy()
+
+                    if 'TS%' in vs_display.columns:
+                        vs_display['TS%'] = vs_display['TS%'].apply(
+                            lambda x: f"{x:.1f}%" if pd.notnull(x) else "N/A")
+
+                    # AVG row for vs series opponent
+                    vs_avgs = _season_avg_dict(games_vs_po)
+                    def _pfmt(k): return vs_avgs.get(k, "N/A")
+                    avg_row_vs = {
+                        'GAME_DATE': f'AVG vs {po_opponent}',
+                        'MATCHUP': f'({len(games_vs_po)} games)',
+                        'W/L': '', 'Score': '',
+                        'MIN': _pfmt('MPG'),
+                        'Points': _pfmt('PPG'), 'Rebounds': _pfmt('RPG'),
+                        'Assists': _pfmt('APG'), 'Steals': _pfmt('SPG'),
+                        'Blocks': _pfmt('BPG'), 'Turnovers': _pfmt('TO'),
+                        'FG': _pfmt('FG%'), '3P': _pfmt('3P%'), 'FT': _pfmt('FT%'),
+                        'TS%': _pfmt('TS%'),
+                    }
+                    combined_vs = pd.concat([vs_display, pd.DataFrame([avg_row_vs])], ignore_index=True)
+
+                    def _style_vs_row(row):
+                        if f'AVG vs' in str(row['GAME_DATE']):
+                            return ['background-color: #2D3748; font-weight: bold; color: #FFD700'] * len(row)
+                        return [''] * len(row)
+                    def _style_wl2(val):
+                        if val == 'W': return 'color: #10B981; font-weight: bold'
+                        if val == 'L': return 'color: #EF4444; font-weight: bold'
+                        return ''
+
+                    styled_vs = combined_vs.style.apply(_style_vs_row, axis=1)
+                    if 'W/L' in combined_vs.columns:
+                        styled_vs = styled_vs.applymap(_style_wl2, subset=['W/L'])
+
+                    st.dataframe(styled_vs, use_container_width=True, hide_index=True)
+
+                    # Compact stats tiles for vs-opponent
+                    st.markdown("<div style='color:#9CA3AF; font-size:0.8rem; margin-top:4px;'>Per-game averages this series:</div>", unsafe_allow_html=True)
+                    tc1, tc2, tc3, tc4, tc5, tc6 = st.columns(6)
+                    with tc1: st.metric("PPG", _pfmt('PPG'))
+                    with tc2: st.metric("RPG", _pfmt('RPG'))
+                    with tc3: st.metric("APG", _pfmt('APG'))
+                    with tc4: st.metric("FG%", _pfmt('FG%'))
+                    with tc5: st.metric("3P%", _pfmt('3P%'))
+                    with tc6: st.metric("TS%", _pfmt('TS%'))
+
+                else:
+                    st.info(f"No playoff games vs {opp_full} recorded yet in the box-score data.")
+            else:
+                st.caption("Series opponent could not be determined from bracket data.")
+
+        st.markdown("<hr style='border-color:#374151; margin:24px 0;'>", unsafe_allow_html=True)
+
 
         # Upcoming Games Section
         st.markdown("### Upcoming Games")

@@ -32,87 +32,54 @@ def calculate_player_consistency(player_df, stat_cols):
 def compute_playoff_adjustments(player_df, playoff_games_df=None):
     """
     Compute playoff-specific multipliers for each stat.
-
-    Playoff basketball differs from the regular season in key ways:
-    - Tighter rotations: fewer players get minutes (~8 vs ~10 in reg season).
-      Stars often play more minutes per game.
-    - Slower pace: defenses study opponents game-by-game; fewer possessions.
-      Upper-bound scoring opportunities decrease slightly.
-    - Higher defensive intensity: points and assists see a small pullback unless
-      the player has already shown strong playoff performance.
-    - Physical/fatigue factor: if a series is already deep (games 5-7), fatigue
-      compounds; if early (games 1-2), players are fresh.
-
-    Returns a dict: {stat: multiplier}  where multiplier is applied to the
-    base HMM+H2H prediction before bounding.
-
-    Parameters
-    ----------
-    player_df : DataFrame – full regular-season game log (already filtered)
-    playoff_games_df : DataFrame or None – playoff games played by this player
-        this post-season (subset of game log with GAME_DATE >= playoff start).
-        Must have the same columns as player_df.
+    
+    Updated: Removed the pessimistic 'baseline' reductions. Now focuses 
+    on workload (minutes) and actual playoff performance if available.
     """
-    adjustments = {
-        'Points': 1.0,
-        'Assists': 1.0,
-        'Rebounds': 1.0,
-        'Steals': 1.0,
-        'Blocks': 1.0,
-        'Turnovers': 1.0,
-    }
+    adjustments = {stat: 1.0 for stat in ['Points', 'Assists', 'Rebounds', 'Steals', 'Blocks', 'Turnovers']}
 
-    # --- Minutes adjustment ---
-    # In the playoffs, stars typically play ~3–5 more minutes per game.
-    # We won't change minutes directly but use them to scale stats.
+    # --- Minutes Trend Factor ---
+    # Focus on "guys that are playing": Compare recent workload to season average
     reg_min = 0.0
+    recent_min = 0.0
     if 'MIN' in player_df.columns and len(player_df) > 0:
-        reg_min = player_df['MIN'].apply(pd.to_numeric, errors='coerce').mean()
+        # Convert to numeric, handle potential NaNs
+        min_series = pd.to_numeric(player_df['MIN'], errors='coerce').fillna(0)
+        reg_min = min_series.mean()
+        recent_min = min_series.tail(5).mean()
 
-    # --- If we have actual playoff game data, use it for a direct calibration ---
-    if playoff_games_df is not None and len(playoff_games_df) >= 2:
-        # Compute per-stat ratio: playoff avg / regular-season avg
-        # Weight actual playoff data heavily once we have ≥3 games
-        playoff_weight = min(0.60, 0.25 + 0.10 * len(playoff_games_df))  # cap at 60%
+    # If recent minutes are significantly higher (or lower), scale the baseline expectations
+    # This captures shifted roles/rotations in the playoffs
+    if reg_min > 5: # Avoid div by zero or low-sample noise
+        min_trend_ratio = recent_min / reg_min
+        # Apply a dampened scaling factor (cap at 1.2x to prevent inflation)
+        # We use a 0.7 exponent to damp the effect so +20% mins doesn't mean +20% stats, 
+        # but it definitely moves the needle.
+        trend_factor = min(1.2, max(0.8, min_trend_ratio ** 0.7))
+        
+        for stat in ['Points', 'Assists', 'Rebounds']:
+            adjustments[stat] = trend_factor
 
-        for stat in ['Points', 'Assists', 'Rebounds', 'Steals', 'Blocks', 'Turnovers']:
+    # --- Actual Playoff Calibration ---
+    # If we have actual playoff games, blend that reality into the adjustments
+    if playoff_games_df is not None and len(playoff_games_df) >= 1:
+        # Weight actual playoff data (increases as series goes on)
+        playoff_weight = min(0.50, 0.20 + 0.10 * len(playoff_games_df))
+
+        for stat in adjustments.keys():
             if stat not in player_df.columns or stat not in playoff_games_df.columns:
                 continue
             reg_avg = player_df[stat].mean()
-            if reg_avg <= 0:
-                continue
+            if reg_avg <= 0: continue
+            
             po_avg = playoff_games_df[stat].mean()
-            # How much better/worse in playoffs vs reg season
-            ratio = po_avg / reg_avg  # e.g. 1.10 = 10% better in playoffs
-            # Blend: shift the base prediction toward actual playoff performance
-            # adjustment = 1.0 + playoff_weight * (ratio - 1.0)
-            adjustments[stat] = 1.0 + playoff_weight * (ratio - 1.0)
+            ratio = po_avg / reg_avg
+            
+            # Blend the existing trend factor with actual playoff performance
+            # New adjustment = (current_trend) * (1 - weight) + (playoff_ratio) * weight
+            adjustments[stat] = (adjustments[stat] * (1 - playoff_weight)) + (ratio * playoff_weight)
 
-        # Also factor in minutes trend: if player is logging more playoff minutes, scale up
-        if 'MIN' in playoff_games_df.columns and reg_min > 0:
-            po_min = playoff_games_df['MIN'].apply(pd.to_numeric, errors='coerce').mean()
-            min_ratio = po_min / reg_min
-            # Apply a moderate scale to counting stats
-            for stat in ['Points', 'Assists', 'Rebounds']:
-                # Multiply by sqrt of minutes ratio to avoid over-adjusting
-                adjustments[stat] *= (min_ratio ** 0.5)
-
-    else:
-        # No actual playoff data yet – apply conservative baseline adjustments
-        # reflecting the statistical reality of playoff basketball:
-        # • Pace slows ~3–5% → fewer possessions → slight reduction in counting stats
-        # • But stars play more → partially offsets this
-        # Net effect: a small negative on scoring/assists, small positive on defense
-
-        pace_reduction = 0.97   # ~3% fewer possessions
-        defense_boost = 1.03    # harder to score/create → slightly fewer assists
-
-        adjustments['Points'] = pace_reduction * 0.99   # -4% pts baseline
-        adjustments['Assists'] = pace_reduction * 0.98  # -5% assists baseline (ball movement tighter)
-        adjustments['Rebounds'] = 1.01                  # slightly more in slower game
-        adjustments['Steals'] = 1.02                    # more pressure defense
-        adjustments['Blocks'] = 1.02
-        adjustments['Turnovers'] = 0.98                 # better ball control in playoffs usually
+    return adjustments
 
     return adjustments
 
