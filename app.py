@@ -2963,14 +2963,222 @@ elif page == "Predictions":
                 row1_keys=['PPG', 'RPG', 'APG', 'SPG', 'BPG', 'TO'],
                 row2_keys=['FG%', '3P%', 'FT%', 'TS%', 'MPG', 'Games'])
 
-            # -- All playoff games table --
-            st.markdown(f"<div style='margin-top:14px; color:#FFD700; font-size:0.9rem; font-weight:600;'>📋 All Playoff Games ({len(po_df)} played)</div>", unsafe_allow_html=True)
+            # -- Full Playoff Game Log (with Round annotation) --
             po_df = add_score_to_df(po_df, {player_team}, season)
+
+            # Build opp→round lookup early (reused below too)
+            _round_labels_map = {1: 'First Round', 2: 'Conf. Semis', 3: 'Conf. Finals', 4: 'NBA Finals'}
+            _round_short_map  = {1: 'R1', 2: 'R2', 3: 'R3', 4: 'Finals'}
+            _round_colors_map = {1: '#1d4ed8', 2: '#7c3aed', 3: '#b45309', 4: '#065f46'}  # blue / purple / amber / emerald
+            try:
+                _po_series_lookup = get_playoff_series_data(season)
+            except Exception:
+                _po_series_lookup = {}
+
+            _opp_round_map = {}  # opp_abbrev → (round_num, series_info)
+            for _sid2, _si2 in _po_series_lookup.items():
+                _sh2 = _si2.get('home', '')
+                _sv2 = _si2.get('visitor', '')
+                if player_team in (_sh2, _sv2):
+                    _o2 = _sv2 if _sh2 == player_team else _sh2
+                    _r2 = _si2.get('round', 1)
+                    if _o2 not in _opp_round_map or _opp_round_map[_o2][0] < _r2:
+                        _opp_round_map[_o2] = (_r2, _si2)
+
+            # Annotate po_df with Round column
+            def _get_round_label(row):
+                opp = row.get('Opponent', '')
+                if opp and opp in _opp_round_map:
+                    rn = _opp_round_map[opp][0]
+                    short = _round_short_map.get(rn, f'R{rn}')
+                    return f"{short} · {opp}"
+                return "Playoffs"
+
+            po_df_annotated = po_df.copy()
+            po_df_annotated['Round'] = po_df_annotated.apply(_get_round_label, axis=1)
+
+            # Format display columns
+            _po_log_cols = ['Round', 'GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN',
+                            'Points', 'Rebounds', 'Assists', 'Steals', 'Blocks',
+                            'Turnovers', 'FG', '3P', 'FT', 'TS%']
+            _avail_log = [c for c in _po_log_cols if c in po_df_annotated.columns]
+            po_log_display = po_df_annotated[_avail_log].iloc[::-1].copy()  # newest first
+
+            if 'TS%' in po_log_display.columns:
+                po_log_display['TS%'] = po_log_display['TS%'].apply(
+                    lambda x: f"{x:.1f}%" if pd.notnull(x) and isinstance(x, (int, float)) else x)
+
+            # Build per-round avg rows appended at the boundary of each round block
+            _round_order = sorted(set(po_df_annotated['Round']), key=lambda r: (
+                _opp_round_map.get(r.split(' · ')[-1], (99,))[0] if ' · ' in r else 99
+            ))
+
+            def _po_avg_row_for(label, subset_df):
+                _a = _season_avg_dict(subset_df)
+                return {
+                    'Round': f'── AVG {label} ──',
+                    'GAME_DATE': '', 'MATCHUP': f'({len(subset_df)} GP)',
+                    'W/L': '', 'Score': '', 'MIN': _a.get('MPG', ''),
+                    'Points': _a.get('PPG', ''), 'Rebounds': _a.get('RPG', ''),
+                    'Assists': _a.get('APG', ''), 'Steals': _a.get('SPG', ''),
+                    'Blocks': _a.get('BPG', ''), 'Turnovers': _a.get('TO', ''),
+                    'FG': _a.get('FG%', ''), '3P': _a.get('3P%', ''), 'FT': _a.get('FT%', ''),
+                    'TS%': _a.get('TS%', ''),
+                }
+
+            # Insert AVG rows at each round boundary (newest-first means lower rounds come later)
+            rows_with_avgs = []
+            prev_round = None
+            prev_round_rows = []
+            for _, row in po_log_display.iterrows():
+                cur_round = row.get('Round', '')
+                if prev_round is not None and cur_round != prev_round:
+                    # Insert avg for the just-finished round block
+                    subset_for_avg = po_df_annotated[po_df_annotated['Round'] == prev_round]
+                    rows_with_avgs.append(_po_avg_row_for(prev_round, subset_for_avg))
+                rows_with_avgs.append(row.to_dict())
+                prev_round = cur_round
+            # Final avg for last round
+            if prev_round:
+                subset_for_avg = po_df_annotated[po_df_annotated['Round'] == prev_round]
+                rows_with_avgs.append(_po_avg_row_for(prev_round, subset_for_avg))
+            # Overall avg row
+            rows_with_avgs.append(_po_avg_row_for('Playoffs', po_df_annotated))
+
+            po_log_final = pd.DataFrame(rows_with_avgs)
+            # Keep only available columns
+            po_log_final = po_log_final[[c for c in _avail_log if c in po_log_final.columns]]
+
+            # Style: color-code by round, bold avg rows
+            _round_to_color = {}
+            for _opp_k, (_rn_k, _) in _opp_round_map.items():
+                _label_k = f"{_round_short_map.get(_rn_k, f'R{_rn_k}')} · {_opp_k}"
+                _round_to_color[_label_k] = _round_colors_map.get(_rn_k, '#374151')
+
+            def _style_po_log_row(row):
+                rnd = str(row.get('Round', ''))
+                if rnd.startswith('── AVG') or rnd.startswith('── AVG Playoffs'):
+                    return ['background-color:#2D3748; font-weight:bold; color:#FFD700'] * len(row)
+                bg = _round_to_color.get(rnd, '#111827')
+                return [f'background-color:{bg}18'] * len(row)  # very subtle tint
+
+            def _style_po_wl(val):
+                if val == 'W': return 'color:#10B981; font-weight:bold'
+                if val == 'L': return 'color:#EF4444; font-weight:bold'
+                return ''
+
+            styled_po_log = po_log_final.style.apply(_style_po_log_row, axis=1)
+            if 'W/L' in po_log_final.columns:
+                styled_po_log = styled_po_log.applymap(_style_po_wl, subset=['W/L'])
+
+            st.markdown(f"<div style='margin-top:14px; color:#FFD700; font-size:0.9rem; font-weight:600;'>📋 Full Playoff Game Log — {len(po_df)} games</div>", unsafe_allow_html=True)
+            # Legend
+            legend_parts = []
+            for _opp_k, (_rn_k, _) in sorted(_opp_round_map.items(), key=lambda x: x[1][0]):
+                _lbl = f"{_round_short_map.get(_rn_k, f'R{_rn_k}')} · {_opp_k}"
+                _clr = _round_colors_map.get(_rn_k, '#374151')
+                _full_rnd = _round_labels_map.get(_rn_k, f'Round {_rn_k}')
+                _opp_full_k = TEAM_NAME_MAP.get(_opp_k, _opp_k)
+                legend_parts.append(
+                    f'<span style="background:{_clr}33; border:1px solid {_clr}; border-radius:4px; '
+                    f'padding:2px 8px; font-size:0.75rem; color:#FAFAFA; margin-right:6px;">'
+                    f'{_lbl} — {_full_rnd} vs {_opp_full_k}</span>'
+                )
+            if legend_parts:
+                st.markdown('<div style="margin:6px 0 10px 0;">' + ''.join(legend_parts) + '</div>', unsafe_allow_html=True)
+
             st.dataframe(
-                _build_recent_table(po_df, 'AVG (Playoffs)', num_games=len(po_df)),
+                styled_po_log,
                 use_container_width=True,
                 hide_index=True,
                 column_config={
+                    "Round":    st.column_config.TextColumn("Round", width="small"),
+                    "GAME_DATE": st.column_config.TextColumn("Date", width="medium"),
+                    "MATCHUP":  st.column_config.TextColumn("Matchup", width="medium"),
+                    "W/L":     st.column_config.TextColumn("W/L", width="small"),
+                    "Score":   st.column_config.TextColumn("Score", width="small"),
+                    "MIN":     st.column_config.TextColumn("MIN", width="small"),
+                    "Points":  st.column_config.TextColumn("PTS", width="small"),
+                    "Rebounds":st.column_config.TextColumn("REB", width="small"),
+                    "Assists": st.column_config.TextColumn("AST", width="small"),
+                    "Steals":  st.column_config.TextColumn("STL", width="small"),
+                    "Blocks":  st.column_config.TextColumn("BLK", width="small"),
+                    "Turnovers":st.column_config.TextColumn("TO", width="small"),
+                    "FG":      st.column_config.TextColumn("FG", width="small"),
+                    "3P":      st.column_config.TextColumn("3P", width="small"),
+                    "FT":      st.column_config.TextColumn("FT", width="small"),
+                    "TS%":     st.column_config.TextColumn("TS%", width="small"),
+                }
+            )
+
+            # ── Home / Road splits ───────────────────────────────────────────────
+            st.markdown("<hr style='border-color:#374151; margin:20px 0 16px 0;'>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="display:flex; align-items:center; gap:10px; margin:0 0 10px 0;">
+                <div style="font-size:1.1rem;">🏠</div>
+                <div style="font-size:1.05rem; font-weight:700; color:#FFD700;">Home / Road Splits</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Determine home vs road: MATCHUP contains "vs." for home games, "@" for road
+            if 'MATCHUP' in po_df.columns:
+                home_mask = po_df['MATCHUP'].str.contains(r'\bvs\.', na=False)
+                road_mask = po_df['MATCHUP'].str.contains(r'@', na=False)
+                home_games = po_df[home_mask]
+                road_games = po_df[road_mask]
+            else:
+                home_games = pd.DataFrame()
+                road_games = pd.DataFrame()
+
+            def _split_stat_card(label, df_split, icon):
+                """Render a compact stats card for a home/road split."""
+                if len(df_split) == 0:
+                    return f"<div style='color:#6B7280; font-size:0.85rem;'>No {label.lower()} games yet</div>"
+                avgs = _season_avg_dict(df_split)
+                wl_wins   = (df_split['W/L'] == 'W').sum() if 'W/L' in df_split else 0
+                wl_losses = (df_split['W/L'] == 'L').sum() if 'W/L' in df_split else 0
+                return f"""
+                <div style="background:linear-gradient(135deg,#1a1f2e,#111827); border:1px solid #374151;
+                            border-radius:12px; padding:14px 16px; height:100%;">
+                    <div style="font-size:0.85rem; color:#9CA3AF; margin-bottom:6px;">{icon} {label} — {int(wl_wins)}W {int(wl_losses)}L ({len(df_split)} GP)</div>
+                    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:6px;">
+                        <div style="text-align:center;">
+                            <div style="font-size:1.3rem; font-weight:800; color:#FAFAFA;">{avgs.get('PPG','—')}</div>
+                            <div style="font-size:0.7rem; color:#9CA3AF;">PPG</div>
+                        </div>
+                        <div style="text-align:center;">
+                            <div style="font-size:1.3rem; font-weight:800; color:#FAFAFA;">{avgs.get('RPG','—')}</div>
+                            <div style="font-size:0.7rem; color:#9CA3AF;">RPG</div>
+                        </div>
+                        <div style="text-align:center;">
+                            <div style="font-size:1.3rem; font-weight:800; color:#FAFAFA;">{avgs.get('APG','—')}</div>
+                            <div style="font-size:0.7rem; color:#9CA3AF;">APG</div>
+                        </div>
+                        <div style="text-align:center;">
+                            <div style="font-size:1.1rem; font-weight:700; color:#60A5FA;">{avgs.get('FG%','—')}</div>
+                            <div style="font-size:0.7rem; color:#9CA3AF;">FG%</div>
+                        </div>
+                        <div style="text-align:center;">
+                            <div style="font-size:1.1rem; font-weight:700; color:#60A5FA;">{avgs.get('3P%','—')}</div>
+                            <div style="font-size:0.7rem; color:#9CA3AF;">3P%</div>
+                        </div>
+                        <div style="text-align:center;">
+                            <div style="font-size:1.1rem; font-weight:700; color:#A78BFA;">{avgs.get('TS%','—')}</div>
+                            <div style="font-size:0.7rem; color:#9CA3AF;">TS%</div>
+                        </div>
+                    </div>
+                </div>"""
+
+            split_col1, split_col2 = st.columns(2)
+            with split_col1:
+                st.markdown(_split_stat_card("Home", home_games, "🏠"), unsafe_allow_html=True)
+            with split_col2:
+                st.markdown(_split_stat_card("Road", road_games, "✈️"), unsafe_allow_html=True)
+
+            # Detailed home/road game tables inside an expander
+            with st.expander("📊 View Home & Road Game-by-Game", expanded=False):
+                tab_home, tab_road = st.tabs([f"🏠 Home ({len(home_games)} GP)", f"✈️ Road ({len(road_games)} GP)"])
+                _po_col_cfg = {
                     "GAME_DATE": st.column_config.TextColumn("Date", width="medium"),
                     "MATCHUP": st.column_config.TextColumn("Matchup", width="medium"),
                     "W/L": st.column_config.TextColumn("W/L", width="small"),
@@ -2985,9 +3193,168 @@ elif page == "Predictions":
                     "PF": st.column_config.TextColumn("PF", width="small"),
                     "TS%": st.column_config.TextColumn("TS%", width="small"),
                 }
-            )
+                with tab_home:
+                    if len(home_games) > 0:
+                        st.dataframe(
+                            _build_recent_table(home_games, 'AVG (Home)', num_games=len(home_games)),
+                            use_container_width=True, hide_index=True, column_config=_po_col_cfg)
+                    else:
+                        st.info("No home playoff games recorded yet.")
+                with tab_road:
+                    if len(road_games) > 0:
+                        st.dataframe(
+                            _build_recent_table(road_games, 'AVG (Road)', num_games=len(road_games)),
+                            use_container_width=True, hide_index=True, column_config=_po_col_cfg)
+                    else:
+                        st.info("No road playoff games recorded yet.")
 
-            # -- Vs. current series opponent --
+            # ── Round-by-Round Breakdown ─────────────────────────────────────────
+            st.markdown("<hr style='border-color:#374151; margin:20px 0 16px 0;'>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="display:flex; align-items:center; gap:10px; margin:0 0 10px 0;">
+                <div style="font-size:1.1rem;">🗂️</div>
+                <div style="font-size:1.05rem; font-weight:700; color:#FFD700;">By Round</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Reuse _opp_round_map and _round_labels_map built in the game log section above
+            _round_labels = _round_labels_map  # {1: 'First Round', ...}
+
+            # Group po_df rows by opponent (= round proxy), collect unique in order
+            if 'Opponent' in po_df.columns:
+                _seen_opps = []
+                for _opp in po_df['Opponent']:
+                    if _opp not in _seen_opps:
+                        _seen_opps.append(_opp)
+            else:
+                _seen_opps = []
+
+            # Sort opponents by their round number
+            def _opp_round_key(o):
+                return _opp_round_map.get(o, (99, {}))[0]
+            _seen_opps_sorted = sorted(_seen_opps, key=_opp_round_key)
+
+            if not _seen_opps_sorted:
+                st.caption("Round breakdown not available — opponent data missing.")
+            else:
+                for _opp in _seen_opps_sorted:
+                    _rn, _sinfo = _opp_round_map.get(_opp, (1, {}))
+                    _round_label = _round_labels.get(_rn, f'Round {_rn}')
+                    _opp_full    = TEAM_NAME_MAP.get(_opp, _opp)
+
+                    # Series score badge
+                    if _sinfo:
+                        _hw = _sinfo.get('home_wins', 0)
+                        _vw = _sinfo.get('visitor_wins', 0)
+                        _ht = _sinfo.get('home', '')
+                        _vt = _sinfo.get('visitor', '')
+                        _winner = _sinfo.get('series_winner')
+                        if _winner:
+                            _series_badge = f"🏆 {TEAM_NAME_MAP.get(_winner, _winner)} wins"
+                        elif _ht == player_team:
+                            _series_badge = f"{player_team} {_hw}–{_vw} {_opp}" if _hw >= _vw else f"{_opp} {_vw}–{_hw} {player_team}"
+                        else:
+                            _series_badge = f"{player_team} {_vw}–{_hw} {_opp}" if _vw >= _hw else f"{_opp} {_hw}–{_vw} {player_team}"
+                    else:
+                        _series_badge = ""
+
+                    st.markdown(f"""
+                    <div style="background:linear-gradient(135deg,#1e2433,#111827); border-left:3px solid #FFD700;
+                                border-radius:0 8px 8px 0; padding:10px 14px; margin:14px 0 8px 0;
+                                display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px;">
+                        <div>
+                            <span style="color:#FFD700; font-weight:700; font-size:0.95rem;">{_round_label}</span>
+                            <span style="color:#9CA3AF; margin:0 8px;">·</span>
+                            <span style="color:#FAFAFA; font-weight:600;">vs {_opp_full}</span>
+                        </div>
+                        {'<div style="color:#10B981; font-size:0.85rem; font-weight:600;">' + _series_badge + '</div>' if _series_badge else ''}
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    _rnd_mask = po_df['Opponent'] == _opp
+                    if _rnd_mask.sum() == 0 and 'MATCHUP' in po_df.columns:
+                        _rnd_mask = po_df['MATCHUP'].str.contains(_opp, case=False, na=False)
+                    _rnd_games = po_df[_rnd_mask]
+
+                    if len(_rnd_games) > 0:
+                        # Summary metric tiles
+                        _rnd_avgs = _season_avg_dict(_rnd_games)
+                        _rnd_home = _rnd_games[_rnd_games['MATCHUP'].str.contains(r'\bvs\.', na=False)] if 'MATCHUP' in _rnd_games.columns else pd.DataFrame()
+                        _rnd_road = _rnd_games[_rnd_games['MATCHUP'].str.contains(r'@', na=False)] if 'MATCHUP' in _rnd_games.columns else pd.DataFrame()
+                        _rnd_w    = (_rnd_games['W/L'] == 'W').sum() if 'W/L' in _rnd_games else 0
+                        _rnd_l    = (_rnd_games['W/L'] == 'L').sum() if 'W/L' in _rnd_games else 0
+
+                        # Compact summary row
+                        _rc1, _rc2, _rc3, _rc4, _rc5, _rc6, _rc7 = st.columns(7)
+                        with _rc1: st.metric("GP", f"{int(_rnd_w)+int(_rnd_l)}")
+                        with _rc2: st.metric("W–L", f"{int(_rnd_w)}–{int(_rnd_l)}")
+                        with _rc3: st.metric("PPG", _rnd_avgs.get('PPG', '—'))
+                        with _rc4: st.metric("RPG", _rnd_avgs.get('RPG', '—'))
+                        with _rc5: st.metric("APG", _rnd_avgs.get('APG', '—'))
+                        with _rc6: st.metric("FG%", _rnd_avgs.get('FG%', '—'))
+                        with _rc7: st.metric("TS%", _rnd_avgs.get('TS%', '—'))
+
+                        # Home/Road mini-stats
+                        _hr_cols = st.columns(2)
+                        with _hr_cols[0]:
+                            _rnd_home_avgs = _season_avg_dict(_rnd_home) if len(_rnd_home) > 0 else {}
+                            _rnh_w = (_rnd_home['W/L'] == 'W').sum() if ('W/L' in _rnd_home.columns and len(_rnd_home) > 0) else 0
+                            _rnh_l = (_rnd_home['W/L'] == 'L').sum() if ('W/L' in _rnd_home.columns and len(_rnd_home) > 0) else 0
+                            if len(_rnd_home) > 0:
+                                st.markdown(f"""
+                                <div style="background:#1a1f2e; border:1px solid #374151; border-radius:8px; padding:10px 14px;">
+                                    <div style="color:#9CA3AF; font-size:0.78rem; margin-bottom:4px;">🏠 Home — {int(_rnh_w)}W {int(_rnh_l)}L ({len(_rnd_home)} GP)</div>
+                                    <div style="display:flex; gap:16px; flex-wrap:wrap;">
+                                        <span style="color:#FAFAFA; font-weight:700;">{_rnd_home_avgs.get('PPG','—')} PPG</span>
+                                        <span style="color:#FAFAFA; font-weight:700;">{_rnd_home_avgs.get('RPG','—')} RPG</span>
+                                        <span style="color:#FAFAFA; font-weight:700;">{_rnd_home_avgs.get('APG','—')} APG</span>
+                                        <span style="color:#60A5FA; font-weight:700;">{_rnd_home_avgs.get('FG%','—')} FG%</span>
+                                    </div>
+                                </div>""", unsafe_allow_html=True)
+                            else:
+                                st.markdown("<div style='color:#6B7280; font-size:0.82rem; padding:10px;'>🏠 No home games this round</div>", unsafe_allow_html=True)
+                        with _hr_cols[1]:
+                            _rnd_road_avgs = _season_avg_dict(_rnd_road) if len(_rnd_road) > 0 else {}
+                            _rnr_w = (_rnd_road['W/L'] == 'W').sum() if ('W/L' in _rnd_road.columns and len(_rnd_road) > 0) else 0
+                            _rnr_l = (_rnd_road['W/L'] == 'L').sum() if ('W/L' in _rnd_road.columns and len(_rnd_road) > 0) else 0
+                            if len(_rnd_road) > 0:
+                                st.markdown(f"""
+                                <div style="background:#1a1f2e; border:1px solid #374151; border-radius:8px; padding:10px 14px;">
+                                    <div style="color:#9CA3AF; font-size:0.78rem; margin-bottom:4px;">✈️ Road — {int(_rnr_w)}W {int(_rnr_l)}L ({len(_rnd_road)} GP)</div>
+                                    <div style="display:flex; gap:16px; flex-wrap:wrap;">
+                                        <span style="color:#FAFAFA; font-weight:700;">{_rnd_road_avgs.get('PPG','—')} PPG</span>
+                                        <span style="color:#FAFAFA; font-weight:700;">{_rnd_road_avgs.get('RPG','—')} RPG</span>
+                                        <span style="color:#FAFAFA; font-weight:700;">{_rnd_road_avgs.get('APG','—')} APG</span>
+                                        <span style="color:#60A5FA; font-weight:700;">{_rnd_road_avgs.get('FG%','—')} FG%</span>
+                                    </div>
+                                </div>""", unsafe_allow_html=True)
+                            else:
+                                st.markdown("<div style='color:#6B7280; font-size:0.82rem; padding:10px;'>✈️ No road games this round</div>", unsafe_allow_html=True)
+
+                        # Detailed game-by-game table for this round
+                        with st.expander(f"📋 Game-by-game vs {_opp_full}", expanded=False):
+                            st.dataframe(
+                                _build_recent_table(_rnd_games, f'AVG vs {_opp}', num_games=len(_rnd_games)),
+                                use_container_width=True, hide_index=True,
+                                column_config={
+                                    "GAME_DATE": st.column_config.TextColumn("Date", width="medium"),
+                                    "MATCHUP": st.column_config.TextColumn("Matchup", width="medium"),
+                                    "W/L": st.column_config.TextColumn("W/L", width="small"),
+                                    "Score": st.column_config.TextColumn("Score", width="small"),
+                                    "MIN": st.column_config.TextColumn("MIN", width="small"),
+                                    "Points": st.column_config.TextColumn("PTS", width="small"),
+                                    "Rebounds": st.column_config.TextColumn("REB", width="small"),
+                                    "Assists": st.column_config.TextColumn("AST", width="small"),
+                                    "Steals": st.column_config.TextColumn("STL", width="small"),
+                                    "Blocks": st.column_config.TextColumn("BLK", width="small"),
+                                    "Turnovers": st.column_config.TextColumn("TO", width="small"),
+                                    "PF": st.column_config.TextColumn("PF", width="small"),
+                                    "TS%": st.column_config.TextColumn("TS%", width="small"),
+                                })
+                    else:
+                        st.caption(f"No games vs {_opp_full} recorded yet in box-score data.")
+
+            # ── Vs. current series opponent (active series highlight) ────────────
             if po_opponent:
                 # Games in po_df where the Opponent column matches po_opponent
                 # (nba_api uses the 3-letter abbrev as the last token of MATCHUP)
@@ -2998,10 +3365,11 @@ elif page == "Predictions":
                 games_vs_po = po_df[vs_mask]
 
                 opp_full = TEAM_NAME_MAP.get(po_opponent, po_opponent)
+                st.markdown("<hr style='border-color:#374151; margin:20px 0 16px 0;'>", unsafe_allow_html=True)
                 st.markdown(f"""
-                <div style="display:flex; align-items:center; gap:10px; margin:20px 0 8px 0;">
+                <div style="display:flex; align-items:center; gap:10px; margin:0 0 8px 0;">
                     <div style="font-size:1.2rem;">🆚</div>
-                    <div style="font-size:1.1rem; font-weight:700; color:#FFD700;">vs {opp_full} — This Series</div>
+                    <div style="font-size:1.1rem; font-weight:700; color:#FFD700;">vs {opp_full} — Active Series</div>
                 </div>
                 """, unsafe_allow_html=True)
 
