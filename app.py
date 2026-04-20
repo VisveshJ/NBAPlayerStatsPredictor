@@ -4508,7 +4508,357 @@ elif page == "Player Stats":
                         st.info("Could not determine team win percentages.")
                 else:
                     st.info("Standings data not available for winning team splits.")
-                               # Stats vs Specific Team
+                
+                # ════════════════════════════════════════════════════════════════
+                # ── PLAYOFFS section ────────────────────────────────────────────
+                # ════════════════════════════════════════════════════════════════
+                with st.spinner("Checking for playoff games…"):
+                    sp_po_df, _sp_po_team = get_playoff_game_log(selected_player, season)
+
+                if sp_po_df is not None and len(sp_po_df) > 0:
+                    sp_player_team = player_team  # already resolved above
+                    sp_po_opponent, sp_po_series_info = get_player_current_playoff_series_opponent(sp_player_team, season)
+
+                    st.markdown("<hr style='border-color:#374151; margin:32px 0 20px 0;'>", unsafe_allow_html=True)
+                    st.markdown("""
+                    <div style="display:flex; align-items:center; gap:10px; margin:4px 0 10px 0;">
+                        <div style="font-size:1.5rem;">🏆</div>
+                        <div style="font-size:1.3rem; font-weight:700; color:#FFD700;">Playoffs</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    # Series badge
+                    if sp_po_series_info:
+                        _sp_hw = sp_po_series_info.get('home_wins', 0)
+                        _sp_vw = sp_po_series_info.get('visitor_wins', 0)
+                        _sp_ht = sp_po_series_info.get('home', '')
+                        _sp_vt = sp_po_series_info.get('visitor', '')
+                        _sp_rn = sp_po_series_info.get('round', 1)
+                        _sp_rl = {1: 'First Round', 2: 'Conference Semifinals', 3: 'Conference Finals', 4: 'NBA Finals'}.get(_sp_rn, f'Round {_sp_rn}')
+                        _sp_winner = sp_po_series_info.get('series_winner')
+                        _sp_status = (f"🏆 {_sp_winner} wins series" if _sp_winner
+                                      else f"{_sp_ht} leads {_sp_hw}–{_sp_vw}" if _sp_hw > _sp_vw
+                                      else f"{_sp_vt} leads {_sp_vw}–{_sp_hw}" if _sp_vw > _sp_hw
+                                      else f"Series tied {_sp_hw}–{_sp_vw}")
+                        st.markdown(f"""
+                        <div style="background:linear-gradient(135deg,#1a1f2e,#111827); border:1px solid #FFD700;
+                                    border-radius:10px; padding:10px 16px; margin-bottom:14px; display:inline-block;">
+                            <span style="color:#FFD700; font-weight:700;">{_sp_rl}</span>
+                            <span style="color:#9CA3AF; margin:0 8px;">•</span>
+                            <span style="color:#FAFAFA;">{_sp_ht} vs {_sp_vt}</span>
+                            <span style="color:#9CA3AF; margin:0 8px;">•</span>
+                            <span style="color:#10B981; font-weight:600;">{_sp_status}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    # Overall playoff averages
+                    def _sp_avg(col): return sp_po_df[col].mean() if col in sp_po_df.columns else 0
+                    def _sp_sum(col): return sp_po_df[col].sum() if col in sp_po_df.columns else 0
+                    _sp_fgm, _sp_fga = _sp_sum('FGM'), _sp_sum('FGA')
+                    _sp_tpm, _sp_tpa = _sp_sum('3PM'), _sp_sum('3PA')
+                    _sp_ftm, _sp_fta = _sp_sum('FTM'), _sp_sum('FTA')
+                    _sp_pts = _sp_sum('Points')
+                    _sp_fg  = f"{_sp_fgm/_sp_fga*100:.1f}%" if _sp_fga > 0 else "N/A"
+                    _sp_3p  = f"{_sp_tpm/_sp_tpa*100:.1f}%" if _sp_tpa > 0 else "N/A"
+                    _sp_ft  = f"{_sp_ftm/_sp_fta*100:.1f}%" if _sp_fta > 0 else "N/A"
+                    _sp_ts_d = 2 * (_sp_fga + 0.44 * _sp_fta)
+                    _sp_ts  = f"{_sp_pts/_sp_ts_d*100:.1f}%" if _sp_ts_d > 0 else "N/A"
+
+                    st.markdown("#### Season Averages (Playoffs)")
+                    _spc1,_spc2,_spc3,_spc4,_spc5,_spc6 = st.columns(6)
+                    with _spc1: st.metric("PPG", f"{_sp_avg('Points'):.1f}"); st.metric("SPG", f"{_sp_avg('Steals'):.1f}")
+                    with _spc2: st.metric("RPG", f"{_sp_avg('Rebounds'):.1f}"); st.metric("BPG", f"{_sp_avg('Blocks'):.1f}")
+                    with _spc3: st.metric("APG", f"{_sp_avg('Assists'):.1f}"); st.metric("TO", f"{_sp_avg('Turnovers'):.1f}")
+                    with _spc4: st.metric("FG%", _sp_fg); st.metric("3P%", _sp_3p)
+                    with _spc5: st.metric("FT%", _sp_ft); st.metric("Games", len(sp_po_df))
+                    with _spc6: st.metric("TS%", _sp_ts); st.metric("MPG", f"{_sp_avg('MIN'):.1f}" if 'MIN' in sp_po_df.columns else "N/A")
+
+                    # ── Full Playoff Game Log (annotated by round) ──────────────
+                    sp_po_df = add_score_to_df(sp_po_df, {sp_player_team}, season)
+
+                    _sp_rl_labels = {1: 'First Round', 2: 'Conf. Semis', 3: 'Conf. Finals', 4: 'NBA Finals'}
+                    _sp_rl_short  = {1: 'R1', 2: 'R2', 3: 'R3', 4: 'Finals'}
+                    _sp_rl_colors = {1: '#1d4ed8', 2: '#7c3aed', 3: '#b45309', 4: '#065f46'}
+
+                    try:
+                        _sp_series_data = get_playoff_series_data(season)
+                    except Exception:
+                        _sp_series_data = {}
+
+                    _sp_opp_round_map = {}
+                    for _sp_sid, _sp_si in _sp_series_data.items():
+                        _sp_sh = _sp_si.get('home', '')
+                        _sp_sv = _sp_si.get('visitor', '')
+                        if sp_player_team in (_sp_sh, _sp_sv):
+                            _sp_o = _sp_sv if _sp_sh == sp_player_team else _sp_sh
+                            _sp_r = _sp_si.get('round', 1)
+                            if _sp_o not in _sp_opp_round_map or _sp_opp_round_map[_sp_o][0] < _sp_r:
+                                _sp_opp_round_map[_sp_o] = (_sp_r, _sp_si)
+
+                    def _sp_round_label(row):
+                        opp = row.get('Opponent', '')
+                        if opp and opp in _sp_opp_round_map:
+                            rn = _sp_opp_round_map[opp][0]
+                            return f"{_sp_rl_short.get(rn, f'R{rn}')} · {opp}"
+                        return "Playoffs"
+
+                    sp_po_annotated = sp_po_df.copy()
+                    sp_po_annotated['Round'] = sp_po_annotated.apply(_sp_round_label, axis=1)
+
+                    _sp_log_cols = ['Round', 'GAME_DATE', 'MATCHUP', 'W/L', 'Score', 'MIN',
+                                    'Points', 'Rebounds', 'Assists', 'Steals', 'Blocks',
+                                    'Turnovers', 'FG', '3P', 'FT', 'TS%']
+                    _sp_avail = [c for c in _sp_log_cols if c in sp_po_annotated.columns]
+                    sp_log_display = sp_po_annotated[_sp_avail].iloc[::-1].copy()
+
+                    if 'TS%' in sp_log_display.columns:
+                        sp_log_display['TS%'] = sp_log_display['TS%'].apply(
+                            lambda x: f"{x:.1f}%" if pd.notnull(x) and isinstance(x, (int, float)) else x)
+
+                    def _sp_po_avg_row(label, subset):
+                        def _a(c): return subset[c].mean() if c in subset else 0
+                        def _s(c): return subset[c].sum() if c in subset else 0
+                        _m,_a2 = _s('FGM'),_s('FGA'); _t,_ta=_s('3PM'),_s('3PA'); _f,_fa=_s('FTM'),_s('FTA'); _p=_s('Points')
+                        return {
+                            'Round': f'── AVG {label} ──',
+                            'GAME_DATE': '', 'MATCHUP': f'({len(subset)} GP)',
+                            'W/L': '', 'Score': '',
+                            'MIN': f"{_a('MIN'):.1f}" if 'MIN' in subset else '',
+                            'Points': f"{_a('Points'):.1f}", 'Rebounds': f"{_a('Rebounds'):.1f}",
+                            'Assists': f"{_a('Assists'):.1f}", 'Steals': f"{_a('Steals'):.1f}",
+                            'Blocks': f"{_a('Blocks'):.1f}", 'Turnovers': f"{_a('Turnovers'):.1f}",
+                            'FG': f"{_m/_a2*100:.1f}%" if _a2>0 else 'N/A',
+                            '3P': f"{_t/_ta*100:.1f}%" if _ta>0 else 'N/A',
+                            'FT': f"{_f/_fa*100:.1f}%" if _fa>0 else 'N/A',
+                            'TS%': f"{_p/(2*(_a2+0.44*_fa))*100:.1f}%" if (_a2+0.44*_fa)>0 else 'N/A',
+                        }
+
+                    sp_rows = []
+                    sp_prev_round = None
+                    for _, row in sp_log_display.iterrows():
+                        cur = row.get('Round', '')
+                        if sp_prev_round is not None and cur != sp_prev_round:
+                            sp_rows.append(_sp_po_avg_row(sp_prev_round, sp_po_annotated[sp_po_annotated['Round'] == sp_prev_round]))
+                        sp_rows.append(row.to_dict())
+                        sp_prev_round = cur
+                    if sp_prev_round:
+                        sp_rows.append(_sp_po_avg_row(sp_prev_round, sp_po_annotated[sp_po_annotated['Round'] == sp_prev_round]))
+                    sp_rows.append(_sp_po_avg_row('Playoffs', sp_po_annotated))
+
+                    sp_log_final = pd.DataFrame(sp_rows)
+                    sp_log_final = sp_log_final[[c for c in _sp_avail if c in sp_log_final.columns]]
+
+                    _sp_round_to_color = {}
+                    for _ok, (_rk, _) in _sp_opp_round_map.items():
+                        _sp_round_to_color[f"{_sp_rl_short.get(_rk,f'R{_rk}')} · {_ok}"] = _sp_rl_colors.get(_rk,'#374151')
+
+                    def _sp_style_row(row):
+                        rnd = str(row.get('Round', ''))
+                        if rnd.startswith('── AVG'):
+                            return ['background-color:#2D3748; font-weight:bold; color:#FFD700'] * len(row)
+                        bg = _sp_round_to_color.get(rnd, '#111827')
+                        return [f'background-color:{bg}18'] * len(row)
+
+                    def _sp_style_wl(val):
+                        if val == 'W': return 'color:#10B981; font-weight:bold'
+                        if val == 'L': return 'color:#EF4444; font-weight:bold'
+                        return ''
+
+                    sp_styled = sp_log_final.style.apply(_sp_style_row, axis=1)
+                    if 'W/L' in sp_log_final.columns:
+                        sp_styled = sp_styled.applymap(_sp_style_wl, subset=['W/L'])
+
+                    st.markdown(f"<div style='margin-top:18px; color:#FFD700; font-size:0.9rem; font-weight:600;'>📋 Full Playoff Game Log — {len(sp_po_df)} games</div>", unsafe_allow_html=True)
+                    # Legend
+                    _sp_legend = []
+                    for _ok, (_rk, _) in sorted(_sp_opp_round_map.items(), key=lambda x: x[1][0]):
+                        _lbl = f"{_sp_rl_short.get(_rk,f'R{_rk}')} · {_ok}"
+                        _clr = _sp_rl_colors.get(_rk,'#374151')
+                        _sp_legend.append(
+                            f'<span style="background:{_clr}33; border:1px solid {_clr}; border-radius:4px; '
+                            f'padding:2px 8px; font-size:0.75rem; color:#FAFAFA; margin-right:6px;">'
+                            f'{_lbl} — {_sp_rl_labels.get(_rk,f"Round {_rk}")} vs {TEAM_NAME_MAP.get(_ok,_ok)}</span>'
+                        )
+                    if _sp_legend:
+                        st.markdown('<div style="margin:4px 0 8px 0;">' + ''.join(_sp_legend) + '</div>', unsafe_allow_html=True)
+
+                    st.dataframe(sp_styled, use_container_width=True, hide_index=True,
+                        column_config={
+                            "Round":    st.column_config.TextColumn("Round", width="small"),
+                            "GAME_DATE": st.column_config.TextColumn("Date", width="medium"),
+                            "MATCHUP":  st.column_config.TextColumn("Matchup", width="medium"),
+                            "W/L":     st.column_config.TextColumn("W/L", width="small"),
+                            "Score":   st.column_config.TextColumn("Score", width="small"),
+                            "MIN":     st.column_config.TextColumn("MIN", width="small"),
+                            "Points":  st.column_config.TextColumn("PTS", width="small"),
+                            "Rebounds":st.column_config.TextColumn("REB", width="small"),
+                            "Assists": st.column_config.TextColumn("AST", width="small"),
+                            "Steals":  st.column_config.TextColumn("STL", width="small"),
+                            "Blocks":  st.column_config.TextColumn("BLK", width="small"),
+                            "Turnovers":st.column_config.TextColumn("TO", width="small"),
+                            "FG":      st.column_config.TextColumn("FG%", width="small"),
+                            "3P":      st.column_config.TextColumn("3P%", width="small"),
+                            "FT":      st.column_config.TextColumn("FT%", width="small"),
+                            "TS%":     st.column_config.TextColumn("TS%", width="small"),
+                        })
+
+                    # ── Home / Road Splits (Playoffs) ───────────────────────────
+                    st.markdown("<hr style='border-color:#374151; margin:20px 0 14px 0;'>", unsafe_allow_html=True)
+                    st.markdown("""
+                    <div style="display:flex; align-items:center; gap:8px; margin:0 0 10px 0;">
+                        <span style="font-size:1.0rem;">🏠</span>
+                        <span style="font-size:1.0rem; font-weight:700; color:#FFD700;">Home / Road Splits (Playoffs)</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    _sp_home = sp_po_df[sp_po_df['MATCHUP'].str.contains(r'\bvs\.', na=False)] if 'MATCHUP' in sp_po_df.columns else pd.DataFrame()
+                    _sp_road = sp_po_df[sp_po_df['MATCHUP'].str.contains(r'@', na=False)] if 'MATCHUP' in sp_po_df.columns else pd.DataFrame()
+
+                    def _sp_card(label, df_s, icon):
+                        if len(df_s) == 0:
+                            return f"<div style='color:#6B7280; font-size:0.85rem; padding:10px;'>No {label.lower()} playoff games yet</div>"
+                        def _a(c): return df_s[c].mean() if c in df_s else 0
+                        def _s(c): return df_s[c].sum() if c in df_s else 0
+                        _m,_a2=_s('FGM'),_s('FGA'); _t,_ta=_s('3PM'),_s('3PA'); _f,_fa=_s('FTM'),_s('FTA'); _p=_s('Points')
+                        _fg  = f"{_m/_a2*100:.1f}%" if _a2>0 else 'N/A'
+                        _3p  = f"{_t/_ta*100:.1f}%" if _ta>0 else 'N/A'
+                        _ts  = f"{_p/(2*(_a2+0.44*_fa))*100:.1f}%" if (_a2+0.44*_fa)>0 else 'N/A'
+                        _w   = (df_s['W/L']=='W').sum() if 'W/L' in df_s else 0
+                        _l   = (df_s['W/L']=='L').sum() if 'W/L' in df_s else 0
+                        return f"""
+                        <div style="background:linear-gradient(135deg,#1a1f2e,#111827); border:1px solid #374151;
+                                    border-radius:12px; padding:14px 16px;">
+                            <div style="font-size:0.83rem; color:#9CA3AF; margin-bottom:6px;">{icon} {label} — {int(_w)}W {int(_l)}L ({len(df_s)} GP)</div>
+                            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:6px; text-align:center;">
+                                <div><div style="font-size:1.25rem; font-weight:800; color:#FAFAFA;">{_a('Points'):.1f}</div><div style="font-size:0.7rem; color:#9CA3AF;">PPG</div></div>
+                                <div><div style="font-size:1.25rem; font-weight:800; color:#FAFAFA;">{_a('Rebounds'):.1f}</div><div style="font-size:0.7rem; color:#9CA3AF;">RPG</div></div>
+                                <div><div style="font-size:1.25rem; font-weight:800; color:#FAFAFA;">{_a('Assists'):.1f}</div><div style="font-size:0.7rem; color:#9CA3AF;">APG</div></div>
+                                <div><div style="font-size:1.1rem; font-weight:700; color:#60A5FA;">{_fg}</div><div style="font-size:0.7rem; color:#9CA3AF;">FG%</div></div>
+                                <div><div style="font-size:1.1rem; font-weight:700; color:#60A5FA;">{_3p}</div><div style="font-size:0.7rem; color:#9CA3AF;">3P%</div></div>
+                                <div><div style="font-size:1.1rem; font-weight:700; color:#A78BFA;">{_ts}</div><div style="font-size:0.7rem; color:#9CA3AF;">TS%</div></div>
+                            </div>
+                        </div>"""
+
+                    _sp_hcol, _sp_rcol = st.columns(2)
+                    with _sp_hcol: st.markdown(_sp_card("Home", _sp_home, "🏠"), unsafe_allow_html=True)
+                    with _sp_rcol: st.markdown(_sp_card("Road", _sp_road, "✈️"), unsafe_allow_html=True)
+
+                    # ── Round-by-Round Breakdown (Playoffs) ─────────────────────
+                    st.markdown("<hr style='border-color:#374151; margin:20px 0 14px 0;'>", unsafe_allow_html=True)
+                    st.markdown("""
+                    <div style="display:flex; align-items:center; gap:8px; margin:0 0 8px 0;">
+                        <span style="font-size:1.0rem;">🗂️</span>
+                        <span style="font-size:1.0rem; font-weight:700; color:#FFD700;">By Round (Playoffs)</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    _sp_seen_opps = []
+                    if 'Opponent' in sp_po_df.columns:
+                        for _o in sp_po_df['Opponent']:
+                            if _o not in _sp_seen_opps:
+                                _sp_seen_opps.append(_o)
+                    _sp_seen_opps_sorted = sorted(_sp_seen_opps, key=lambda o: _sp_opp_round_map.get(o, (99,))[0])
+
+                    if not _sp_seen_opps_sorted:
+                        st.caption("Round breakdown not available — opponent data missing.")
+                    else:
+                        for _sp_opp in _sp_seen_opps_sorted:
+                            _sp_rn2, _sp_si2 = _sp_opp_round_map.get(_sp_opp, (1, {}))
+                            _sp_rl2   = _sp_rl_labels.get(_sp_rn2, f'Round {_sp_rn2}')
+                            _sp_of    = TEAM_NAME_MAP.get(_sp_opp, _sp_opp)
+                            if _sp_si2:
+                                _sp_hw2 = _sp_si2.get('home_wins', 0)
+                                _sp_vw2 = _sp_si2.get('visitor_wins', 0)
+                                _sp_ht2 = _sp_si2.get('home', '')
+                                _sp_win2 = _sp_si2.get('series_winner')
+                                if _sp_win2:
+                                    _sp_badge = f"🏆 {TEAM_NAME_MAP.get(_sp_win2, _sp_win2)} wins"
+                                elif _sp_ht2 == sp_player_team:
+                                    _sp_badge = f"{sp_player_team} {_sp_hw2}–{_sp_vw2} {_sp_opp}" if _sp_hw2 >= _sp_vw2 else f"{_sp_opp} {_sp_vw2}–{_sp_hw2} {sp_player_team}"
+                                else:
+                                    _sp_badge = f"{sp_player_team} {_sp_vw2}–{_sp_hw2} {_sp_opp}" if _sp_vw2 >= _sp_hw2 else f"{_sp_opp} {_sp_hw2}–{_sp_vw2} {sp_player_team}"
+                            else:
+                                _sp_badge = ""
+
+                            st.markdown(f"""
+                            <div style="background:linear-gradient(135deg,#1e2433,#111827); border-left:3px solid #FFD700;
+                                        border-radius:0 8px 8px 0; padding:10px 14px; margin:14px 0 8px 0;
+                                        display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px;">
+                                <div>
+                                    <span style="color:#FFD700; font-weight:700; font-size:0.95rem;">{_sp_rl2}</span>
+                                    <span style="color:#9CA3AF; margin:0 8px;">·</span>
+                                    <span style="color:#FAFAFA; font-weight:600;">vs {_sp_of}</span>
+                                </div>
+                                {'<div style="color:#10B981; font-size:0.85rem; font-weight:600;">' + _sp_badge + '</div>' if _sp_badge else ''}
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                            _sp_rnd_mask = sp_po_df['Opponent'] == _sp_opp if 'Opponent' in sp_po_df.columns else pd.Series([False]*len(sp_po_df))
+                            if _sp_rnd_mask.sum() == 0 and 'MATCHUP' in sp_po_df.columns:
+                                _sp_rnd_mask = sp_po_df['MATCHUP'].str.contains(_sp_opp, case=False, na=False)
+                            _sp_rnd_games = sp_po_df[_sp_rnd_mask]
+
+                            if len(_sp_rnd_games) > 0:
+                                def _sp_avg2(c): return _sp_rnd_games[c].mean() if c in _sp_rnd_games else 0
+                                def _sp_sum2(c): return _sp_rnd_games[c].sum() if c in _sp_rnd_games else 0
+                                _sp_rfgm,_sp_rfga=_sp_sum2('FGM'),_sp_sum2('FGA')
+                                _sp_rpts,_sp_rfta=_sp_sum2('Points'),_sp_sum2('FTA')
+                                _sp_rts = f"{_sp_rpts/(2*(_sp_rfga+0.44*_sp_rfta))*100:.1f}%" if (_sp_rfga+0.44*_sp_rfta)>0 else 'N/A'
+                                _sp_rfg = f"{_sp_rfgm/_sp_rfga*100:.1f}%" if _sp_rfga>0 else 'N/A'
+                                _sp_rw = (_sp_rnd_games['W/L']=='W').sum() if 'W/L' in _sp_rnd_games else 0
+                                _sp_rl3 = (_sp_rnd_games['W/L']=='L').sum() if 'W/L' in _sp_rnd_games else 0
+
+                                _rc1,_rc2,_rc3,_rc4,_rc5,_rc6,_rc7 = st.columns(7)
+                                with _rc1: st.metric("GP", int(_sp_rw)+int(_sp_rl3))
+                                with _rc2: st.metric("W–L", f"{int(_sp_rw)}–{int(_sp_rl3)}")
+                                with _rc3: st.metric("PPG", f"{_sp_avg2('Points'):.1f}")
+                                with _rc4: st.metric("RPG", f"{_sp_avg2('Rebounds'):.1f}")
+                                with _rc5: st.metric("APG", f"{_sp_avg2('Assists'):.1f}")
+                                with _rc6: st.metric("FG%", _sp_rfg)
+                                with _rc7: st.metric("TS%", _sp_rts)
+
+                                _sp_rh = _sp_rnd_games[_sp_rnd_games['MATCHUP'].str.contains(r'\bvs\.', na=False)] if 'MATCHUP' in _sp_rnd_games.columns else pd.DataFrame()
+                                _sp_rr = _sp_rnd_games[_sp_rnd_games['MATCHUP'].str.contains(r'@', na=False)] if 'MATCHUP' in _sp_rnd_games.columns else pd.DataFrame()
+                                _sp_hr_col1, _sp_hr_col2 = st.columns(2)
+
+                                def _sp_mini(df_m, label_m, icon_m):
+                                    if len(df_m) == 0:
+                                        return f"<div style='color:#6B7280; font-size:0.82rem; padding:10px;'>{icon_m} No {label_m.lower()} games this round</div>"
+                                    def _am(c): return df_m[c].mean() if c in df_m else 0
+                                    def _sm(c): return df_m[c].sum() if c in df_m else 0
+                                    _mw=(_sm('FGM'),_sm('FGA')); _fg2=f"{_mw[0]/_mw[1]*100:.1f}%" if _mw[1]>0 else 'N/A'
+                                    _wm=int((df_m['W/L']=='W').sum()) if 'W/L' in df_m.columns else 0
+                                    _lm=int((df_m['W/L']=='L').sum()) if 'W/L' in df_m.columns else 0
+                                    return f"""<div style="background:#1a1f2e; border:1px solid #374151; border-radius:8px; padding:10px 14px;">
+                                        <div style="color:#9CA3AF; font-size:0.78rem; margin-bottom:4px;">{icon_m} {label_m} — {_wm}W {_lm}L ({len(df_m)} GP)</div>
+                                        <div style="display:flex; gap:14px; flex-wrap:wrap;">
+                                            <span style="color:#FAFAFA; font-weight:700;">{_am('Points'):.1f} PPG</span>
+                                            <span style="color:#FAFAFA; font-weight:700;">{_am('Rebounds'):.1f} RPG</span>
+                                            <span style="color:#FAFAFA; font-weight:700;">{_am('Assists'):.1f} APG</span>
+                                            <span style="color:#60A5FA; font-weight:700;">{_fg2} FG%</span>
+                                        </div></div>"""
+
+                                with _sp_hr_col1: st.markdown(_sp_mini(_sp_rh, "Home", "🏠"), unsafe_allow_html=True)
+                                with _sp_hr_col2: st.markdown(_sp_mini(_sp_rr, "Road", "✈️"), unsafe_allow_html=True)
+
+                                with st.expander(f"📋 Game-by-game vs {_sp_of}", expanded=False):
+                                    _sp_rg_cols = ['GAME_DATE','MATCHUP','W/L','Score','MIN','Points','Rebounds','Assists','Steals','Blocks','Turnovers','FG','3P','FT','TS%']
+                                    _sp_rg_avail = [c for c in _sp_rg_cols if c in _sp_rnd_games.columns]
+                                    _sp_rg_disp = _sp_rnd_games[_sp_rg_avail].iloc[::-1].copy()
+                                    if 'TS%' in _sp_rg_disp.columns:
+                                        _sp_rg_disp['TS%'] = _sp_rg_disp['TS%'].apply(lambda x: f"{x:.1f}%" if pd.notnull(x) and isinstance(x,(int,float)) else x)
+                                    def _sp_wl_style(v):
+                                        if v=='W': return 'color:#10B981;font-weight:bold'
+                                        if v=='L': return 'color:#EF4444;font-weight:bold'
+                                        return ''
+                                    _sp_rg_styled = _sp_rg_disp.style
+                                    if 'W/L' in _sp_rg_disp.columns:
+                                        _sp_rg_styled = _sp_rg_styled.applymap(_sp_wl_style, subset=['W/L'])
+                                    st.dataframe(_sp_rg_styled, use_container_width=True, hide_index=True)
+                            else:
+                                st.caption(f"No games vs {_sp_of} recorded yet.")
+
+               # Stats vs Specific Team
                 st.markdown("---")
                 st.markdown("### Stats vs Specific Teams")
                 
