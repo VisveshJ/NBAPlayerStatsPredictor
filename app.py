@@ -860,7 +860,7 @@ def get_team_game_log(team_abbrev, season="2025-26", num_games=None):
         return None
 
 
-@st.cache_data(ttl=7200)
+@st.cache_data(ttl=120)  # Short TTL during playoffs so scores stay fresh
 def _get_all_game_scores_from_cdn():
     """
     Fetch ALL game scores for the season from the NBA CDN schedule JSON.
@@ -881,15 +881,14 @@ def _get_all_game_scores_from_cdn():
         
         for game_date in game_dates:
             for game in game_date.get('games', []):
-                # Only include completed regular season games
+                # Only include completed games
                 if game.get('gameStatus') != 3:
                     continue
-                # Skip non-regular-season (preseason game IDs start with 001)
                 game_id_raw = str(game.get('gameId', ''))
                 if not game_id_raw:
                     continue
-                # Regular season IDs start with 002
-                if not game_id_raw.startswith('002'):
+                # Accept regular season (002) and playoff (004) games; skip preseason (001)
+                if not (game_id_raw.startswith('002') or game_id_raw.startswith('004')):
                     continue
                 
                 game_id = game_id_raw.lstrip('0')
