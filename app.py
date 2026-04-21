@@ -7997,6 +7997,29 @@ def render_playoffs_page():
                         if model is None:
                             st.error("Insufficient data to train model. Need at least 5 regular season games.")
                         else:
+                            if po_df is not None and not po_df.empty:
+                                tmp_po = po_df.copy()
+                                if 'Game_ID' in tmp_po.columns:
+                                    tmp_po = tmp_po[tmp_po['Game_ID'].isin(series_game_ids)]
+                                elif 'GAME_ID' in tmp_po.columns:
+                                    tmp_po = tmp_po[tmp_po['GAME_ID'].isin(series_game_ids)]
+                                
+                                if not tmp_po.empty:
+                                    unique_teams = list(team_ratings_data.keys()) if team_ratings_data else []
+                                    tmp_po = add_score_to_df(tmp_po, unique_teams, season)
+                                    
+                                    if 'FGM' in tmp_po.columns and 'FGA' in tmp_po.columns:
+                                        tmp_po['FG'] = tmp_po['FGM'].astype(str) + '/' + tmp_po['FGA'].astype(str)
+                                    if '3PM' in tmp_po.columns and '3PA' in tmp_po.columns:
+                                        tmp_po['3PT'] = tmp_po['3PM'].astype(str) + '/' + tmp_po['3PA'].astype(str)
+                                    if 'FTM' in tmp_po.columns and 'FTA' in tmp_po.columns:
+                                        tmp_po['FT'] = tmp_po['FTM'].astype(str) + '/' + tmp_po['FTA'].astype(str)
+                                        
+                                    display_cols = [c for c in ['GAME_DATE', 'MATCHUP', 'Score', 'MIN', 'Points', 'Rebounds', 'Assists', 'Steals', 'Blocks', 'Turnovers', 'FG', '3PT', 'FT'] if c in tmp_po.columns]
+                                    
+                                    st.markdown(f"#### Previous Games in This Series")
+                                    st.dataframe(tmp_po[display_cols], hide_index=True)
+
                             with st.spinner("Generating prediction..."):
                                 prediction = predict_with_drtg(
                                     model, stat_cols, scaler, filtered_df,
