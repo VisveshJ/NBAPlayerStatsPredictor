@@ -7994,7 +7994,8 @@ def render_playoffs_page():
                         else:
                             st.info(f"Using regular season data for {sel_p} (no PO games found yet).")
                         
-                        team_def_ratings = get_team_defensive_ratings(season)
+                        team_ratings_data = get_team_ratings_with_ranks(season)
+                        team_def_ratings = {k: v['def_rtg'] for k, v in team_ratings_data.items()} if team_ratings_data else {}
                         is_playoff_matchup = True
                         
                         with st.spinner("Training prediction model..."):
