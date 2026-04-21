@@ -3830,21 +3830,10 @@ elif page == "Predictions":
                     is_playoff_matchup = False
                 
                 # Extract existing playoff game log for this player (if any)
-                # Playoff game IDs start with '004' (regular season starts with '002')
-                playoff_games_player = None
-                if 'GAME_DATE' in player_df.columns:
-                    try:
-                        # Heuristic: playoff games have IDs beginning with '004'
-                        if 'GAME_ID' in player_df.columns:
-                            playoff_mask = player_df['GAME_ID'].astype(str).str.startswith('004')
-                        else:
-                            # Fallback: games after Apr 18 (typical playoff start)
-                            from datetime import date as _date
-                            PLAYOFF_START = pd.Timestamp('2026-04-18')
-                            playoff_mask = pd.to_datetime(player_df['GAME_DATE'], errors='coerce') >= PLAYOFF_START
-                        playoff_games_player = player_df[playoff_mask].copy() if playoff_mask.any() else None
-                    except Exception:
-                        playoff_games_player = None
+                try:
+                    playoff_games_player, _ = get_playoff_game_log(selected_player, season)
+                except Exception:
+                    playoff_games_player = None
 
                 with st.spinner("Training prediction model..."):
                     model, stat_cols, scaler, filtered_df = train_hmm_with_drtg(
