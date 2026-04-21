@@ -7726,73 +7726,113 @@ def render_playoffs_page():
                 return s
         return None
 
-    # Style from bracket_prototype
+    # Style from bracket_mockup
     st.markdown("""
     <style>
     .bracket-matchup {
-        background: #1F2937;
+        background: linear-gradient(135deg, #1F2937 0%, #111827 100%);
         border: 1px solid #374151;
-        border-radius: 6px;
-        margin: 5px 0;
-        padding: 5px 10px;
-        font-size: 0.85rem;
+        border-radius: 10px;
+        overflow: hidden;
+        margin: 10px 0;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
     }
     .bracket-team {
         display: flex;
-        justify-content: space-between;
-        padding: 2px 0;
+        align-items: center;
+        padding: 10px 12px;
+        gap: 12px;
     }
-    .bracket-seed { color: #9CA3AF; font-size: 0.7rem; margin-right: 5px; }
-    .bracket-winner { color: #FFD700; font-weight: bold; }
-    .bracket-score { font-weight: bold; color: #10B981; }
+    .bracket-team:first-child {
+        border-bottom: 1px solid #374151;
+    }
+    .bracket-seed {
+        font-size: 0.8rem;
+        color: #9CA3AF;
+        width: 15px;
+        font-weight: bold;
+    }
+    .bracket-team-info {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-grow: 1;
+    }
+    .bracket-team-name {
+        font-weight: 700;
+        font-size: 0.95rem;
+    }
+    .bracket-score-streak {
+        font-weight: bold;
+        font-size: 0.95rem;
+        color: #FAFAFA;
+    }
+    .bracket-win {
+        color: #10B981;
+    }
+    .bracket-tbd {
+        color: #6B7280;
+        font-style: italic;
+    }
     </style>
     """, unsafe_allow_html=True)
 
     east_col, center_col, west_col = st.columns([1.5, 1, 1.5])
 
+    def render_matchup(s, is_west=False):
+        if not s:
+            return f"""
+            <div class='bracket-matchup'>
+                <div class='bracket-team'><span class='bracket-seed'></span><div class='bracket-team-info'><span class='bracket-team-name bracket-tbd'>TBD</span></div></div>
+                <div class='bracket-team'><span class='bracket-seed'></span><div class='bracket-team-info'><span class='bracket-team-name bracket-tbd'>TBD</span></div></div>
+            </div>
+            """
+        
+        # Color currently leading/winning team
+        v_win_cls = "bracket-win" if s['visitor_wins'] > s['home_wins'] or s['visitor_wins'] == 4 else ""
+        h_win_cls = "bracket-win" if s['home_wins'] > s['visitor_wins'] or s['home_wins'] == 4 else ""
+
+        # Using HTML to render bracket
+        return f"""
+        <div class='bracket-matchup'>
+            <div class='bracket-team'>
+                <span class='bracket-seed'>{s['seeds'][0]}</span>
+                <div class='bracket-team-info'>
+                    <span class='bracket-team-name'>{s['visitor']}</span>
+                    <span class='bracket-score-streak {v_win_cls}'>{s['visitor_wins']}</span>
+                </div>
+            </div>
+            <div class='bracket-team'>
+                <span class='bracket-seed'>{s['seeds'][1]}</span>
+                <div class='bracket-team-info'>
+                    <span class='bracket-team-name'>{s['home']}</span>
+                    <span class='bracket-score-streak {h_win_cls}'>{s['home_wins']}</span>
+                </div>
+            </div>
+        </div>
+        """
+
     with east_col:
-        st.markdown("<div style='text-align:center; color:#3B82F6; font-weight:700;'>EASTERN CONFERENCE</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align:center; color:#3B82F6; font-weight:700; margin-bottom: 15px; letter-spacing: 1px;'>EASTERN CONFERENCE</div>", unsafe_allow_html=True)
         r1, r2, r3 = st.columns(3)
         with r1:
             st.caption("First Round")
             for i in [0, 3, 1, 2]: # NBA bracket layout 1v8, 4v5, 2v7, 3v6
-                s = find_series('East', 1, i)
-                if s:
-                    st.markdown(f"""
-                    <div class='bracket-matchup'>
-                        <div class='bracket-team'><span><span class='bracket-seed'>{s['seeds'][0]}</span>{s['visitor']}</span><span class='bracket-score'>{s['visitor_wins']}</span></div>
-                        <div class='bracket-team'><span><span class='bracket-seed'>{s['seeds'][1]}</span>{s['home']}</span><span class='bracket-score'>{s['home_wins']}</span></div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                else: 
-                    st.markdown("<div class='bracket-matchup'>TBD</div>", unsafe_allow_html=True)
+                st.markdown(render_matchup(find_series('East', 1, i)), unsafe_allow_html=True)
 
     with west_col:
-        st.markdown("<div style='text-align:center; color:#EF4444; font-weight:700;'>WESTERN CONFERENCE</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align:center; color:#EF4444; font-weight:700; margin-bottom: 15px; letter-spacing: 1px;'>WESTERN CONFERENCE</div>", unsafe_allow_html=True)
         r3, r2, r1 = st.columns(3)
         with r1:
             st.caption("First Round")
             for i in [0, 3, 1, 2]:
-                s = find_series('West', 1, i)
-                if s:
-                    st.markdown(f"""
-                    <div class='bracket-matchup' style='text-align:right;'>
-                        <div class='bracket-team'><span><span class='bracket-score'>{s['visitor_wins']}</span> &nbsp; {s['visitor']} <span class='bracket-seed'>{s['seeds'][0]}</span></span></div>
-                        <div class='bracket-team'><span><span class='bracket-score'>{s['home_wins']}</span> &nbsp; {s['home']} <span class='bracket-seed'>{s['seeds'][1]}</span></span></div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    st.markdown("<div class='bracket-matchup'>TBD</div>", unsafe_allow_html=True)
+                st.markdown(render_matchup(find_series('West', 1, i), True), unsafe_allow_html=True)
 
     with center_col:
-        st.markdown("<div style='text-align:center; padding-top:50px;'>🏆</div>", unsafe_allow_html=True)
-        st.markdown("<div style='text-align:center; font-weight:700;'>FINALS</div>", unsafe_allow_html=True)
-        s_finals = find_series('Finals', 4, 0) # Fallback if IDs differ
-        # (NBA finals sid usually 0042500401)
-        if s_finals:
-             st.markdown(f"<div class='bracket-matchup'>{s_finals['visitor']} vs {s_finals['home']}</div>", unsafe_allow_html=True)
-        else:
-             st.markdown("<div class='bracket-matchup'>TBD</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align:center; padding-top:100px; font-size: 2.5rem;'>🏆</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align:center; font-weight:800; color:#FFD700; letter-spacing: 2px; margin-bottom: 20px;'>FINALS</div>", unsafe_allow_html=True)
+        s_finals = find_series('Finals', 4, 0)
+        st.markdown(render_matchup(s_finals), unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -7878,23 +7918,25 @@ def render_playoffs_page():
                         st.write("Game scheduled. No stats available yet.")
 
     with tabs[1]:
-        st.markdown("#### Team Splits: Home vs Road (Season)")
+        st.markdown("#### Team Stats by Game (Series)")
         col1, col2 = st.columns(2)
         
+        series_game_ids = [g['game_id'] for g in s_info['games'] if g['status'] >= 2]
+        
         @st.cache_data(ttl=3600)
-        def get_team_splits(team_abbrev):
-            from nba_api.stats.endpoints import leaguedashteamstats
-            # Use cached team ID
+        def get_team_series_games(team_abbrev, season, game_ids_tuple):
+            from nba_api.stats.endpoints import leaguegamefinder
             team_id = [t['id'] for t in teams.get_teams() if t['abbreviation'] == team_abbrev][0]
+            finder = leaguegamefinder.LeagueGameFinder(
+                team_id_nullable=team_id,
+                season_nullable=season,
+                season_type_nullable="Playoffs"
+            )
+            df = finder.get_data_frames()[0]
             
             splits = []
-            for loc in ['Home', 'Road']:
-                raw = leaguedashteamstats.LeagueDashTeamStats(
-                    season=season,
-                    location_nullable=loc,
-                    measure_type_detailed_defense="Base"
-                ).get_data_frames()[0]
-                row = raw[raw['TEAM_ID'] == team_id]
+            for idx, gid in enumerate(game_ids_tuple): 
+                row = df[df['GAME_ID'] == gid]
                 if not row.empty:
                     fgm = int(row['FGM'].values[0]) if pd.notna(row['FGM'].values[0]) else 0
                     fga = int(row['FGA'].values[0]) if pd.notna(row['FGA'].values[0]) else 0
@@ -7904,32 +7946,36 @@ def render_playoffs_page():
                     fta = int(row['FTA'].values[0]) if pd.notna(row['FTA'].values[0]) else 0
                     
                     splits.append({
-                        'Location': loc,
+                        'Game': f"Game {idx+1}",
                         'FG': f"{fgm}/{fga}",
                         'FG%': f"{(row['FG_PCT'].values[0] * 100):.1f}%",
                         '3PT': f"{fg3m}/{fg3a}",
                         '3P%': f"{(row['FG3_PCT'].values[0] * 100):.1f}%",
                         'FT': f"{ftm}/{fta}",
                         'FT%': f"{(row['FT_PCT'].values[0] * 100):.1f}%",
-                        'STL': round(row['STL'].values[0], 1),
-                        'BLK': round(row['BLK'].values[0], 1),
-                        'TOV': round(row['TOV'].values[0], 1)
+                        'STL': int(row['STL'].values[0]),
+                        'BLK': int(row['BLK'].values[0]),
+                        'TOV': int(row['TOV'].values[0])
                     })
             return pd.DataFrame(splits)
 
-        with col1:
-            st.write(f"**{team1}**")
-            try:
-                t1_splits = get_team_splits(team1)
-                st.dataframe(t1_splits, hide_index=True)
-            except: st.write("Data unavailable")
-        
-        with col2:
-            st.write(f"**{team2}**")
-            try:
-                t2_splits = get_team_splits(team2)
-                st.dataframe(t2_splits, hide_index=True)
-            except: st.write("Data unavailable")
+        if not series_game_ids:
+             st.info("No games played yet in this series.")
+        else:
+            with col1:
+                st.write(f"**{team1}**")
+                try:
+                    t1_splits = get_team_series_games(team1, season, tuple(series_game_ids))
+                    # Fallback to team2 splits dataframe empty check
+                    st.dataframe(t1_splits, hide_index=True) if not t1_splits.empty else st.write("Data unavailable")
+                except: st.write("Data unavailable")
+            
+            with col2:
+                st.write(f"**{team2}**")
+                try:
+                    t2_splits = get_team_series_games(team2, season, tuple(series_game_ids))
+                    st.dataframe(t2_splits, hide_index=True) if not t2_splits.empty else st.write("Data unavailable")
+                except: st.write("Data unavailable")
 
     with tabs[2]:
         st.markdown("#### Predict Player Performance")
