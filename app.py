@@ -8015,6 +8015,12 @@ def render_playoffs_page():
                         if model is None:
                             st.error("Insufficient data to train model. Need at least 5 regular season games.")
                         else:
+                            def get_pct(m, a):
+                                return f"{(m/a*100):.1f}%" if a > 0 else "N/A"
+                                
+                            def highlight_avg(row):
+                                return ['background-color: #2D3748; font-weight: bold; color: #FF6B35'] * len(row) if row.get('GAME_DATE') == 'AVG' else [''] * len(row)
+
                             if reg_df is not None and not reg_df.empty:
                                 tmp_reg = reg_df.copy()
                                 if 'Opponent' in tmp_reg.columns:
@@ -8036,9 +8042,6 @@ def render_playoffs_page():
                                             
                                         display_cols = [c for c in ['GAME_DATE', 'MATCHUP', 'Score', 'MIN', 'Points', 'Rebounds', 'Assists', 'Steals', 'Blocks', 'Turnovers', 'FG', '3PT', 'FT'] if c in tmp_reg.columns]
                                         
-                                        def get_pct(m, a):
-                                            return f"{(m/a*100):.1f}%" if a > 0 else "N/A"
-                                        
                                         avg_row = {
                                             'GAME_DATE': 'AVG',
                                             'MATCHUP': f"({len(tmp_reg)} games)",
@@ -8057,8 +8060,6 @@ def render_playoffs_page():
                                         tmp_reg = pd.concat([tmp_reg, pd.DataFrame([avg_row])], ignore_index=True)
                                         
                                         st.markdown(f"#### Regular Season Games vs {opp_abbrev}")
-                                        def highlight_avg(row):
-                                            return ['background-color: #2D3748; font-weight: bold; color: #FF6B35'] * len(row) if row['GAME_DATE'] == 'AVG' else [''] * len(row)
                                         st.dataframe(tmp_reg[display_cols].style.apply(highlight_avg, axis=1), hide_index=True)
 
                             if po_df is not None and not po_df.empty:
