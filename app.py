@@ -3839,10 +3839,7 @@ elif page == "Predictions":
                     is_playoff_matchup = False
                 
                 # Extract existing playoff game log for this player (if any)
-                try:
-                    playoff_games_player, _ = get_playoff_game_log(selected_player, season)
-                except Exception:
-                    playoff_games_player = None
+                playoff_games_player = None
 
                 with st.spinner("Training prediction model..."):
                     model, stat_cols, scaler, filtered_df = train_hmm_with_drtg(
@@ -3876,23 +3873,7 @@ elif page == "Predictions":
                     if prediction:
                         st.success("Prediction Complete!")
                         opp_full = TEAM_NAME_MAP.get(selected_opponent, selected_opponent)
-                        
-                        # Show playoff badge when applicable
-                        po_badge = ""
-                        if prediction.get('_is_playoff'):
-                            po_games_used = prediction.get('_playoff_games_used', 0)
-                            po_label = f"{po_games_used} playoff game{'s' if po_games_used != 1 else ''} factored in" if po_games_used > 0 else "playoff baselines applied"
-                            po_badge = f"""
-                                <div style="display:inline-block; background: linear-gradient(135deg,#FF6B35,#f59e0b);
-                                     color:#fff; font-size:0.75rem; font-weight:700; padding:3px 10px;
-                                     border-radius:20px; margin-bottom:10px; letter-spacing:0.5px;">
-                                    🏆 PLAYOFF MODE — {po_label}
-                                </div>"""
-                        
                         st.markdown(f"### Predicted Stats: {selected_player} vs {opp_full}")
-                        if po_badge:
-                            st.markdown(po_badge, unsafe_allow_html=True)
-                        
                         # Display metrics
                         metric_col1, metric_col2, metric_col3 = st.columns(3)
                         
@@ -7999,14 +7980,10 @@ def render_playoffs_page():
                         player_team = p_team if p_team else reg_team
                         opp_abbrev = team2 if player_team == team1 else team1
 
-                        if po_df is not None:
-                            st.success(f"Found {len(po_df)} playoff games for {sel_p}. Using playoff-weighted model.")
-                        else:
-                            st.info(f"Using regular season data for {sel_p} (no PO games found yet).")
-                        
+                        st.info(f"Using standard performance data for {sel_p}.")
                         team_ratings_data = get_team_ratings_with_ranks(season)
                         team_def_ratings = {k: v['def_rtg'] for k, v in team_ratings_data.items()} if team_ratings_data else {}
-                        is_playoff_matchup = True
+                        is_playoff_matchup = False
                         
                         with st.spinner("Training prediction model..."):
                             model, stat_cols, scaler, filtered_df = train_hmm_with_drtg(
@@ -8025,28 +8002,15 @@ def render_playoffs_page():
                                     model, stat_cols, scaler, filtered_df,
                                     team_def_ratings, opp_abbrev, 
                                     full_player_df=reg_df,
-                                    playoff_games_df=po_df,
+                                    playoff_games_df=None,
                                     is_playoff_game=is_playoff_matchup
                                 )
                             
                             if prediction:
                                 opp_full = TEAM_NAME_MAP.get(opp_abbrev, opp_abbrev)
                                 
-                                po_badge = ""
-                                if prediction.get('_is_playoff'):
-                                    po_games_used = prediction.get('_playoff_games_used', 0)
-                                    po_label = f"{po_games_used} playoff game{'s' if po_games_used != 1 else ''} factored in" if po_games_used > 0 else "playoff baselines applied"
-                                    po_badge = f'''
-                                        <div style="display:inline-block; background: linear-gradient(135deg,#FF6B35,#f59e0b);
-                                             color:#fff; font-size:0.75rem; font-weight:700; padding:3px 10px;
-                                             border-radius:20px; margin-bottom:10px; letter-spacing:0.5px;">
-                                            🏆 PLAYOFF MODE — {po_label}
-                                        </div>'''
-                                
                                 game_num = s_info['visitor_wins'] + s_info['home_wins'] + 1
                                 st.markdown(f"### Game {game_num} Predicted Stats: {sel_p} vs {opp_full}")
-                                if po_badge:
-                                    st.markdown(po_badge, unsafe_allow_html=True)
                                 
                                 metric_col1, metric_col2, metric_col3 = st.columns(3)
                                 with metric_col1:
