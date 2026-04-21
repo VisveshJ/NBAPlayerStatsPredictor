@@ -3885,7 +3885,7 @@ elif page == "Predictions":
                             team_def_ratings, selected_opponent, 
                             full_player_df=player_df,
                             playoff_games_df=playoff_games_player,
-                            is_playoff_game=is_playoff_matchup
+                            is_playoff_game=False
                         )
                     
                     if prediction:
