@@ -7973,8 +7973,20 @@ def render_playoffs_page():
         p_search = st.text_input("Enter player name:", key="po_predict_search")
         if p_search:
             matches = search_players(p_search, season)
-            # Filter matches to only include players from the two teams in this series
-            # (Optional enhancement, but let's keep it broad for UX)
+            try:
+                t1_roster = get_team_roster(team1)
+                t2_roster = get_team_roster(team2)
+                valid_players = set()
+                if t1_roster is not None and not t1_roster.empty:
+                    valid_players.update(t1_roster['Player'].tolist())
+                if t2_roster is not None and not t2_roster.empty:
+                    valid_players.update(t2_roster['Player'].tolist())
+                if valid_players:
+                    # Filter matches exactly
+                    matches = [m for m in matches if m in valid_players]
+            except Exception:
+                pass
+                
             if matches:
                 sel_p = st.selectbox("Confirm player:", matches, key="po_predict_sel")
                 if st.button("Predict PO Performance"):
