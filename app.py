@@ -7973,7 +7973,7 @@ def render_playoffs_page():
                         st.warning("One or both players don't have playoff stats yet.")
 
 # ==================== AWARDS PAGE ====================
-elif st.session_state.current_page == "Playoffs":
+if st.session_state.current_page == "Playoffs":
     render_playoffs_page()
 
 elif st.session_state.current_page == "Awards":
