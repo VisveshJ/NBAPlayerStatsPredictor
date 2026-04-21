@@ -8033,7 +8033,8 @@ def render_playoffs_page():
                                             🏆 PLAYOFF MODE — {po_label}
                                         </div>'''
                                 
-                                st.markdown(f"### Predicted Stats: {sel_p} vs {opp_full}")
+                                game_num = s_info['visitor_wins'] + s_info['home_wins'] + 1
+                                st.markdown(f"### Game {game_num} Predicted Stats: {sel_p} vs {opp_full}")
                                 if po_badge:
                                     st.markdown(po_badge, unsafe_allow_html=True)
                                 
