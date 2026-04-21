@@ -8029,23 +8029,318 @@ def render_playoffs_page():
         if p1_name and p2_name:
             if st.button("Compare Series Stats"):
                 with st.spinner("Crunching playoff numbers..."):
-                    p1_df, _ = get_playoff_game_log(p1_name, season)
-                    p2_df, _ = get_playoff_game_log(p2_name, season)
+                    player1_df, _ = get_playoff_game_log(p1_name, season)
+                    player2_df, _ = get_playoff_game_log(p2_name, season)
                     
-                    if p1_df is not None and p2_df is not None:
-                        # Summarize PO stats
-                        def summarize(df):
-                            return {
-                                'GP': len(df),
-                                'PPG': round(df['Points'].mean(), 1),
-                                'RPG': round(df['Rebounds'].mean(), 1),
-                                'APG': round(df['Assists'].mean(), 1),
-                                'TS%': round(df['TS%'].mean(), 1)
-                            }
+                    if player1_df is not None and player2_df is not None:
+                        # Filter to just series games
+                        if 'Game_ID' in player1_df.columns:
+                            player1_df = player1_df[player1_df['Game_ID'].isin(series_game_ids)]
+                        elif 'GAME_ID' in player1_df.columns:
+                            player1_df = player1_df[player1_df['GAME_ID'].isin(series_game_ids)]
+
+                        if 'Game_ID' in player2_df.columns:
+                            player2_df = player2_df[player2_df['Game_ID'].isin(series_game_ids)]
+                        elif 'GAME_ID' in player2_df.columns:
+                            player2_df = player2_df[player2_df['GAME_ID'].isin(series_game_ids)]
+
+                        player1_name = p1_name
+                        player2_name = p2_name
+                        player1_team = team1
+                        player2_team = team2
                         
-                        s1, s2 = summarize(p1_df), summarize(p2_df)
-                        comp_df = pd.DataFrame([s1, s2], index=[p1_name, p2_name])
-                        st.table(comp_df)
+                        # Get bios
+                        bio1 = fetch_player_bio(player1_name)
+                        bio2 = fetch_player_bio(player2_name)
+                        
+                        st.markdown("---")
+                        
+                        # Player profile cards
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            # Player 1 card
+                            p1_photo = get_player_photo_url(player1_name)
+                            p1_logo = get_team_logo_url(player1_team)
+                            
+                            # Calculate stats for series
+                            ppg1 = player1_df['Points'].mean() if 'Points' in player1_df.columns and len(player1_df) > 0 else 0
+                            rpg1 = player1_df['Rebounds'].mean() if 'Rebounds' in player1_df.columns and len(player1_df) > 0 else 0
+                            apg1 = player1_df['Assists'].mean() if 'Assists' in player1_df.columns and len(player1_df) > 0 else 0
+                            
+                            # Shooting splits
+                            total_fgm1 = player1_df['FGM'].sum() if 'FGM' in player1_df.columns else 0
+                            total_fga1 = player1_df['FGA'].sum() if 'FGA' in player1_df.columns else 0
+                            fg_pct1 = (total_fgm1 / total_fga1 * 100) if total_fga1 > 0 else 0
+                            total_3pm1 = player1_df['3PM'].sum() if '3PM' in player1_df.columns else 0
+                            total_3pa1 = player1_df['3PA'].sum() if '3PA' in player1_df.columns else 0
+                            three_pct1 = (total_3pm1 / total_3pa1 * 100) if total_3pa1 > 0 else 0
+                            total_ftm1 = player1_df['FTM'].sum() if 'FTM' in player1_df.columns else 0
+                            total_fta1 = player1_df['FTA'].sum() if 'FTA' in player1_df.columns else 0
+                            ft_pct1 = (total_ftm1 / total_fta1 * 100) if total_fta1 > 0 else 0
+                            
+                            # Team record for reference
+                            team_record1 = "N/A"
+                            team_rank1 = "N/A"
+                            team_conf1 = "N/A"
+                            team_full_name1 = player1_team
+                            if not standings_df.empty:
+                                for _, row in standings_df.iterrows():
+                                    if get_team_abbrev(row['TeamCity']) == player1_team:
+                                        team_record1 = row['Record']
+                                        team_rank1 = row['PlayoffRank']
+                                        team_conf1 = row['Conference']
+                                        team_full_name1 = row['TeamCity'] if row['TeamName'] in row['TeamCity'] else f"{row['TeamCity']} {row['TeamName']}".strip()
+                                        break
+                            
+                            # Photo and logo (Centered standardized layout) - Slightly shifted right
+                            spacer1, photo_col1, logo_col1, spacer2 = st.columns([1.35, 1, 1, 0.65])
+                            with photo_col1:
+                                if p1_photo:
+                                    st.image(p1_photo, width=120)
+                            with logo_col1:
+                                if p1_logo:
+                                    st.image(p1_logo, width=100)
+                            
+                            p1_pos = ""
+                            if bio1 and bio1.get('position'):
+                                abbrev_p1 = abbreviate_position(bio1['position'], player1_name)
+                                p1_pos = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 1.1rem;'>({abbrev_p1})</span>"
+                            
+                            # Bio for player 1
+                            p1_height = bio1.get('height', '-') if bio1 else '-'
+                            p1_weight = bio1.get('weight', '-') if bio1 else '-'
+                            p1_age = bio1.get('age', '-') if bio1 else '-'
+                            p1_draft_year = bio1.get('draft_year', '-') if bio1 else '-'
+                            p1_draft_round = bio1.get('draft_round', '') if bio1 else ''
+                            p1_draft_num = bio1.get('draft_number', '') if bio1 else ''
+                            p1_draft_display = p1_draft_year
+                            if p1_draft_round and p1_draft_num and p1_draft_year != 'Undrafted':
+                                p1_draft_display = f"{p1_draft_year} R{p1_draft_round}, #{p1_draft_num}"
+
+                            p1_wins = (player1_df['WL'] == 'W').sum() if 'WL' in player1_df.columns else ((player1_df['W/L'] == 'W').sum() if 'W/L' in player1_df.columns else 0)
+                            p1_losses = (player1_df['WL'] == 'L').sum() if 'WL' in player1_df.columns else ((player1_df['W/L'] == 'L').sum() if 'W/L' in player1_df.columns else 0)
+                            p1_ind_record = f"{p1_wins}-{p1_losses}"
+
+                            st.markdown(f"""<div style="text-align: center; margin-top: 10px;">
+<div style="color: #FAFAFA; font-weight: bold; font-size: 1.1rem; margin-bottom: 0px;">{player1_name}{p1_pos}</div>
+<div style="color: #9CA3AF; font-size: 0.85rem; margin-bottom: 5px;">{team_full_name1} <span style="color: #9CA3AF; font-size: 0.85rem;">({team_record1} | #{team_rank1} in {team_conf1})</span></div>
+<div style="color: #9CA3AF; font-size: 0.8rem; margin-bottom: 10px;">
+<span style="color: #9CA3AF;">HT:</span> <span style="color: #FAFAFA; font-weight: bold;">{p1_height}</span> • 
+<span style="color: #9CA3AF;">WT:</span> <span style="color: #FAFAFA; font-weight: bold;">{p1_weight} lbs</span> • 
+<span style="color: #9CA3AF;">Age:</span> <span style="color: #FAFAFA; font-weight: bold;">{p1_age}</span> • 
+<span style="color: #9CA3AF;">Draft:</span> <span style="color: #FAFAFA; font-weight: bold;">{p1_draft_display}</span>
+</div>
+<div style="display: flex; justify-content: center; gap: 6px; font-size: 0.72rem;">
+<div style="background: #374151; padding: 2px 6px; border-radius: 4px;">
+<span style="color: #9CA3AF;">GP:</span> <span style="color: #FAFAFA; font-weight: bold;">{len(player1_df)}</span>
+</div>
+<div style="background: #374151; padding: 2px 6px; border-radius: 4px;">
+<span style="color: #9CA3AF;">IND:</span> <span style="color: #FAFAFA; font-weight: bold;">{p1_ind_record}</span>
+</div>
+</div>
+</div>""", unsafe_allow_html=True)
+                        
+                        with col2:
+                            # Player 2 card
+                            p2_photo = get_player_photo_url(player2_name)
+                            p2_logo = get_team_logo_url(player2_team)
+                            
+                            # Calculate stats
+                            ppg2 = player2_df['Points'].mean() if 'Points' in player2_df.columns and len(player2_df) > 0 else 0
+                            rpg2 = player2_df['Rebounds'].mean() if 'Rebounds' in player2_df.columns and len(player2_df) > 0 else 0
+                            apg2 = player2_df['Assists'].mean() if 'Assists' in player2_df.columns and len(player2_df) > 0 else 0
+                            
+                            # Shooting splits
+                            total_fgm2 = player2_df['FGM'].sum() if 'FGM' in player2_df.columns else 0
+                            total_fga2 = player2_df['FGA'].sum() if 'FGA' in player2_df.columns else 0
+                            fg_pct2 = (total_fgm2 / total_fga2 * 100) if total_fga2 > 0 else 0
+                            total_3pm2 = player2_df['3PM'].sum() if '3PM' in player2_df.columns else 0
+                            total_3pa2 = player2_df['3PA'].sum() if '3PA' in player2_df.columns else 0
+                            three_pct2 = (total_3pm2 / total_3pa2 * 100) if total_3pa2 > 0 else 0
+                            total_ftm2 = player2_df['FTM'].sum() if 'FTM' in player2_df.columns else 0
+                            total_fta2 = player2_df['FTA'].sum() if 'FTA' in player2_df.columns else 0
+                            ft_pct2 = (total_ftm2 / total_fta2 * 100) if total_fta2 > 0 else 0
+                            
+                            # Team record
+                            team_record2 = "N/A"
+                            team_rank2 = "N/A"
+                            team_conf2 = "N/A"
+                            team_full_name2 = player2_team
+                            if not standings_df.empty:
+                                for _, row in standings_df.iterrows():
+                                    if get_team_abbrev(row['TeamCity']) == player2_team:
+                                        team_record2 = row['Record']
+                                        team_rank2 = row['PlayoffRank']
+                                        team_conf2 = row['Conference']
+                                        team_full_name2 = row['TeamCity'] if row['TeamName'] in row['TeamCity'] else f"{row['TeamCity']} {row['TeamName']}".strip()
+                                        break
+                            
+                            # Photo and logo (Centered standardized layout) - Slightly shifted right
+                            spacer1, photo_col2, logo_col2, spacer2 = st.columns([1.35, 1, 1, 0.65])
+                            with photo_col2:
+                                if p2_photo:
+                                    st.image(p2_photo, width=120)
+                            with logo_col2:
+                                if p2_logo:
+                                    st.image(p2_logo, width=100)
+                            
+                            p2_pos = ""
+                            if bio2 and bio2.get('position'):
+                                abbrev_p2 = abbreviate_position(bio2['position'], player2_name)
+                                p2_pos = f" <span style='color: #9CA3AF; font-weight: normal; font-size: 1.1rem;'>({abbrev_p2})</span>"
+                                
+                            # Bio for player 2
+                            p2_height = bio2.get('height', '-') if bio2 else '-'
+                            p2_weight = bio2.get('weight', '-') if bio2 else '-'
+                            p2_age = bio2.get('age', '-') if bio2 else '-'
+                            p2_draft_year = bio2.get('draft_year', '-') if bio2 else '-'
+                            p2_draft_round = bio2.get('draft_round', '') if bio2 else ''
+                            p2_draft_num = bio2.get('draft_number', '') if bio2 else ''
+                            p2_draft_display = p2_draft_year
+                            if p2_draft_round and p2_draft_num and p2_draft_year != 'Undrafted':
+                                p2_draft_display = f"{p2_draft_year} R{p2_draft_round}, #{p2_draft_num}"
+
+                            p2_wins = (player2_df['WL'] == 'W').sum() if 'WL' in player2_df.columns else ((player2_df['W/L'] == 'W').sum() if 'W/L' in player2_df.columns else 0)
+                            p2_losses = (player2_df['WL'] == 'L').sum() if 'WL' in player2_df.columns else ((player2_df['W/L'] == 'L').sum() if 'W/L' in player2_df.columns else 0)
+                            p2_ind_record = f"{p2_wins}-{p2_losses}"
+
+                            st.markdown(f"""<div style="text-align: center; margin-top: 10px;">
+<div style="color: #FAFAFA; font-weight: bold; font-size: 1.1rem; margin-bottom: 0px;">{player2_name}{p2_pos}</div>
+<div style="color: #9CA3AF; font-size: 0.85rem; margin-bottom: 5px;">{team_full_name2} <span style="color: #9CA3AF; font-size: 0.85rem;">({team_record2} | #{team_rank2} in {team_conf2})</span></div>
+<div style="color: #9CA3AF; font-size: 0.8rem; margin-bottom: 10px;">
+<span style="color: #9CA3AF;">HT:</span> <span style="color: #FAFAFA; font-weight: bold;">{p2_height}</span> • 
+<span style="color: #9CA3AF;">WT:</span> <span style="color: #FAFAFA; font-weight: bold;">{p2_weight} lbs</span> • 
+<span style="color: #9CA3AF;">Age:</span> <span style="color: #FAFAFA; font-weight: bold;">{p2_age}</span> • 
+<span style="color: #9CA3AF;">Draft:</span> <span style="color: #FAFAFA; font-weight: bold;">{p2_draft_display}</span>
+</div>
+<div style="display: flex; justify-content: center; gap: 6px; font-size: 0.72rem;">
+<div style="background: #374151; padding: 2px 6px; border-radius: 4px;">
+<span style="color: #9CA3AF;">GP:</span> <span style="color: #FAFAFA; font-weight: bold;">{len(player2_df)}</span>
+</div>
+<div style="background: #374151; padding: 2px 6px; border-radius: 4px;">
+<span style="color: #9CA3AF;">IND:</span> <span style="color: #FAFAFA; font-weight: bold;">{p2_ind_record}</span>
+</div>
+</div>
+</div>""", unsafe_allow_html=True)
+                        
+                        st.markdown("---")
+                        st.markdown("<h3 style='text-align: center;'>Series Averages Comparison</h3>", unsafe_allow_html=True)
+                        
+                        # Calculate averages for both players
+                        def calc_player_averages(df):
+                            stats = {}
+                            stats['PPG'] = round(df['Points'].mean(), 1) if not df.empty else 0
+                            stats['RPG'] = round(df['Rebounds'].mean(), 1) if not df.empty else 0
+                            stats['APG'] = round(df['Assists'].mean(), 1) if not df.empty else 0
+                            stats['SPG'] = round(df['Steals'].mean(), 1) if not df.empty else 0
+                            stats['BPG'] = round(df['Blocks'].mean(), 1) if not df.empty else 0
+                            stats['TPG'] = round(df['Turnovers'].mean(), 1) if not df.empty else 0
+                            
+                            # Shooting
+                            if not df.empty and 'FGM' in df.columns and 'FGA' in df.columns:
+                                total_fgm = df['FGM'].sum()
+                                total_fga = df['FGA'].sum()
+                                stats['FG%'] = round((total_fgm / total_fga * 100), 1) if total_fga > 0 else 0
+                            else:
+                                stats['FG%'] = 0
+                            
+                            if not df.empty and '3PM' in df.columns and '3PA' in df.columns:
+                                total_3pm = df['3PM'].sum()
+                                total_3pa = df['3PA'].sum()
+                                stats['3P%'] = round((total_3pm / total_3pa * 100), 1) if total_3pa > 0 else 0
+                            else:
+                                stats['3P%'] = 0
+                            
+                            if not df.empty and 'FTM' in df.columns and 'FTA' in df.columns:
+                                total_ftm = df['FTM'].sum()
+                                total_fta = df['FTA'].sum()
+                                stats['FT%'] = round((total_ftm / total_fta * 100), 1) if total_fta > 0 else 0
+                            else:
+                                stats['FT%'] = 0
+                            
+                            # TS%
+                            if not df.empty and 'FGA' in df.columns and 'FTA' in df.columns:
+                                total_pts = df['Points'].sum()
+                                total_fga = df['FGA'].sum()
+                                total_fta = df['FTA'].sum()
+                                stats['TS%'] = round((total_pts / (2 * (total_fga + 0.44 * total_fta)) * 100), 1) if (total_fga + 0.44 * total_fta) > 0 else 0
+                            else:
+                                stats['TS%'] = 0
+                                
+                            # IND REC
+                            wins = (df['WL'] == 'W').sum() if 'WL' in df.columns else ((df['W/L'] == 'W').sum() if 'W/L' in df.columns else 0)
+                            losses = (df['WL'] == 'L').sum() if 'WL' in df.columns else ((df['W/L'] == 'L').sum() if 'W/L' in df.columns else 0)
+                            stats['IND REC'] = f"{wins}-{losses}"
+                            stats['Win%'] = round((wins / (wins + losses) * 100), 1) if (wins + losses) > 0 else 0
+                            
+                            # Games and minutes
+                            stats['Games'] = len(df)
+                            if not df.empty and 'MIN' in df.columns:
+                                def parse_min(m):
+                                    if pd.isna(m): return 0
+                                    if ':' in str(m): return int(str(m).split(':')[0])
+                                    try: return float(m)
+                                    except: return 0
+                                stats['MPG'] = round(df['MIN'].apply(parse_min).mean(), 1)
+                            else:
+                                stats['MPG'] = 0
+                            
+                            return stats
+                        
+                        p1_stats = calc_player_averages(player1_df)
+                        p2_stats = calc_player_averages(player2_df)
+                        
+                        higher_is_better = ['PPG', 'RPG', 'APG', 'SPG', 'BPG', 'FG%', '3P%', 'FT%', 'TS%', 'Games', 'MPG']
+                        lower_is_better = ['TPG']
+                        
+                        comparison_data = []
+                        for stat in ['PPG', 'RPG', 'APG', 'SPG', 'BPG', 'TPG', 'FG%', '3P%', 'FT%', 'TS%', 'MPG', 'Games', 'IND REC']:
+                            v1 = p1_stats.get(stat, 0)
+                            v2 = p2_stats.get(stat, 0)
+                            
+                            if stat == 'IND REC':
+                                p1_better = p1_stats.get('Win%', 0) > p2_stats.get('Win%', 0)
+                                p2_better = p2_stats.get('Win%', 0) > p1_stats.get('Win%', 0)
+                            elif stat in higher_is_better:
+                                p1_better = v1 > v2
+                                p2_better = v2 > v1
+                            else:
+                                p1_better = v1 < v2
+                                p2_better = v2 < v1
+                            
+                            comparison_data.append({
+                                'Stat': stat, 'p1_value': v1, 'p2_value': v2, 'p1_better': p1_better, 'p2_better': p2_better
+                            })
+                        
+                        for item in comparison_data:
+                            col1, col2, col3 = st.columns([2, 1, 2])
+                            
+                            p1_color = "#10B981" if item['p1_better'] else "#FAFAFA"
+                            p2_color = "#10B981" if item['p2_better'] else "#FAFAFA"
+                            
+                            with col1:
+                                value = format_pct(item['p1_value']) if '%' in item['Stat'] else item['p1_value']
+                                st.markdown(f"""
+                                <div style="text-align: right; padding: 8px; font-size: 1.2rem; color: {p1_color}; font-weight: {'bold' if item['p1_better'] else 'normal'};">
+                                    {value}
+                                </div>
+                                """, unsafe_allow_html=True)
+                            with col2:
+                                st.markdown(f"""
+                                <div style="text-align: center; padding: 8px; font-size: 1rem; color: #9CA3AF;">
+                                    {item['Stat']}
+                                </div>
+                                """, unsafe_allow_html=True)
+                            with col3:
+                                value = format_pct(item['p2_value']) if '%' in item['Stat'] else item['p2_value']
+                                st.markdown(f"""
+                                <div style="text-align: left; padding: 8px; font-size: 1.2rem; color: {p2_color}; font-weight: {'bold' if item['p2_better'] else 'normal'};">
+                                    {value}
+                                </div>
+                                """, unsafe_allow_html=True)
+                        
+                        st.caption("Note: 'IND REC' comparison is based on individual player win percentage in games played for this series.")
                     else:
                         st.warning("One or both players don't have playoff stats yet.")
 
