@@ -483,14 +483,23 @@ def get_playoff_series_data(season='2025-26'):
     # Normalise a few mismatches between nba_api and the rest of the app
     ABBREV_OVERRIDES = {'NOP': 'NO', 'PHX': 'PHX', 'GSW': 'GSW'}
 
-    try:
-        ps = commonplayoffseries.CommonPlayoffSeries(season=season)
-        raw = ps.get_normalized_dict()
-        games_list = raw.get('PlayoffSeries', [])
-    except Exception:
-        return {}
+    games_list = []
+    for attempt in range(3):
+        try:
+            import time
+            ps = commonplayoffseries.CommonPlayoffSeries(season=season, timeout=10)
+            raw = ps.get_normalized_dict()
+            games_list = raw.get('PlayoffSeries', [])
+            if games_list:
+                break
+            time.sleep(0.5)
+        except Exception:
+            import time
+            time.sleep(0.5)
 
     if not games_list:
+        # Prevent Streamlit from caching empty results on timeout by manually busting cache
+        get_playoff_series_data.clear()
         return {}
 
     # ---- Build per-series game list ----
