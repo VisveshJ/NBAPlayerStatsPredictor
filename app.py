@@ -601,7 +601,8 @@ def get_playoff_series_data(season='2025-26'):
 
         # Map conference series number → bracket slot (NBA standard)
         # 0=(1v8), 1=(2v7), 2=(3v6), 3=(4v5)
-        seed_matchup_map = {0: (1, 8), 1: (2, 7), 2: (3, 6), 3: (4, 5)}
+        # We store as (Visitor, Home) -> (Lower Seed, Higher Seed)
+        seed_matchup_map = {0: (8, 1), 1: (7, 2), 2: (6, 3), 3: (5, 4)}
         seeds = seed_matchup_map.get(conf_series_num, (0, 0))
 
         series_winner = None
@@ -7836,9 +7837,36 @@ def render_playoffs_page():
                                     bs_df = bs.get_data_frames()[0]
                                     
                                     # Filter for important cols
-                                    cols = ['TEAM_ABBREVIATION', 'PLAYER_NAME', 'MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'FG_PCT', 'FG3_PCT', 'FT_PCT']
-                                    t1_bs = bs_df[bs_df['TEAM_ABBREVIATION'] == team1][cols]
-                                    t2_bs = bs_df[bs_df['TEAM_ABBREVIATION'] == team2][cols]
+                                    cols = ['TEAM_ABBREVIATION', 'PLAYER_NAME', 'MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'FGM', 'FGA', 'FG_PCT', 'FG3M', 'FG3A', 'FG3_PCT', 'FTM', 'FTA', 'FT_PCT']
+                                    
+                                    def format_bs(df):
+                                        res = df[cols].copy()
+                                        
+                                        # Format minutes to whole number
+                                        def parse_min(x):
+                                            if pd.isna(x) or str(x) == "None": return 0
+                                            sx = str(x)
+                                            if ':' in sx:
+                                                parts = sx.split(':')
+                                                return int(round(int(parts[0]) + int(parts[1])/60.0))
+                                            return int(float(sx))
+                                        
+                                        res['MIN'] = res['MIN'].apply(parse_min)
+                                        
+                                        # Group M/A
+                                        res['FG'] = res.apply(lambda r: f"{int(r['FGM']) if pd.notna(r['FGM']) else 0}/{int(r['FGA']) if pd.notna(r['FGA']) else 0}", axis=1)
+                                        res['3PT'] = res.apply(lambda r: f"{int(r['FG3M']) if pd.notna(r['FG3M']) else 0}/{int(r['FG3A']) if pd.notna(r['FG3A']) else 0}", axis=1)
+                                        res['FT'] = res.apply(lambda r: f"{int(r['FTM']) if pd.notna(r['FTM']) else 0}/{int(r['FTA']) if pd.notna(r['FTA']) else 0}", axis=1)
+                                        
+                                        # Format percentages
+                                        res['FG%'] = (res['FG_PCT'].fillna(0) * 100).round(1).astype(str) + '%'
+                                        res['3P%'] = (res['FG3_PCT'].fillna(0) * 100).round(1).astype(str) + '%'
+                                        res['FT%'] = (res['FT_PCT'].fillna(0) * 100).round(1).astype(str) + '%'
+                                        
+                                        return res[['TEAM_ABBREVIATION', 'PLAYER_NAME', 'MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'FG', 'FG%', '3PT', '3P%', 'FT', 'FT%']]
+                                        
+                                    t1_bs = format_bs(bs_df[bs_df['TEAM_ABBREVIATION'] == team1])
+                                    t2_bs = format_bs(bs_df[bs_df['TEAM_ABBREVIATION'] == team2])
                                     
                                     st.write(f"**{team1} Box Score**")
                                     st.dataframe(t1_bs, hide_index=True)
@@ -7864,16 +7892,28 @@ def render_playoffs_page():
                 raw = leaguedashteamstats.LeagueDashTeamStats(
                     season=season,
                     location_nullable=loc,
-                    measure_type_detailed_defense="Advanced"
+                    measure_type_detailed_defense="Base"
                 ).get_data_frames()[0]
                 row = raw[raw['TEAM_ID'] == team_id]
                 if not row.empty:
+                    fgm = int(row['FGM'].values[0]) if pd.notna(row['FGM'].values[0]) else 0
+                    fga = int(row['FGA'].values[0]) if pd.notna(row['FGA'].values[0]) else 0
+                    fg3m = int(row['FG3M'].values[0]) if pd.notna(row['FG3M'].values[0]) else 0
+                    fg3a = int(row['FG3A'].values[0]) if pd.notna(row['FG3A'].values[0]) else 0
+                    ftm = int(row['FTM'].values[0]) if pd.notna(row['FTM'].values[0]) else 0
+                    fta = int(row['FTA'].values[0]) if pd.notna(row['FTA'].values[0]) else 0
+                    
                     splits.append({
                         'Location': loc,
-                        'OFF_RTG': row['OFF_RATING'].values[0],
-                        'DEF_RTG': row['DEF_RATING'].values[0],
-                        'NET_RTG': row['NET_RATING'].values[0],
-                        'W_PCT': row['W_PCT'].values[0]
+                        'FG': f"{fgm}/{fga}",
+                        'FG%': f"{(row['FG_PCT'].values[0] * 100):.1f}%",
+                        '3PT': f"{fg3m}/{fg3a}",
+                        '3P%': f"{(row['FG3_PCT'].values[0] * 100):.1f}%",
+                        'FT': f"{ftm}/{fta}",
+                        'FT%': f"{(row['FT_PCT'].values[0] * 100):.1f}%",
+                        'STL': round(row['STL'].values[0], 1),
+                        'BLK': round(row['BLK'].values[0], 1),
+                        'TOV': round(row['TOV'].values[0], 1)
                     })
             return pd.DataFrame(splits)
 
