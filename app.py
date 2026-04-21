@@ -483,6 +483,10 @@ def get_playoff_series_data(season='2025-26', _cache_bust=1):
     # Normalise a few mismatches between nba_api and the rest of the app
     ABBREV_OVERRIDES = {'NOP': 'NO', 'PHX': 'PHX', 'GSW': 'GSW'}
 
+    import json
+    import os
+    backup_file = 'bracket_backup.json'
+
     games_list = []
     for attempt in range(3):
         try:
@@ -491,6 +495,12 @@ def get_playoff_series_data(season='2025-26', _cache_bust=1):
             raw = ps.get_normalized_dict()
             games_list = raw.get('PlayoffSeries', [])
             if games_list:
+                # Save successfully fetched games_list as fallback cache
+                try:
+                    with open(backup_file, 'w') as f:
+                        json.dump(games_list, f)
+                except Exception:
+                    pass
                 break
             time.sleep(0.5)
         except Exception:
@@ -498,9 +508,17 @@ def get_playoff_series_data(season='2025-26', _cache_bust=1):
             time.sleep(0.5)
 
     if not games_list:
-        # Prevent Streamlit from caching empty results on timeout by manually busting cache
-        get_playoff_series_data.clear()
-        return {}
+        # If API is temporarily blank during rollover, try loading fallback
+        if os.path.exists(backup_file):
+            try:
+                with open(backup_file, 'r') as f:
+                    games_list = json.load(f)
+            except Exception:
+                pass
+        
+        if not games_list:
+            get_playoff_series_data.clear()
+            return {}
 
     # ---- Build per-series game list ----
     series_map = {}   # series_id → {home_id, visitor_id, games: [game_id,...]}
