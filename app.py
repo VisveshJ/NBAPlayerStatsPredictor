@@ -7984,39 +7984,68 @@ def render_playoffs_page():
                         # We use the existing prediction logic but can add PO context
                         # For now, let's just trigger a prediction using the HMM model
                         po_df, p_team = get_playoff_game_log(sel_p, season)
-                        reg_df, _ = get_player_game_log(sel_p, season)
+                        reg_df, reg_team = get_player_game_log(sel_p, season)
                         
+                        player_team = p_team if p_team else reg_team
+                        opp_abbrev = team2 if player_team == team1 else team1
+
                         if po_df is not None:
                             st.success(f"Found {len(po_df)} playoff games for {sel_p}. Using playoff-weighted model.")
-                            # Blend data
-                            full_df = pd.concat([reg_df.tail(10), po_df], ignore_index=True)
                         else:
                             st.info(f"Using regular season data for {sel_p} (no PO games found yet).")
-                            full_df = reg_df
                         
-                        # Mock prediction call (normally would use the state model)
-                        # Let's show Home/Road split for player as requested
-                        st.markdown(f"**{sel_p} Home/Road Splits (Season)**")
+                        team_def_ratings = get_team_defensive_ratings(season)
+                        is_playoff_matchup = True
                         
-                        @st.cache_data(ttl=3600)
-                        def get_player_splits(player_name):
-                            from nba_api.stats.endpoints import playerdashboardbygamesplits
-                            pid = [p['id'] for p in players.get_players() if p['full_name'] == player_name][0]
-                            dash = playerdashboardbygamesplits.PlayerDashboardByGameSplits(
-                                player_id=pid, season=season, season_type_all_star="Regular Season"
+                        with st.spinner("Training prediction model..."):
+                            model, stat_cols, scaler, filtered_df = train_hmm_with_drtg(
+                                reg_df, 
+                                team_def_ratings, 
+                                n_states=4,
+                                use_temporal_weighting=True,
+                                weight_strength='medium'
                             )
-                            # Location is Usually in the 'LocationPlayerDashboard' dataframe
-                            res = dash.get_data_frames()
-                            loc_df = res[1] # Usually location
-                            return loc_df[['GROUP_VALUE', 'GP', 'PTS', 'REB', 'AST', 'FG_PCT', 'FG3_PCT']]
                         
-                        try:
-                            p_splits = get_player_splits(sel_p)
-                            st.dataframe(p_splits, hide_index=True)
-                        except: st.write("Player splits unavailable")
-                        
-                        # Trigger actual HMM logic if user wants (we can call train_hmm_with_drtg)
-                        # For brevity in this code, we'll suggest using the main Predictions page for deep HMM dive.
+                        if model is None:
+                            st.error("Insufficient data to train model. Need at least 5 regular season games.")
+                        else:
+                            with st.spinner("Generating prediction..."):
+                                prediction = predict_with_drtg(
+                                    model, stat_cols, scaler, filtered_df,
+                                    team_def_ratings, opp_abbrev, 
+                                    full_player_df=reg_df,
+                                    playoff_games_df=po_df,
+                                    is_playoff_game=is_playoff_matchup
+                                )
+                            
+                            if prediction:
+                                opp_full = TEAM_NAME_MAP.get(opp_abbrev, opp_abbrev)
+                                
+                                po_badge = ""
+                                if prediction.get('_is_playoff'):
+                                    po_games_used = prediction.get('_playoff_games_used', 0)
+                                    po_label = f"{po_games_used} playoff game{'s' if po_games_used != 1 else ''} factored in" if po_games_used > 0 else "playoff baselines applied"
+                                    po_badge = f'''
+                                        <div style="display:inline-block; background: linear-gradient(135deg,#FF6B35,#f59e0b);
+                                             color:#fff; font-size:0.75rem; font-weight:700; padding:3px 10px;
+                                             border-radius:20px; margin-bottom:10px; letter-spacing:0.5px;">
+                                            🏆 PLAYOFF MODE — {po_label}
+                                        </div>'''
+                                
+                                st.markdown(f"### Predicted Stats: {sel_p} vs {opp_full}")
+                                if po_badge:
+                                    st.markdown(po_badge, unsafe_allow_html=True)
+                                
+                                metric_col1, metric_col2, metric_col3 = st.columns(3)
+                                with metric_col1:
+                                    st.metric("Points", int(round(prediction['Points'])))
+                                    st.metric("Steals", int(round(prediction['Steals'])))
+                                with metric_col2:
+                                    st.metric("Rebounds", int(round(prediction['Rebounds'])))
+                                    st.metric("Blocks", int(round(prediction['Blocks'])))
+                                with metric_col3:
+                                    st.metric("Assists", int(round(prediction['Assists'])))
+                                    st.metric("Turnovers", int(round(prediction['Turnovers'])))
 
     with tabs[3]:
         st.markdown("#### Compare Two Players in this Series")
