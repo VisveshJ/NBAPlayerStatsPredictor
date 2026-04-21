@@ -467,7 +467,7 @@ def get_todays_scoreboard():
 
 
 @st.cache_data(ttl=120)  # Refresh every 2 minutes during playoffs
-def get_playoff_series_data(season='2025-26'):
+def get_playoff_series_data(season='2025-26', _cache_bust=1):
     """
     Fetch live playoff bracket data using nba_api CommonPlayoffSeries endpoint.
     Returns a dict keyed by series_id with team abbreviations, win counts, and round info.
