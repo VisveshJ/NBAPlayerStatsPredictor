@@ -8081,25 +8081,25 @@ def render_playoffs_page():
                                         
                                     display_cols = [c for c in ['GAME_DATE', 'MATCHUP', 'Score', 'MIN', 'Points', 'Rebounds', 'Assists', 'Steals', 'Blocks', 'Turnovers', 'FG', '3PT', 'FT'] if c in tmp_po.columns]
                                     
-                                        avg_row = {
-                                            'GAME_DATE': 'AVG',
-                                            'MATCHUP': f"({len(tmp_po)} games)",
-                                            'Score': '',
-                                            'MIN': f"{pd.to_numeric(tmp_po['MIN'], errors='coerce').mean():.1f}" if 'MIN' in tmp_po.columns else '',
-                                            'Points': f"{tmp_po['Points'].mean():.1f}", 
-                                            'Rebounds': f"{tmp_po['Rebounds'].mean():.1f}", 
-                                            'Assists': f"{tmp_po['Assists'].mean():.1f}",
-                                            'Steals': f"{tmp_po['Steals'].mean():.1f}" if 'Steals' in tmp_po.columns else '',
-                                            'Blocks': f"{tmp_po['Blocks'].mean():.1f}" if 'Blocks' in tmp_po.columns else '',
-                                            'Turnovers': f"{tmp_po['Turnovers'].mean():.1f}" if 'Turnovers' in tmp_po.columns else '',
-                                            'FG': get_pct(tmp_po['FGM'].sum(), tmp_po['FGA'].sum()) if 'FGM' in tmp_po.columns and 'FGA' in tmp_po.columns else '',
-                                            '3PT': get_pct(tmp_po['3PM'].sum(), tmp_po['3PA'].sum()) if '3PM' in tmp_po.columns and '3PA' in tmp_po.columns else '',
-                                            'FT': get_pct(tmp_po['FTM'].sum(), tmp_po['FTA'].sum()) if 'FTM' in tmp_po.columns and 'FTA' in tmp_po.columns else ''
-                                        }
-                                        tmp_po = pd.concat([tmp_po, pd.DataFrame([avg_row])], ignore_index=True)
+                                    avg_row = {
+                                        'GAME_DATE': 'AVG',
+                                        'MATCHUP': f"({len(tmp_po)} games)",
+                                        'Score': '',
+                                        'MIN': f"{pd.to_numeric(tmp_po['MIN'], errors='coerce').mean():.1f}" if 'MIN' in tmp_po.columns else '',
+                                        'Points': f"{tmp_po['Points'].mean():.1f}", 
+                                        'Rebounds': f"{tmp_po['Rebounds'].mean():.1f}", 
+                                        'Assists': f"{tmp_po['Assists'].mean():.1f}",
+                                        'Steals': f"{tmp_po['Steals'].mean():.1f}" if 'Steals' in tmp_po.columns else '',
+                                        'Blocks': f"{tmp_po['Blocks'].mean():.1f}" if 'Blocks' in tmp_po.columns else '',
+                                        'Turnovers': f"{tmp_po['Turnovers'].mean():.1f}" if 'Turnovers' in tmp_po.columns else '',
+                                        'FG': get_pct(tmp_po['FGM'].sum(), tmp_po['FGA'].sum()) if 'FGM' in tmp_po.columns and 'FGA' in tmp_po.columns else '',
+                                        '3PT': get_pct(tmp_po['3PM'].sum(), tmp_po['3PA'].sum()) if '3PM' in tmp_po.columns and '3PA' in tmp_po.columns else '',
+                                        'FT': get_pct(tmp_po['FTM'].sum(), tmp_po['FTA'].sum()) if 'FTM' in tmp_po.columns and 'FTA' in tmp_po.columns else ''
+                                    }
+                                    tmp_po = pd.concat([tmp_po, pd.DataFrame([avg_row])], ignore_index=True)
 
-                                        st.markdown(f"#### Previous Games in This Series")
-                                        st.dataframe(tmp_po[display_cols].style.apply(highlight_avg, axis=1), hide_index=True)
+                                    st.markdown(f"#### Previous Games in This Series")
+                                    st.dataframe(tmp_po[display_cols].style.apply(highlight_avg, axis=1), hide_index=True)
 
                             with st.spinner("Generating prediction..."):
                                 prediction = predict_with_drtg(
