@@ -2271,8 +2271,76 @@ if 'stats_last_search' not in st.session_state:
 def render_playoff_bracket(series_data):
     def find_series(conf, rnd, slot):
         for sid, s in series_data.items():
-            if s['conference'] == conf and s['round'] == rnd and s['conf_series_num'] == slot:
+            if s.get('conference') == conf and s.get('round') == rnd and s.get('conf_series_num') == slot:
                 return s
+        return None
+
+    def get_matchup_data(conf, rnd, slot):
+        s = find_series(conf, rnd, slot)
+        if s:
+            return s
+            
+        if rnd == 2:
+            prev_slots = (0, 3) if slot == 0 else (1, 2)
+            s1 = find_series(conf, 1, prev_slots[0])
+            s2 = find_series(conf, 1, prev_slots[1])
+            t1 = s1.get('series_winner') if s1 else None
+            t2 = s2.get('series_winner') if s2 else None
+            
+            seed1 = ''
+            if t1 and s1: seed1 = s1['seeds'][1] if s1['home'] == t1 else s1['seeds'][0]
+            seed2 = ''
+            if t2 and s2: seed2 = s2['seeds'][1] if s2['home'] == t2 else s2['seeds'][0]
+            
+            if t1 or t2:
+                return {
+                    'home': t1 or 'TBD',
+                    'visitor': t2 or 'TBD',
+                    'home_wins': 0,
+                    'visitor_wins': 0,
+                    'seeds': [seed2, seed1],
+                    'series_winner': None
+                }
+        elif rnd == 3:
+            s1 = get_matchup_data(conf, 2, 0)
+            s2 = get_matchup_data(conf, 2, 1)
+            t1 = s1.get('series_winner') if s1 else None
+            t2 = s2.get('series_winner') if s2 else None
+            
+            seed1 = ''
+            if t1 and s1: seed1 = s1['seeds'][1] if s1.get('home') == t1 else s1['seeds'][0]
+            seed2 = ''
+            if t2 and s2: seed2 = s2['seeds'][1] if s2.get('home') == t2 else s2['seeds'][0]
+            
+            if t1 or t2:
+                return {
+                    'home': t1 or 'TBD',
+                    'visitor': t2 or 'TBD',
+                    'home_wins': 0,
+                    'visitor_wins': 0,
+                    'seeds': [seed2, seed1],
+                    'series_winner': None
+                }
+        elif rnd == 4:
+            s1 = get_matchup_data('East', 3, 0)
+            s2 = get_matchup_data('West', 3, 0)
+            t1 = s1.get('series_winner') if s1 else None
+            t2 = s2.get('series_winner') if s2 else None
+            
+            seed1 = ''
+            if t1 and s1: seed1 = s1['seeds'][1] if s1.get('home') == t1 else s1['seeds'][0]
+            seed2 = ''
+            if t2 and s2: seed2 = s2['seeds'][1] if s2.get('home') == t2 else s2['seeds'][0]
+            
+            if t1 or t2:
+                return {
+                    'home': t1 or 'TBD',
+                    'visitor': t2 or 'TBD',
+                    'home_wins': 0,
+                    'visitor_wins': 0,
+                    'seeds': [seed2, seed1],
+                    'series_winner': None
+                }
         return None
 
     # Style from bracket_mockup
@@ -2300,22 +2368,36 @@ def render_playoff_bracket(series_data):
                 <div class='bracket-team'><span class='bracket-seed'></span><div class='bracket-team-info'><span class='bracket-team-name bracket-tbd'>TBD</span></div></div>
             </div>
             """
-        v_win_cls = "bracket-win" if s['visitor_wins'] > s['home_wins'] or s['visitor_wins'] == 4 else ""
-        h_win_cls = "bracket-win" if s['home_wins'] > s['visitor_wins'] or s['home_wins'] == 4 else ""
+        v_win_cls = "bracket-win" if s.get('visitor_wins', 0) > s.get('home_wins', 0) or s.get('visitor_wins', 0) == 4 else ""
+        h_win_cls = "bracket-win" if s.get('home_wins', 0) > s.get('visitor_wins', 0) or s.get('home_wins', 0) == 4 else ""
+        
+        home_name = s.get('home', 'TBD')
+        visitor_name = s.get('visitor', 'TBD')
+        
+        home_html = f"<span class='bracket-team-name'>{home_name}</span>" if home_name != 'TBD' else "<span class='bracket-team-name bracket-tbd'>TBD</span>"
+        visitor_html = f"<span class='bracket-team-name'>{visitor_name}</span>" if visitor_name != 'TBD' else "<span class='bracket-team-name bracket-tbd'>TBD</span>"
+        
+        home_score = str(s.get('home_wins', '')) if home_name != 'TBD' else ''
+        visitor_score = str(s.get('visitor_wins', '')) if visitor_name != 'TBD' else ''
+        
+        seeds = s.get('seeds', ['', ''])
+        seed1 = seeds[1] if len(seeds) > 1 else ''
+        seed0 = seeds[0] if len(seeds) > 0 else ''
+
         return f"""
         <div class='bracket-matchup'>
             <div class='bracket-team'>
-                <span class='bracket-seed'>{s['seeds'][1]}</span>
+                <span class='bracket-seed'>{seed1}</span>
                 <div class='bracket-team-info'>
-                    <span class='bracket-team-name'>{s['home']}</span>
-                    <span class='bracket-score-streak {h_win_cls}'>{s['home_wins']}</span>
+                    {home_html}
+                    <span class='bracket-score-streak {h_win_cls}'>{home_score}</span>
                 </div>
             </div>
             <div class='bracket-team'>
-                <span class='bracket-seed'>{s['seeds'][0]}</span>
+                <span class='bracket-seed'>{seed0}</span>
                 <div class='bracket-team-info'>
-                    <span class='bracket-team-name'>{s['visitor']}</span>
-                    <span class='bracket-score-streak {v_win_cls}'>{s['visitor_wins']}</span>
+                    {visitor_html}
+                    <span class='bracket-score-streak {v_win_cls}'>{visitor_score}</span>
                 </div>
             </div>
         </div>
@@ -2327,17 +2409,17 @@ def render_playoff_bracket(series_data):
         with r1:
             st.caption("First Round")
             for i in [0, 3, 1, 2]:
-                st.markdown(render_matchup(find_series('East', 1, i)), unsafe_allow_html=True)
+                st.markdown(render_matchup(get_matchup_data('East', 1, i)), unsafe_allow_html=True)
         with r2:
             st.caption("Conf Semis")
             st.markdown("<div style='height: 45px;'></div>", unsafe_allow_html=True)
             for i in [0, 1]:
-                st.markdown(render_matchup(find_series('East', 2, i)), unsafe_allow_html=True)
+                st.markdown(render_matchup(get_matchup_data('East', 2, i)), unsafe_allow_html=True)
                 st.markdown("<div style='height: 70px;'></div>", unsafe_allow_html=True)
         with r3:
             st.caption("Conf Finals")
             st.markdown("<div style='height: 140px;'></div>", unsafe_allow_html=True)
-            st.markdown(render_matchup(find_series('East', 3, 0)), unsafe_allow_html=True)
+            st.markdown(render_matchup(get_matchup_data('East', 3, 0)), unsafe_allow_html=True)
 
     with west_col:
         st.markdown("<div style='text-align:center; color:#EF4444; font-weight:700; margin-bottom: 15px; letter-spacing: 1px;'>WESTERN CONFERENCE</div>", unsafe_allow_html=True)
@@ -2345,22 +2427,22 @@ def render_playoff_bracket(series_data):
         with r1:
             st.caption("First Round")
             for i in [0, 3, 1, 2]:
-                st.markdown(render_matchup(find_series('West', 1, i)), unsafe_allow_html=True)
+                st.markdown(render_matchup(get_matchup_data('West', 1, i)), unsafe_allow_html=True)
         with r2:
             st.caption("Conf Semis")
             st.markdown("<div style='height: 45px;'></div>", unsafe_allow_html=True)
             for i in [0, 1]:
-                st.markdown(render_matchup(find_series('West', 2, i)), unsafe_allow_html=True)
+                st.markdown(render_matchup(get_matchup_data('West', 2, i)), unsafe_allow_html=True)
                 st.markdown("<div style='height: 70px;'></div>", unsafe_allow_html=True)
         with r3:
             st.caption("Conf Finals")
             st.markdown("<div style='height: 140px;'></div>", unsafe_allow_html=True)
-            st.markdown(render_matchup(find_series('West', 3, 0)), unsafe_allow_html=True)
+            st.markdown(render_matchup(get_matchup_data('West', 3, 0)), unsafe_allow_html=True)
 
     with center_col:
         st.markdown("<div style='text-align:center; padding-top:200px; font-size: 2.5rem;'>🏆</div>", unsafe_allow_html=True)
         st.markdown("<div style='text-align:center; font-weight:800; color:#FFD700; letter-spacing: 2px; margin-bottom: 20px;'>FINALS</div>", unsafe_allow_html=True)
-        st.markdown(render_matchup(find_series('Finals', 4, 0)), unsafe_allow_html=True)
+        st.markdown(render_matchup(get_matchup_data('Finals', 4, 0)), unsafe_allow_html=True)
 
 # ==================== HOME PAGE ===================="
 if page == "Home":
@@ -7483,39 +7565,91 @@ elif page == "Standings":
                             </div>
                         </div>"""
 
-                def matchup_card(t1, t2, csn=None, is_tbd=False):
-                    s = get_series(csn) if csn is not None else None
+                def get_matchup_data(rnd, slot):
+                    s = series_by_round_csn.get((rnd, slot))
+                    if s: return s
+                    
+                    if rnd == 2:
+                        prev_slots = (0, 3) if slot == 0 else (1, 2)
+                        s1 = series_by_round_csn.get((1, prev_slots[0]))
+                        s2 = series_by_round_csn.get((1, prev_slots[1]))
+                        t1 = s1.get('series_winner') if s1 else None
+                        t2 = s2.get('series_winner') if s2 else None
+                        
+                        seed1 = ''
+                        if t1 and s1: seed1 = s1['seeds'][1] if s1.get('home') == t1 else s1['seeds'][0]
+                        seed2 = ''
+                        if t2 and s2: seed2 = s2['seeds'][1] if s2.get('home') == t2 else s2['seeds'][0]
+                        
+                        if t1 or t2:
+                            return {
+                                'home': t1 or 'TBD',
+                                'visitor': t2 or 'TBD',
+                                'home_wins': 0,
+                                'visitor_wins': 0,
+                                'seeds': [seed2, seed1],
+                                'series_winner': None
+                            }
+                    elif rnd == 3:
+                        s1 = get_matchup_data(2, 0)
+                        s2 = get_matchup_data(2, 1)
+                        t1 = s1.get('series_winner') if s1 else None
+                        t2 = s2.get('series_winner') if s2 else None
+                        
+                        seed1 = ''
+                        if t1 and s1: seed1 = s1['seeds'][1] if s1.get('home') == t1 else s1['seeds'][0]
+                        seed2 = ''
+                        if t2 and s2: seed2 = s2['seeds'][1] if s2.get('home') == t2 else s2['seeds'][0]
+                        
+                        if t1 or t2:
+                            return {
+                                'home': t1 or 'TBD',
+                                'visitor': t2 or 'TBD',
+                                'home_wins': 0,
+                                'visitor_wins': 0,
+                                'seeds': [seed2, seed1],
+                                'series_winner': None
+                            }
+                    return None
+
+                def matchup_card(rnd, csn, t1_override=None, t2_override=None):
+                    s = get_matchup_data(rnd, csn)
+                    if not s and not t1_override and not t2_override:
+                        return f'<div class="matchup">{team_html(None, True)}{team_html(None, True)}</div>'
+                    
                     done = bool(s and s.get('series_winner'))
                     done_css = " series-done" if done else ""
-                    if is_tbd or (not t1 and not t2):
-                        return f'<div class="matchup">{team_html(None, True)}{team_html(None, True)}</div>'
-                    t1w = t2w = 0
-                    if s and t1:
-                        if t1['abbrev'] == s['home']:
-                            t1w = s['home_wins']; t2w = s['visitor_wins']
-                        else:
-                            t1w = s['visitor_wins']; t2w = s['home_wins']
-                    h1 = team_html(t1, wins=t1w, opp_wins=t2w, series_done=done)
-                    h2 = team_html(t2, wins=t2w, opp_wins=t1w, series_done=done)
+                    
+                    if s:
+                        home_name = s.get('home', 'TBD')
+                        visitor_name = s.get('visitor', 'TBD')
+                        t1 = get_team_by_abbr(home_name) if home_name != 'TBD' else None
+                        t2 = get_team_by_abbr(visitor_name) if visitor_name != 'TBD' else None
+                        if t1 and s.get('seeds'): t1['seed'] = s['seeds'][1]
+                        if t2 and s.get('seeds'): t2['seed'] = s['seeds'][0]
+                        t1w = s.get('home_wins', 0)
+                        t2w = s.get('visitor_wins', 0)
+                    else:
+                        t1 = t1_override
+                        t2 = t2_override
+                        t1w = t2w = 0
+                        
+                    h1 = team_html(t1, is_tbd=(not t1), wins=t1w, opp_wins=t2w, series_done=done)
+                    h2 = team_html(t2, is_tbd=(not t2), wins=t2w, opp_wins=t1w, series_done=done)
                     return f'<div class="matchup{done_css}">{h1}{h2}</div>'
 
                 # ---- Helper: build first-round matchup card from series data ----
                 # Prefer the actual playoff series teams (post-play-in) over standings seeds.
                 def r1_matchup(csn, seed_hi, seed_lo):
                     """Build first-round matchup. Uses series data if available."""
-                    s = series_by_seeds.get(csn)
+                    s = series_by_round_csn.get((1, csn))
                     if s:
-                        # Use actual series teams from API (post-play-in correct)
-                        t_hi = get_team_by_abbr(s['home'])
-                        t_lo = get_team_by_abbr(s['visitor'])
-                        # Label seeds from bracket slot (not from standings)
-                        t_hi['seed'] = seed_hi
-                        t_lo['seed'] = seed_lo
+                        return matchup_card(1, csn)
                     else:
                         # Fallback: use standings seeds
                         t_hi = teams.get(seed_hi)
                         t_lo = teams.get(seed_lo)
-                    return matchup_card(t_hi, t_lo, csn=csn)
+                        return matchup_card(1, csn, t1_override=t_hi, t2_override=t_lo)
 
                 # First Round matchups (NBA bracket standard: 1v8, 4v5, 2v7, 3v6)
                 m1_8 = r1_matchup(0, 1, 8)
@@ -7523,56 +7657,10 @@ elif page == "Standings":
                 m2_7 = r1_matchup(1, 2, 7)
                 m3_6 = r1_matchup(2, 3, 6)
 
-                # Conf Semis – winners advance
-                w1 = get_winner(0); w4 = get_winner(3)
-                w2 = get_winner(1); w3 = get_winner(2)
+                m_semi_1 = matchup_card(2, 0)
+                m_semi_2 = matchup_card(2, 1)
 
-                # Check for actual semis series (round 2) in data
-                semi_s1 = series_by_round_csn.get((2, 0))
-                semi_s2 = series_by_round_csn.get((2, 1))
-
-                m_semi_1 = matchup_card(w1, w4, is_tbd=(not w1 and not w4))
-                m_semi_2 = matchup_card(w2, w3, is_tbd=(not w2 and not w3))
-
-                # Overlay real semis wins if available
-                if semi_s1 and (w1 or w4):
-                    sw1 = sw4 = 0
-                    if w1 and w1['abbrev'] == semi_s1.get('home'):
-                        sw1 = semi_s1['home_wins']; sw4 = semi_s1['visitor_wins']
-                    elif w1:
-                        sw1 = semi_s1['visitor_wins']; sw4 = semi_s1['home_wins']
-                    d1 = bool(semi_s1.get('series_winner'))
-                    m_semi_1 = f'<div class="matchup{"  series-done" if d1 else ""}">{team_html(w1, wins=sw1, opp_wins=sw4, series_done=d1)}{team_html(w4, wins=sw4, opp_wins=sw1, series_done=d1)}</div>'
-
-                if semi_s2 and (w2 or w3):
-                    sw2 = sw3 = 0
-                    if w2 and w2['abbrev'] == semi_s2.get('home'):
-                        sw2 = semi_s2['home_wins']; sw3 = semi_s2['visitor_wins']
-                    elif w2:
-                        sw2 = semi_s2['visitor_wins']; sw3 = semi_s2['home_wins']
-                    d2 = bool(semi_s2.get('series_winner'))
-                    m_semi_2 = f'<div class="matchup{"  series-done" if d2 else ""}">{team_html(w2, wins=sw2, opp_wins=sw3, series_done=d2)}{team_html(w3, wins=sw3, opp_wins=sw2, series_done=d2)}</div>'
-
-                # Conf Finals
-                wf1 = wf2 = None
-                finals_s = series_by_round_csn.get((3, 0))
-                if semi_s1 and semi_s1.get('series_winner'):
-                    wa = semi_s1['series_winner']
-                    wf1 = {'abbrev': wa, 'seed': '', 'record': '', 'logo_url': get_team_logo_url(wa)}
-                if semi_s2 and semi_s2.get('series_winner'):
-                    wb = semi_s2['series_winner']
-                    wf2 = {'abbrev': wb, 'seed': '', 'record': '', 'logo_url': get_team_logo_url(wb)}
-
-                if finals_s and (wf1 or wf2):
-                    sfw1 = sfw2 = 0
-                    if wf1 and wf1['abbrev'] == finals_s.get('home'):
-                        sfw1 = finals_s['home_wins']; sfw2 = finals_s['visitor_wins']
-                    elif wf1:
-                        sfw1 = finals_s['visitor_wins']; sfw2 = finals_s['home_wins']
-                    df = bool(finals_s.get('series_winner'))
-                    m_finals = f'<div class="matchup{"  series-done" if df else ""}">{team_html(wf1, wins=sfw1, opp_wins=sfw2, series_done=df)}{team_html(wf2, wins=sfw2, opp_wins=sfw1, series_done=df)}</div>'
-                else:
-                    m_finals = matchup_card(wf1, wf2, is_tbd=(not wf1 and not wf2))
+                m_finals = matchup_card(3, 0)
 
                 full_html = f"""
                 <div class="bracket-wrapper">
