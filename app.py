@@ -3957,17 +3957,28 @@ elif page == "Predictions":
                     consistency_interpretation = "High Variance" if consistency > 0.5 else "Moderate" if consistency > 0.3 else "Very Consistent"
                     
                     with st.spinner("Generating prediction..."):
-                        # Fetch injuries for display (not used in prediction)
+                        # Fetch injuries for display AND for prediction
                         injuries = get_nba_injuries()
                         opp_injury_score, opp_injured_players = analyze_team_injuries(injuries, selected_opponent)
                         team_injury_score, team_injured_players = analyze_team_injuries(injuries, player_team) if player_team else (0, [])
-                        
+
+                        # Detect home/road for the next game vs selected opponent
+                        _is_home_game = None
+                        if upcoming_games:
+                            for _g in upcoming_games:
+                                if _g.get('opponent') == selected_opponent:
+                                    _is_home_game = _g.get('is_home', None)
+                                    break
+
                         prediction = predict_with_drtg(
                             model, stat_cols, scaler, filtered_df,
-                            team_def_ratings, selected_opponent, 
+                            team_def_ratings, selected_opponent,
                             full_player_df=player_df,
                             playoff_games_df=playoff_games_player,
-                            is_playoff_game=False
+                            is_playoff_game=False,
+                            is_home_game=_is_home_game,
+                            opp_injury_score=float(opp_injury_score),
+                            own_injury_score=float(team_injury_score),
                         )
                     
                     if prediction:
@@ -4021,6 +4032,23 @@ elif page == "Predictions":
                                     st.markdown("<div style='color: #9CA3AF; font-size: 0.8rem;'>None</div>", unsafe_allow_html=True)
                         
                         
+                        # --- Prediction factor badges ---
+                        badge_parts = []
+                        _hr_mult = prediction.get('_home_road_mult', {})
+                        _pts_hr  = _hr_mult.get('Points', 1.0)
+                        if _is_home_game is True:
+                            badge_parts.append("🏠 Home")
+                        elif _is_home_game is False:
+                            badge_parts.append("✈️ Road")
+                        if _pts_hr != 1.0:
+                            badge_parts.append(f"H/R ×{_pts_hr:.2f}")
+                        if float(opp_injury_score) > 0:
+                            badge_parts.append(f"🏥 Opp inj: {opp_injury_score:.1f} → ×{prediction.get('_opp_inj_mult', 1):.3f}")
+                        if float(team_injury_score) > 0:
+                            badge_parts.append(f"🏥 Own inj: {team_injury_score:.1f} → ×{prediction.get('_own_inj_mult', 1):.3f}")
+                        if badge_parts:
+                            st.caption(" · ".join(badge_parts))
+
                         st.markdown("---")
                         
                         # Visualization
@@ -8191,12 +8219,32 @@ def render_playoffs_page():
                                     st.dataframe(tmp_po[display_cols].style.apply(highlight_avg, axis=1), hide_index=True)
 
                             with st.spinner("Generating prediction..."):
+                                # Determine home/road for next game in series
+                                _game_num_po = s_info['visitor_wins'] + s_info['home_wins'] + 1
+                                _home_game_nums = {1, 2, 5, 7}
+                                _next_home_is_team2 = _game_num_po in _home_game_nums
+                                _po_is_home_game = (
+                                    (player_team == team2 and _next_home_is_team2) or
+                                    (player_team == team1 and not _next_home_is_team2)
+                                )
+
+                                # Fetch injuries for the playoff matchup
+                                try:
+                                    _po_injuries = get_nba_injuries()
+                                    _po_opp_inj, _ = analyze_team_injuries(_po_injuries, opp_abbrev)
+                                    _po_own_inj, _ = analyze_team_injuries(_po_injuries, player_team)
+                                except Exception:
+                                    _po_opp_inj, _po_own_inj = 0.0, 0.0
+
                                 prediction = predict_with_drtg(
                                     model, stat_cols, scaler, filtered_df,
-                                    team_def_ratings, opp_abbrev, 
+                                    team_def_ratings, opp_abbrev,
                                     full_player_df=reg_df,
                                     playoff_games_df=None,
-                                    is_playoff_game=is_playoff_matchup
+                                    is_playoff_game=is_playoff_matchup,
+                                    is_home_game=_po_is_home_game,
+                                    opp_injury_score=float(_po_opp_inj),
+                                    own_injury_score=float(_po_own_inj),
                                 )
                             
                             if prediction:

@@ -32,54 +32,57 @@ def calculate_player_consistency(player_df, stat_cols):
 def compute_playoff_adjustments(player_df, playoff_games_df=None):
     """
     Compute playoff-specific multipliers for each stat.
-    
-    Updated: Removed the pessimistic 'baseline' reductions. Now focuses 
-    on workload (minutes) and actual playoff performance if available.
+
+    Applies a recency-decay within playoff_games_df so that games from
+    earlier rounds receive lower weight than games from the current round.
+    Relies on 'MATCHUP' containing 'vs.' or '@' to distinguish home/road
+    if the column is present, but the home/road factor is handled separately
+    in predict_with_drtg.
     """
     adjustments = {stat: 1.0 for stat in ['Points', 'Assists', 'Rebounds', 'Steals', 'Blocks', 'Turnovers']}
 
     # --- Minutes Trend Factor ---
-    # Focus on "guys that are playing": Compare recent workload to season average
-    reg_min = 0.0
-    recent_min = 0.0
     if 'MIN' in player_df.columns and len(player_df) > 0:
-        # Convert to numeric, handle potential NaNs
         min_series = pd.to_numeric(player_df['MIN'], errors='coerce').fillna(0)
         reg_min = min_series.mean()
         recent_min = min_series.tail(5).mean()
 
-    # If recent minutes are significantly higher (or lower), scale the baseline expectations
-    # This captures shifted roles/rotations in the playoffs
-    if reg_min > 5: # Avoid div by zero or low-sample noise
-        min_trend_ratio = recent_min / reg_min
-        # Apply a dampened scaling factor (cap at 1.2x to prevent inflation)
-        # We use a 0.7 exponent to damp the effect so +20% mins doesn't mean +20% stats, 
-        # but it definitely moves the needle.
-        trend_factor = min(1.2, max(0.8, min_trend_ratio ** 0.7))
-        
-        for stat in ['Points', 'Assists', 'Rebounds']:
-            adjustments[stat] = trend_factor
+        if reg_min > 5:
+            min_trend_ratio = recent_min / reg_min
+            trend_factor = min(1.2, max(0.8, min_trend_ratio ** 0.7))
+            for stat in ['Points', 'Assists', 'Rebounds']:
+                adjustments[stat] = trend_factor
 
-    # --- Actual Playoff Calibration ---
-    # If we have actual playoff games, blend that reality into the adjustments
+    # --- Actual Playoff Calibration with Recency Decay ---
+    # Recent playoff games are weighted more heavily than earlier-round games.
     if playoff_games_df is not None and len(playoff_games_df) >= 1:
-        # Weight actual playoff data (increases as series goes on)
-        playoff_weight = min(0.50, 0.20 + 0.10 * len(playoff_games_df))
+        n = len(playoff_games_df)
+        # Base weight increases with more games played (caps at 0.50)
+        playoff_weight = min(0.50, 0.20 + 0.10 * n)
+
+        # Build per-game decay weights: most recent game = 1.0, each older game
+        # discounted by 0.80 (so game n-1 = 0.80, n-2 = 0.64, ...).  This means
+        # the current series matters far more than Round 1 games.
+        decay = 0.80
+        raw_weights = np.array([decay ** i for i in range(n - 1, -1, -1)], dtype=float)
+        game_weights = raw_weights / raw_weights.sum()  # normalise
 
         for stat in adjustments.keys():
             if stat not in player_df.columns or stat not in playoff_games_df.columns:
                 continue
             reg_avg = player_df[stat].mean()
-            if reg_avg <= 0: continue
-            
-            po_avg = playoff_games_df[stat].mean()
-            ratio = po_avg / reg_avg
-            
-            # Blend the existing trend factor with actual playoff performance
-            # New adjustment = (current_trend) * (1 - weight) + (playoff_ratio) * weight
-            adjustments[stat] = (adjustments[stat] * (1 - playoff_weight)) + (ratio * playoff_weight)
+            if reg_avg <= 0:
+                continue
 
-    return adjustments
+            po_vals = playoff_games_df[stat].values
+            if len(po_vals) != len(game_weights):
+                # Fallback to simple mean if shapes mismatch
+                po_avg = np.mean(po_vals)
+            else:
+                po_avg = np.dot(game_weights, po_vals)
+
+            ratio = po_avg / reg_avg
+            adjustments[stat] = (adjustments[stat] * (1 - playoff_weight)) + (ratio * playoff_weight)
 
     return adjustments
 
@@ -141,7 +144,8 @@ def train_hmm_with_drtg(player_df, team_def_ratings, n_states=3, use_temporal_we
 
 
 def predict_with_drtg(model, stat_cols, scaler, recent_df, team_def_ratings, target_opponent,
-                      full_player_df=None, playoff_games_df=None, is_playoff_game=False):
+                      full_player_df=None, playoff_games_df=None, is_playoff_game=False,
+                      is_home_game=None, opp_injury_score=0.0, own_injury_score=0.0):
     """
     Generate prediction with defensive rating, head-to-head, and optional playoff context.
 
@@ -156,6 +160,13 @@ def predict_with_drtg(model, stat_cols, scaler, recent_df, team_def_ratings, tar
         If provided, the prediction blends these in for calibration.
     is_playoff_game : bool – if True, apply playoff-specific adjustments even if
         playoff_games_df is None (uses baseline adjustments).
+    is_home_game : bool or None – whether the predicted game is at home. If None,
+        the factor is derived automatically from the player's historical home/road
+        splits in full_player_df.
+    opp_injury_score : float – opponent team injury impact (0–10). Higher = key
+        players missing, so the player's offense gets a modest boost.
+    own_injury_score : float – player's own team injury impact (0–10). Higher =
+        fewer quality teammates, slight drag on stats.
     """
     target_drtg = team_def_ratings.get(target_opponent)
     if target_drtg is None:
@@ -277,6 +288,48 @@ def predict_with_drtg(model, stat_cols, scaler, recent_df, team_def_ratings, tar
         else:
             po_adjustments = {stat: 1.0 for stat in stat_cols}
 
+        # === HOME / ROAD FACTOR ===
+        # Compute the player's home-vs-road split from their full game log if
+        # is_home_game is not explicitly supplied.
+        home_road_mult = {stat: 1.0 for stat in stat_cols}
+        _is_home = is_home_game  # may be None → auto-detect
+
+        src_df = full_player_df if full_player_df is not None else recent_df
+        if 'MATCHUP' in src_df.columns and len(src_df) >= 10:
+            home_mask = src_df['MATCHUP'].str.contains(r'\bvs\.', na=False)
+            road_mask = src_df['MATCHUP'].str.contains(r'@', na=False)
+            home_df = src_df[home_mask]
+            road_df = src_df[road_mask]
+
+            if len(home_df) >= 3 and len(road_df) >= 3:
+                for stat in ['Points', 'Assists', 'Rebounds']:
+                    if stat not in home_df.columns:
+                        continue
+                    home_avg = home_df[stat].mean()
+                    road_avg = road_df[stat].mean()
+                    overall_avg = src_df[stat].mean()
+                    if overall_avg <= 0:
+                        continue
+
+                    if _is_home is True:
+                        # Amplify upward for home advantage
+                        ratio = home_avg / overall_avg
+                    elif _is_home is False:
+                        # Amplify downward for road games
+                        ratio = road_avg / overall_avg
+                    else:
+                        ratio = 1.0  # unknown — no adjustment
+
+                    # Cap the multiplier at ±15% to avoid noise dominating
+                    home_road_mult[stat] = min(1.15, max(0.85, ratio))
+
+        # === INJURY FACTOR ===
+        # opponent injuries → offensive boost (capped at +12 %)
+        # own-team injuries → slight stat drag (capped at −12 %)
+        opp_inj_mult  = 1.0 + min(0.12, opp_injury_score * 0.012)
+        own_inj_mult  = 1.0 - min(0.12, own_injury_score * 0.012)
+        inj_sensitive = ['Points', 'Assists', 'Rebounds']  # stats most affected
+
         result = {}
         defensive_sensitive_stats = ['Points', 'Assists', 'Turnovers']
         
@@ -290,8 +343,16 @@ def predict_with_drtg(model, stat_cols, scaler, recent_df, team_def_ratings, tar
                 h2h_value = h2h_adjustment[stat]
                 value = (1 - h2h_weight) * value + h2h_weight * h2h_value
             
-            # Apply playoff adjustment multiplier
+            # Apply playoff adjustment multiplier (with recency decay)
             value *= po_adjustments.get(stat, 1.0)
+
+            # Apply home/road multiplier
+            value *= home_road_mult.get(stat, 1.0)
+
+            # Apply injury multipliers to sensitive stats
+            if stat in inj_sensitive:
+                value *= opp_inj_mult
+                value *= own_inj_mult
             
             # Apply realistic bounds
             if stat == 'Points':
@@ -315,6 +376,9 @@ def predict_with_drtg(model, stat_cols, scaler, recent_df, team_def_ratings, tar
         result['_is_playoff'] = is_playoff_game or (playoff_games_df is not None and len(playoff_games_df) >= 1)
         result['_playoff_games_used'] = len(playoff_games_df) if playoff_games_df is not None else 0
         result['_po_adjustments'] = po_adjustments
+        result['_home_road_mult'] = home_road_mult
+        result['_opp_inj_mult'] = round(opp_inj_mult, 3)
+        result['_own_inj_mult'] = round(own_inj_mult, 3)
         
         return result
         
