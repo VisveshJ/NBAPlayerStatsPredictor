@@ -8253,7 +8253,7 @@ def render_playoffs_page():
                                     model, stat_cols, scaler, filtered_df,
                                     team_def_ratings, opp_abbrev,
                                     full_player_df=reg_df,
-                                    playoff_games_df=None,
+                                    playoff_games_df=po_df if po_df is not None and not po_df.empty else None,
                                     is_playoff_game=is_playoff_matchup,
                                     is_home_game=_po_is_home_game,
                                     opp_injury_score=float(_po_opp_inj),
@@ -8276,6 +8276,26 @@ def render_playoffs_page():
                                 with metric_col3:
                                     st.metric("Assists", int(round(prediction['Assists'])))
                                     st.metric("Turnovers", int(round(prediction['Turnovers'])))
+
+                                # Show blend breakdown
+                                _blend = prediction.get('_po_blend_meta')
+                                if _blend:
+                                    w = _blend.get('weights', {})
+                                    _parts = []
+                                    if _blend.get('series_games', 0) > 0:
+                                        _parts.append(f"📊 Series ({_blend['series_games']}g) {w.get('series',0)*100:.0f}%")
+                                    if _blend.get('h2h_reg_games', 0) > 0:
+                                        _parts.append(f"🗂 Reg H2H ({_blend['h2h_reg_games']}g) {w.get('h2h_reg',0)*100:.0f}%")
+                                    if _blend.get('similar_po_games', 0) > 0:
+                                        _parts.append(f"🛡 Similar def ({_blend['similar_po_games']}g) {w.get('similar_po',0)*100:.0f}%")
+                                    _parts.append(f"📈 PO avg {w.get('po_full',0)*100:.0f}%")
+                                    _parts.append(f"📅 Season {w.get('season',0)*100:.0f}%")
+                                    _parts.append(f"🤖 HMM {w.get('hmm',0)*100:.0f}%")
+                                    if _po_is_home_game is True:
+                                        _parts.append("🏠 Home")
+                                    elif _po_is_home_game is False:
+                                        _parts.append("✈️ Road")
+                                    st.caption(" · ".join(_parts))
 
     with tabs[3]:
         st.markdown("#### Compare Two Players in this Series")
