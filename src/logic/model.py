@@ -211,29 +211,53 @@ def predict_with_drtg(model, stat_cols, scaler, recent_df, team_def_ratings, tar
         adjusted_prediction_2d = adjusted_prediction.reshape(1, -1)
         predicted_unscaled = scaler.inverse_transform(adjusted_prediction_2d)[0]
         
-        # Blend HMM prediction with recent game averages to prevent extreme predictions
-        # This helps when HMM picks a rare low/high state that doesn't reflect current form
+        # ── 3-WAY BLEND: HMM state  ·  recent form  ·  season anchor ──────────
+        # Using a 10-game window for recent form (more stable than 5 games;
+        # prevents a single hot/cold streak from dominating the prediction).
         #
-        # In the playoffs, we prioritise the most recent (playoff) games more.
-        # If playoff data is available, weight recent (playoff) games at 60%; otherwise 50%.
+        # Weights:
+        #   Normal         : 40% HMM  +  35% recent-10-avg  +  25% season-avg
+        #   Playoff w/ data: 40% HMM  +  40% recent-PO-avg  +  20% season-avg
+        #
+        # The season-avg anchor is the key change: it prevents the model from
+        # over-indexing on short-term variance and keeps predictions grounded.
+
+        # Full-season averages (from the data the HMM was trained on)
+        _src = full_player_df if full_player_df is not None else recent_df
+        season_averages = np.array([
+            _src[s].mean() if s in _src.columns else 0.0
+            for s in stat_cols
+        ])
+
         _has_playoff_data = playoff_games_df is not None and len(playoff_games_df) >= 1
+
         if _has_playoff_data:
-            recent_weight = 0.60  # lean more on recent playoff form
-            # Use playoff games as the "recent" context if available
+            # Playoff mode: lean on recent PO form, lighter season anchor
+            hmm_weight    = 0.40
+            recent_weight = 0.40
+            season_weight = 0.20
             po_recent = playoff_games_df.tail(5)
             if len(po_recent) >= 2 and all(c in po_recent.columns for c in stat_cols):
                 recent_averages = po_recent[stat_cols].mean().values
             else:
-                recent_averages = last_games[stat_cols].mean().values
+                recent_averages = recent_df.tail(10)[stat_cols].mean().values
         else:
-            recent_weight = 0.50
-            recent_averages = last_games[stat_cols].mean().values
-
+            hmm_weight    = 0.40
+            recent_weight = 0.35
+            season_weight = 0.25
+            # Use a 10-game window — far more stable than 5
+            recent_averages = recent_df.tail(10)[stat_cols].mean().values
 
         for i, stat in enumerate(stat_cols):
-            hmm_value = predicted_unscaled[i]
+            hmm_value    = predicted_unscaled[i]
             recent_value = recent_averages[i]
-            predicted_unscaled[i] = (1 - recent_weight) * hmm_value + recent_weight * recent_value
+            season_value = season_averages[i]
+            predicted_unscaled[i] = (
+                hmm_weight    * hmm_value +
+                recent_weight * recent_value +
+                season_weight * season_value
+            )
+
         
         # === HEAD-TO-HEAD ADJUSTMENT ===
         # In the playoffs this is strengthened because teams game-plan specifically
