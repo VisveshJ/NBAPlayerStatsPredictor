@@ -3962,13 +3962,26 @@ elif page == "Predictions":
                         opp_injury_score, opp_injured_players = analyze_team_injuries(injuries, selected_opponent)
                         team_injury_score, team_injured_players = analyze_team_injuries(injuries, player_team) if player_team else (0, [])
 
-                        # Detect home/road for the next game vs selected opponent
+                        # Detect home/road for the next game vs selected opponent.
+                        # Primary: check upcoming schedule. Fallback: infer from the
+                        # MATCHUP format in prior games vs this opponent
+                        # ("vs." = home,  "@" = away).
                         _is_home_game = None
                         if upcoming_games:
                             for _g in upcoming_games:
                                 if _g.get('opponent') == selected_opponent:
                                     _is_home_game = _g.get('is_home', None)
                                     break
+
+                        if _is_home_game is None and 'MATCHUP' in player_df.columns and 'Opponent' in player_df.columns:
+                            _prior_vs_opp = player_df[player_df['Opponent'] == selected_opponent]
+                            if not _prior_vs_opp.empty:
+                                # Use the most-recent game vs this opponent as the pattern
+                                _last_matchup = str(_prior_vs_opp.iloc[-1].get('MATCHUP', ''))
+                                if ' vs. ' in _last_matchup:
+                                    _is_home_game = True
+                                elif ' @ ' in _last_matchup or '@' in _last_matchup:
+                                    _is_home_game = False
 
                         prediction = predict_with_drtg(
                             model, stat_cols, scaler, filtered_df,
