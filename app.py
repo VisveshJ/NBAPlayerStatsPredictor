@@ -612,25 +612,31 @@ def get_playoff_series_data(season='2025-26', _cache_bust=1):
         #   ID = "00425" + "0" + "0" + "1" + series_index
         #   e.g. "004250014": sid[5]='0', sid[6]='0', sid[7]='1', sid[8]='4'
         #   sid[7] = round indicator (1 = First Round, 2 = Conf Semis, ...)
-        #   sid[8] = series index 0-7  (0-3 = East, 4-7 = West)
+        #   sid[8] = series index within the round (NBA resets to 0 each round)
+        #
+        # The NBA groups series indices by conference, but the split threshold
+        # depends on how many series exist per conference per round:
+        #   R1: 4 per conf → East=0-3, West=4-7  (threshold=4)
+        #   R2: 2 per conf → East=0-1, West=2-3  (threshold=2)
+        #   R3: 1 per conf → East=0,   West=1    (threshold=1)
         try:
             round_num = int(sid[7])        # 1-based round number directly
-            series_idx = int(sid[8])       # 0-7
+            series_idx = int(sid[8])       # resets to 0 each round
         except Exception:
             round_num = 1
             series_idx = 0
 
-        # East = indices 0-3, West = indices 4-7
-        conference = 'East' if series_idx < 4 else 'West'
+        # Series per conference for this round: 4, 2, 1, ... (halves each round)
+        series_per_conf = max(1, 4 >> (round_num - 1))  # 4//2^(round-1)
 
-        # Series number within the conference (0-3)
-        conf_series_num = series_idx % 4
+        conference = 'East' if series_idx < series_per_conf else 'West'
+        conf_series_num = series_idx % series_per_conf
 
-        # Map conference series number → bracket slot (NBA standard)
+        # Map conference series number → bracket slot (NBA standard, R1 only)
         # 0=(1v8), 1=(2v7), 2=(3v6), 3=(4v5)
-        # We store as (Visitor, Home) -> (Lower Seed, Higher Seed)
+        # For R2+, we leave seeds empty so actual playoff rank from standings is used.
         seed_matchup_map = {0: (8, 1), 1: (7, 2), 2: (6, 3), 3: (5, 4)}
-        seeds = seed_matchup_map.get(conf_series_num, (0, 0))
+        seeds = seed_matchup_map.get(conf_series_num, (0, 0)) if round_num == 1 else ()
 
         series_winner = None
         if home_wins >= 4:
