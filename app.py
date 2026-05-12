@@ -944,9 +944,15 @@ def _get_all_game_scores_from_cdn():
     for all COMPLETED games (gameStatus == 3).
     """
     import requests
+    cdn_headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Referer': 'https://www.nba.com/',
+        'Origin': 'https://www.nba.com'
+    }
     try:
         url = "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json"
-        resp = requests.get(url, timeout=15)
+        resp = requests.get(url, timeout=15, headers=cdn_headers)
         resp.raise_for_status()
         data = resp.json()
         
@@ -2303,23 +2309,28 @@ def render_playoff_bracket(series_data):
                 return s
         return None
 
+    def _safe_seed(s, team):
+        """Return the seed for `team` from series `s`, or '' if seeds is empty (R2+)."""
+        seeds = s.get('seeds', ())
+        if not seeds or len(seeds) < 2:
+            return ''
+        return seeds[1] if s.get('home') == team else seeds[0]
+
     def get_matchup_data(conf, rnd, slot):
         s = find_series(conf, rnd, slot)
         if s:
             return s
-            
+
         if rnd == 2:
             prev_slots = (0, 3) if slot == 0 else (1, 2)
             s1 = find_series(conf, 1, prev_slots[0])
             s2 = find_series(conf, 1, prev_slots[1])
             t1 = s1.get('series_winner') if s1 else None
             t2 = s2.get('series_winner') if s2 else None
-            
-            seed1 = ''
-            if t1 and s1: seed1 = s1['seeds'][1] if s1['home'] == t1 else s1['seeds'][0]
-            seed2 = ''
-            if t2 and s2: seed2 = s2['seeds'][1] if s2['home'] == t2 else s2['seeds'][0]
-            
+
+            seed1 = _safe_seed(s1, t1) if (t1 and s1) else ''
+            seed2 = _safe_seed(s2, t2) if (t2 and s2) else ''
+
             if t1 or t2:
                 return {
                     'home': t1 or 'TBD',
@@ -2334,12 +2345,10 @@ def render_playoff_bracket(series_data):
             s2 = get_matchup_data(conf, 2, 1)
             t1 = s1.get('series_winner') if s1 else None
             t2 = s2.get('series_winner') if s2 else None
-            
-            seed1 = ''
-            if t1 and s1: seed1 = s1['seeds'][1] if s1.get('home') == t1 else s1['seeds'][0]
-            seed2 = ''
-            if t2 and s2: seed2 = s2['seeds'][1] if s2.get('home') == t2 else s2['seeds'][0]
-            
+
+            seed1 = _safe_seed(s1, t1) if (t1 and s1) else ''
+            seed2 = _safe_seed(s2, t2) if (t2 and s2) else ''
+
             if t1 or t2:
                 return {
                     'home': t1 or 'TBD',
@@ -2354,12 +2363,10 @@ def render_playoff_bracket(series_data):
             s2 = get_matchup_data('West', 3, 0)
             t1 = s1.get('series_winner') if s1 else None
             t2 = s2.get('series_winner') if s2 else None
-            
-            seed1 = ''
-            if t1 and s1: seed1 = s1['seeds'][1] if s1.get('home') == t1 else s1['seeds'][0]
-            seed2 = ''
-            if t2 and s2: seed2 = s2['seeds'][1] if s2.get('home') == t2 else s2['seeds'][0]
-            
+
+            seed1 = _safe_seed(s1, t1) if (t1 and s1) else ''
+            seed2 = _safe_seed(s2, t2) if (t2 and s2) else ''
+
             if t1 or t2:
                 return {
                     'home': t1 or 'TBD',
