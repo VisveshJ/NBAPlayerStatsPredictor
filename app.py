@@ -395,9 +395,17 @@ def get_nba_schedule():
     import requests
     from datetime import datetime
     
+    # NBA CDN (Cloudflare) blocks requests without a browser-like User-Agent
+    cdn_headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Referer': 'https://www.nba.com/',
+        'Origin': 'https://www.nba.com'
+    }
+    
     try:
         url = "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json"
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=10, headers=cdn_headers)
         response.raise_for_status()
         data = response.json()
         
@@ -430,9 +438,17 @@ def get_todays_scoreboard():
     """Fetch today's scoreboard with live/final scores."""
     import requests
     
+    # NBA CDN (Cloudflare) blocks requests without a browser-like User-Agent
+    cdn_headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Referer': 'https://www.nba.com/',
+        'Origin': 'https://www.nba.com'
+    }
+    
     try:
         url = "https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_00.json"
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=10, headers=cdn_headers)
         response.raise_for_status()
         data = response.json()
         
@@ -533,10 +549,16 @@ def get_playoff_series_data(season='2025-26', _cache_bust=1):
         series_map[sid]['games'].append(g['GAME_ID'])
 
     # ---- Fetch completed game results from CDN schedule ----
+    cdn_headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Referer': 'https://www.nba.com/',
+        'Origin': 'https://www.nba.com'
+    }
     cdn_results = {}  # game_id → {home_score, away_score, status, home_id, away_id}
     try:
         url = 'https://cdn.nba.com/static/json/staticData/scheduleLeagueV2_1.json'
-        resp = requests.get(url, timeout=10, headers={'User-Agent': 'nba_api/1.5'})
+        resp = requests.get(url, timeout=10, headers=cdn_headers)
         if resp.status_code == 200:
             sched_data = resp.json()
             all_playoff_ids = {gid for s in series_map.values() for gid in s['games']}
@@ -559,7 +581,7 @@ def get_playoff_series_data(season='2025-26', _cache_bust=1):
     # ---- Also pull today's live scoreboard (catches in-progress games) ----
     try:
         live_url = 'https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_00.json'
-        live_resp = requests.get(live_url, timeout=8, headers={'User-Agent': 'nba_api/1.5'})
+        live_resp = requests.get(live_url, timeout=8, headers=cdn_headers)
         if live_resp.status_code == 200:
             live_data = live_resp.json()
             for g in live_data.get('scoreboard', {}).get('games', []):
